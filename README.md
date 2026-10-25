@@ -58,6 +58,9 @@ headers alone are not embedded in `dist/`.
 domain interfaces in `src/types.ts`.
 Queries bind parameters, dates return as `YYYY-MM-DD`, and timestamps return as
 UTC ISO strings. Writes are serialized, checkpointed, and flushed before resolving.
+A flush failure after commit is reported separately so users are not told to
+retry an insert that already exists. Measurements must be finite and dates use
+years 0001–9999 so imported records remain displayable.
 
 Storage is selected on startup:
 
@@ -65,19 +68,28 @@ Storage is selected on startup:
   the browser's origin-private filesystem. Explicit file-handle registration
   works around empty-file registration and URI normalization issues in the
   installed runtime; DuckDB opens the registered `coffeos.db` alias.
-- If OPFS is missing or locked, an in-memory database restores both tables from
+- If OPFS is unavailable on first use, an in-memory database restores both tables from
   an atomic IndexedDB record of Parquet buffers. Every successful write updates
   that record; snapshot failures roll back the write. A damaged snapshot reports
   a startup error so existing data is not replaced with empty tables.
 - The MVP compatibility bundle also uses IndexedDB, avoiding an OPFS reopen bug
   in the pinned runtime. Browsers supporting Wasm exception handling use OPFS.
 - If IndexedDB is unavailable too, data lasts for the current tab only, with a
-  warning in the console. Storage persistence permission is requested without
+  visible warning in the app. Storage persistence permission is requested without
   blocking startup on a browser permission prompt.
 
-OPFS and IndexedDB contain separate datasets; they do not automatically merge
-when the selected storage mode changes. Avoid editing in multiple tabs. Browser
-storage can still be cleared by the user or evicted when persistence is denied.
+A Web Lock allows one open database per origin. Additional tabs show a clear
+message to close the other tab and reload; they never create a competing writable
+snapshot. Closing the database or tab releases ownership. Browsers without Web
+Locks show a startup error instead of permitting unsafe concurrent writes.
+
+The selected durable backend is remembered in IndexedDB. An existing snapshot
+keeps using IndexedDB even when OPFS later becomes available. If a remembered
+OPFS database cannot be opened, startup fails without switching to an empty
+collection. Older installations with both datasets retain both files and prefer
+an existing snapshot when no backend marker exists; historical split datasets
+are not automatically merged. Browser storage can still be cleared by the user
+or evicted when persistence is denied. Export backups from IO regularly.
 
 Workers, Wasm, and signed Parquet extensions are served locally through Vite;
 automatic external extension downloads are disabled. The runtime is pinned to
@@ -161,12 +173,12 @@ TEST_MVP=1 uv run npm run test:db
 ```
 
 These dependency-free WebDriver BiDi checks use a fresh Firefox container and
-cover CRUD, ordering/filtering/joins, SQL binding, OPFS reloads, locked OPFS,
+cover CRUD, ordering/filtering/joins, SQL binding, OPFS reloads, exclusive ownership,
 IndexedDB Parquet restore, failed writes, damaged snapshots, permission denial,
 memory fallback, cleanup, and unhandled browser errors. `TEST_MVP=1` selects the
 compatibility Wasm bundle. Override `FIREFOX_BIDI_URL` or `TEST_BASE_URL` if needed.
 For a built site (including a repository subpath), set `TEST_PRODUCTION=1` and
-`TEST_BASE_URL` to check startup, isolation, and both persistence backends.
+`TEST_BASE_URL` to check startup, isolation, local assets, and database ownership.
 
 ## Import and export (stage 5)
 

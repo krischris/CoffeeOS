@@ -335,10 +335,44 @@ try {
     assert.deepEqual(await beanCards(), refreshed);
     assert.deepEqual(await sync(`return window.__safariErrors;`), []);
     console.log('PASS all brew summary fields, date order, bean filtering, zero/null metrics, safe multiline comments, tab refresh, and history persistence');
+    const firstHandle = await api('/window');
     const second = await api('/window/new', { type: 'tab' });
     await api('/window', { handle: second.handle });
     await api('/url', { url: base });
+    await waitFor(`document.querySelector('.startup-status[role="alert"]')`);
+    assert.match(await sync(`return document.querySelector('.startup-status').textContent;`), /already open/);
+    await api('/window', { handle: firstHandle });
+    const primaryMode = await evaluate(`const db = await getDB(); const mode = db.getStorageMode(); await db.closeDB(); return mode;`);
+    await api('/window', { handle: second.handle });
+    await evaluate(`
+      const db = await getDB();
+      const original = navigator.storage.getDirectory;
+      Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: undefined });
+      try {
+        let error;
+        try { await db.initDB(); } catch (failure) { error = String(failure); }
+        if (${JSON.stringify(primaryMode)} === 'opfs' && !error?.includes('needs OPFS')) throw new Error('Existing OPFS must not silently switch to empty fallback: ' + error);
+        await db.closeDB();
+        // Deliberately start a separate fallback fixture after verifying the guard.
+        const store = await new Promise((resolve, reject) => {
+          const request = indexedDB.open('coffeos-snapshots', 1);
+          request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+        });
+        await new Promise((resolve, reject) => {
+          const tx = store.transaction('snapshots', 'readwrite');
+          tx.objectStore('snapshots').delete('backend-v1');
+          tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+        });
+        store.close();
+        await db.initDB();
+        await db.addBean({ name: 'Fallback survives OPFS becoming available again' });
+      } finally { Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: original }); }
+    `);
+    await api('/refresh', {});
     await ready();
+    assert.equal(await evaluate(`return (await getDB()).getStorageMode();`), 'indexeddb');
+    assert.equal(await evaluate(`return (await (await getDB()).getBeans())[0].name;`), 'Fallback survives OPFS becoming available again');
+    console.log('PASS second-tab exclusion, lock release, OPFS capability-loss guard, and sticky IndexedDB fallback');
     const fallbackBean = await evaluate(`return await (await getDB()).addBean({ name: 'Safari fallback' });`);
     await openBeans();
     const beforeFailure = await beanCards();
@@ -383,7 +417,28 @@ try {
     await api('/refresh', {});
     await ready();
     assert.ok(await evaluate(`return (await (await getDB()).getBeans()).some(bean => bean.id === ${JSON.stringify(fallbackBean.id)});`));
-    console.log('PASS Safari second-tab database write and reload');
+    console.log('PASS Safari IndexedDB database write and reload');
+    await openBeans();
+    const beforeCommitted = (await beanCards()).length;
+    await evaluate(`
+      const url = performance.getEntriesByType('resource').find(r => r.name.includes('/.vite/deps/@duckdb_duckdb-wasm.js'))?.name;
+      if (!url) throw new Error('Missing DuckDB module URL');
+      const { AsyncDuckDB } = await import(url);
+      const original = AsyncDuckDB.prototype.flushFiles;
+      window.__restoreFlush = () => { AsyncDuckDB.prototype.flushFiles = original; };
+      AsyncDuckDB.prototype.flushFiles = async () => { throw new Error('Test flush failure after commit'); };
+    `);
+    try {
+      await submitBean('Committed despite flush failure');
+      assert.equal((await beanCards()).length, beforeCommitted + 1);
+      assert.match(await sync(`return document.querySelector('.bean-form .form-error').textContent;`), /already in your collection/);
+      assert.equal(await sync(`return document.querySelector('#bean-name').value;`), '');
+    } finally { await sync(`window.__restoreFlush(); delete window.__restoreFlush;`); }
+    await api('/refresh', {});
+    await ready();
+    await openBeans();
+    assert.equal((await beanCards()).filter(bean => bean.name === 'Committed despite flush failure').length, 1);
+    console.log('PASS post-commit flush failure refreshes the collection, clears the draft, and warns against duplicate retries');
   }
   await sync(`document.querySelector('#tab-io').click();`);
   await checkIO({ sync, evaluate, waitFor, production: Boolean(process.env.TEST_PRODUCTION),

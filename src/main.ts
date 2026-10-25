@@ -1,5 +1,5 @@
 import './style.css';
-import { initDB } from './db';
+import { initDB, DatabaseStartupError, getStorageMode } from './db';
 import { createBeanManager } from './views/beanManager';
 import { createBrewController } from './views/brewController';
 import { createIOView } from './views/ioView';
@@ -22,6 +22,7 @@ try {
       <p>Your coffee data could not be opened. Please reload to try again.</p>
       <button type="button">Reload</button>
     </div>`;
+  if (error instanceof DatabaseStartupError) app.querySelector('p')!.textContent = error.message;
   app.querySelector('button')?.addEventListener('click', () => window.location.reload());
 }
 
@@ -64,6 +65,7 @@ function renderShell(app: HTMLDivElement): void {
       <span class="header-note">A little space for better coffee</span>
     </header>
     <main class="app-content">
+      ${getStorageMode() === 'memory' ? '<p class="storage-warning" role="alert">Storage is unavailable. Your coffee data will be lost when this tab closes. Export a backup from IO before leaving.</p>' : ''}
       ${views.map((view, index) => `
         <section id="${view.id}" class="view" role="tabpanel"
           aria-labelledby="tab-${view.id}" tabindex="0" ${index === 0 ? '' : 'hidden'}>

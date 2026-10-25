@@ -1,4 +1,4 @@
-import { exportData, importData, ImportDataError } from '../db';
+import { CommittedWriteError, exportData, importData, ImportDataError } from '../db';
 import type { DataFormat, DataTarget, ImportFile } from '../db';
 
 export function createIOView(container: HTMLElement, onImported: () => Promise<void>): void {
@@ -154,6 +154,13 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
       importStatus.textContent = `Imported ${result.beans} ${result.beans === 1 ? 'bean' : 'beans'} and ${result.brew_sessions} brew ${result.brew_sessions === 1 ? 'session' : 'sessions'}. Matching IDs were merged.`;
     } catch (failure) {
       console.error('Could not import coffee data.', failure);
+      if (failure instanceof CommittedWriteError) {
+        importForm.reset();
+        importStatus.textContent = '';
+        showError(importError, failure.message);
+        await onImported();
+        return;
+      }
       const detail = failure instanceof ImportDataError ? failure.message : 'Check the file format, column values, and available storage, then try again.';
       showError(importError, `Import failed. Your selected files are still here for retry. ${detail}`);
       importStatus.textContent = '';

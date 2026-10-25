@@ -1,4 +1,4 @@
-import { addBrewSession, getBeans, getBrewSessions } from '../db';
+import { CommittedWriteError, addBrewSession, getBeans, getBrewSessions } from '../db';
 import type { BrewSession } from '../types';
 import { renderSessionMetrics } from './sessionMetrics';
 import { createBrewingChart } from './brewingChart';
@@ -237,6 +237,12 @@ export function createBrewController(container: HTMLElement, options: {
       });
     } catch (failure) {
       console.error('Could not save brew session.', failure);
+      if (failure instanceof CommittedWriteError) {
+        showFeed();
+        message.textContent = failure.message;
+        await Promise.all([refresh(), options.onSaved()]);
+        return;
+      }
       error.textContent = 'Your session could not be saved. Your entries are still here; please try again.';
       error.hidden = false;
       return;

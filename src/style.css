@@ -1,13 +1,23 @@
 :root {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #342c26;
-  background: #f7f4ee;
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --accent: #52654b;
-  --muted: #756d63;
+  --background: #0e1222;
+  --surface: #191d2d;
+  --surface-raised: #252939;
+  --border: #363c50;
+  --input-border: #62697f;
+  --text: #f5f4f8;
+  --muted: #b8b9c4;
+  --accent: #d4a68d;
+  --accent-hover: #ecd2bf;
+  --on-accent: #0e1222;
+  --error: #f2a69a;
   --tab-height: 80px;
 }
 
@@ -24,6 +34,8 @@ body {
 button, input, select { font: inherit; }
 input, select { font-size: 16px; min-height: 44px; }
 button, a { -webkit-tap-highlight-color: transparent; }
+input::placeholder { color: var(--muted); opacity: 1; }
+::selection { background: var(--accent); color: var(--on-accent); }
 
 :focus-visible {
   outline: 3px solid var(--accent);
@@ -49,7 +61,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   border: 1px solid var(--accent);
   border-radius: 10px;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   cursor: pointer;
 }
 
@@ -59,7 +71,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   justify-content: space-between;
   gap: 1rem;
   padding: calc(18px + env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 18px max(24px, env(safe-area-inset-left));
-  border-bottom: 1px solid #e7e1d7;
+  border-bottom: 1px solid var(--border);
 }
 
 .wordmark {
@@ -109,9 +121,9 @@ p { line-height: 1.6; }
 
 .empty-state {
   padding: 40px 20px;
-  border: 1px solid #e5dfd4;
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: #fcfaf6;
+  background: var(--surface);
   text-align: center;
 }
 
@@ -119,7 +131,7 @@ p { line-height: 1.6; }
   display: inline-flex;
   padding: 15px;
   border-radius: 50%;
-  background: #eef0e7;
+  background: var(--surface-raised);
   color: var(--accent);
 }
 
@@ -133,8 +145,8 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   left: 0;
   right: 0;
   padding: 0 max(12px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(12px, env(safe-area-inset-left));
-  border-top: 1px solid #e5dfd4;
-  background: #fcfaf6;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .tabs { display: flex; max-width: 680px; margin: 0 auto; }
@@ -157,14 +169,14 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 }
 
 .tab[aria-selected='true'] { color: var(--accent); font-weight: 700; }
-.tab[aria-selected='true'] svg { background: #e7ecdf; box-shadow: 0 0 0 6px #e7ecdf; border-radius: 6px; }
+.tab[aria-selected='true'] svg { background: var(--surface-raised); box-shadow: 0 0 0 6px var(--surface-raised); border-radius: 6px; }
 .tab:focus-visible { outline-offset: -5px; border-radius: 10px; }
 
 .card, .bean-card {
   padding: 24px;
-  border: 1px solid #e5dfd4;
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: #fcfaf6;
+  background: var(--surface);
 }
 
 .bean-form h2, .bean-collection h2, .session-form h2, .session-collection h2 { margin: 0 0 20px; font-size: 20px; font-weight: 650; }
@@ -177,10 +189,10 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   min-width: 0;
   margin: 0 0 20px;
   padding: 10px 12px;
-  border: 1px solid #d5cfc4;
+  border: 1px solid var(--input-border);
   border-radius: 10px;
   color: inherit;
-  background: #fffefa;
+  background: var(--background);
 }
 .date-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .primary-button, .secondary-button {
@@ -191,14 +203,14 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   font-weight: 600;
   cursor: pointer;
 }
-.primary-button { background: var(--accent); color: white; }
+.primary-button { background: var(--accent); color: var(--on-accent); }
 .secondary-button { background: transparent; color: var(--accent); }
-.primary-button:hover { background: #42563c; }
+.primary-button:hover { background: var(--accent-hover); }
 fieldset:disabled { opacity: 0.65; }
 fieldset:disabled button { cursor: wait; }
 .form-message, .form-error, .list-status, .list-error p { margin: 16px 0 0; font-size: 14px; overflow-wrap: anywhere; }
 .form-message { color: var(--accent); }
-.form-error, .list-error { color: #9a3528; }
+.form-error, .list-error { color: var(--error); }
 .form-message:empty, .list-status:empty { display: none; }
 .list-error { margin-bottom: 20px; }
 .list-error p { margin: 0 0 12px; }
@@ -212,7 +224,7 @@ fieldset:disabled button { cursor: wait; }
 .bean-dates dd, .session-metrics dd { margin: 4px 0 0; font-size: 14px; }
 .session-count { margin: 20px 0 12px; color: var(--accent); font-size: 13px; font-weight: 600; }
 .bean-empty { margin: 0; color: var(--muted); font-size: 14px; }
-.bean-session { padding: 16px 0; border-top: 1px solid #e5dfd4; }
+.bean-session { padding: 16px 0; border-top: 1px solid var(--border); }
 .bean-session:last-child { padding-bottom: 0; }
 .bean-session h4 { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
 .session-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 12px; margin: 0; }
@@ -226,22 +238,22 @@ fieldset:disabled button { cursor: wait; }
 .session-card h3 { margin: 0 0 8px; font-size: 22px; font-weight: 650; }
 .session-card > time { color: var(--muted); font-size: 14px; }
 .session-card h4 { margin: 24px 0 14px; color: var(--accent); font-size: 14px; }
-.brew-comment { margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #e5dfd4; white-space: pre-wrap; font-size: 14px; }
+.brew-comment { margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--border); white-space: pre-wrap; font-size: 14px; }
 .bean-selector-label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
 .session-form select, .io-export select {
   appearance: none;
   padding-right: 36px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23756d63' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23b8b9c4' stroke-width='1.5'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
 }
 .bean-picker-status { margin: 0; color: var(--muted); font-size: 14px; }
 .bean-picker-status:empty { display: none; }
 .bean-picker-error, .no-beans { margin-bottom: 24px; }
-.bean-picker-error { color: #9a3528; }
+.bean-picker-error { color: var(--error); }
 .spec-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 24px; text-align: left; }
 .spec-table caption { padding-bottom: 12px; text-align: left; font-size: 18px; font-weight: 650; }
-.spec-table th, .spec-table td { padding: 10px 0; border-bottom: 1px solid #e5dfd4; }
+.spec-table th, .spec-table td { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .spec-table th:first-child { width: 42%; padding-right: 12px; }
 .spec-table thead th { color: var(--muted); font-size: 12px; font-weight: 500; }
 .spec-table tbody th { font-size: 14px; font-weight: 500; }
@@ -258,22 +270,22 @@ button:disabled { opacity: 0.65; cursor: wait; }
   width: 100%;
   height: auto;
   border-radius: 14px;
-  background: #0e1222;
+  background: var(--background);
   fill: none;
   stroke: none;
   font-family: inherit;
   text-anchor: middle;
 }
-.brewing-chart-plot { fill: #0e1222; }
-.brewing-chart-band { fill: #191d2d; }
-.brewing-chart-ideal { fill: #252939; }
+.brewing-chart-plot { fill: var(--background); }
+.brewing-chart-band { fill: var(--surface); }
+.brewing-chart-ideal { fill: var(--surface-raised); }
 .brewing-chart-grid { stroke: #b0b5c0; stroke-opacity: 0.16; stroke-width: 1; }
 .brewing-chart-border { stroke: #9b9eaa; stroke-width: 2; }
-.brewing-chart-region { fill: #b8b9c4; font-size: 18px; font-weight: 500; dominant-baseline: middle; }
-.brewing-chart-ticks { fill: #f5f4f8; font-size: 20px; }
-.brewing-chart-axis { fill: #b8b9c4; font-size: 16px; }
+.brewing-chart-region { fill: var(--muted); font-size: 18px; font-weight: 500; dominant-baseline: middle; }
+.brewing-chart-ticks { fill: var(--text); font-size: 20px; }
+.brewing-chart-axis { fill: var(--muted); font-size: 16px; }
 .brewing-chart-guides { stroke: #ecd2bf; stroke-width: 2; stroke-dasharray: 6 6; }
-.brewing-chart-point { fill: #d4a68d; stroke: #fff8ed; stroke-width: 2.5; }
+.brewing-chart-point { fill: var(--accent); stroke: #fff8ed; stroke-width: 2.5; }
 .brewing-chart-summary { margin-top: 12px; font-size: 14px; line-height: 1.6; color: var(--accent); }
 
 .io-import { margin-top: 24px; }
@@ -282,13 +294,13 @@ button:disabled { opacity: 0.65; cursor: wait; }
 .io-export fieldset, .io-import fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
 .io-export label, .io-import label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
 .io-actions, .download-list { display: flex; flex-wrap: wrap; gap: 12px; }
-.export-files { margin-top: 24px; border-top: 1px solid #e5dfd4; padding-top: 16px; }
+.export-files { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
 .export-files h3 { font-size: 16px; }
 .download-file { display: inline-flex; align-items: center; text-decoration: none; font-size: 14px; }
 .share-files { margin-top: 16px; }
 .io-or { color: var(--muted); font-size: 14px; }
 .io-import input[type='file'] { padding: 8px; overflow: hidden; }
-.io-import input::file-selector-button { min-height: 28px; border: 0; border-radius: 4px; color: var(--accent); background: #e7ecdf; font: inherit; }
+.io-import input::file-selector-button { min-height: 28px; border: 0; border-radius: 4px; color: var(--accent); background: var(--surface-raised); font: inherit; }
 
 @media (max-width: 420px) {
   .header-note { max-width: 140px; text-align: right; font-size: 12px; }
@@ -298,3 +310,5 @@ button:disabled { opacity: 0.65; cursor: wait; }
   .bean-form .primary-button { width: 100%; }
   .new-session, .session-form .save-session, .cancel-session { width: 100%; }
 }
+
+.storage-warning { max-width: 680px; margin: 0 auto 24px; padding: 16px; border: 1px solid var(--error); border-radius: 10px; color: var(--error); }

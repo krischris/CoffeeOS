@@ -105,8 +105,15 @@ try {
     const firstContext = context;
     ({ context } = await command('browsingContext.create', { type: 'tab', userContext }));
     await command('browsingContext.navigate', { context, url: base, wait: 'complete' });
-    await ready();
-    assert.ok(logs.some((entry) => entry.text?.includes('database ready (indexeddb)')));
+    let error;
+    for (let i = 0; i < 100; i++) {
+      error = await evaluate(`return document.querySelector('.startup-status[role="alert"]')?.textContent;`);
+      if (error) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.match(error, /already open/);
+    await command('browsingContext.close', { context: firstContext });
+    await reload();
     const resources = await evaluate(`return performance.getEntriesByType('resource').map(r => r.name);`);
     assert.ok(resources.every((url) => new URL(url).origin === new URL(base).origin));
     assert.ok(logs.some((entry) => entry.text?.includes(`database ready (${primaryStorage})`) && entry.source.context === firstContext));
@@ -149,13 +156,51 @@ try {
     await reload();
     assert.deepEqual(await evaluate(`return await (await import('/src/db.ts')).getBeans();`), seed.beans);
     assert.deepEqual(await evaluate(`return await (await import('/src/db.ts')).getBrewSessions();`), seed.sessions);
+    const guards = await evaluate(`
+      const db = await import('/src/db.ts');
+      let invalidDate = false;
+      try { await db.addBean({ name: 'Bad date', roast_date: '10000-01-01' }); } catch { invalidDate = true; }
+      let invalidNumber = false;
+      try { await db.addBrewSession({ bean_id: (await db.getBeans())[0].id, dose_g: Infinity,
+        water_g: null, time_str: null, temp_c: null, grind_um: null, comment: null,
+        yield_g: null, tds_pct: null, extraction_pct: null }); } catch { invalidNumber = true; }
+      const mode = db.getStorageMode();
+      if (mode === 'opfs') {
+        await db.closeDB();
+        const original = navigator.storage.getDirectory;
+        Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: undefined });
+        let rejected = false;
+        try { await db.initDB(); } catch (error) { rejected = error.message.includes('needs OPFS'); }
+        finally { Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: original }); }
+        if (!rejected) throw new Error('OPFS must not silently switch datasets');
+        await db.initDB();
+      }
+      return { invalidDate, invalidNumber };
+    `);
+    assert.deepEqual(guards, { invalidDate: true, invalidNumber: true });
     console.log(`PASS Firefox ${primaryStorage} CRUD, SQL binding, dates/nulls, joins/filter/order, constraints, and reload persistence`);
 
-    // A second tab hits a real OPFS lock on EH, or reuses snapshots on MVP.
+    // A second tab must never open a competing engine or overwrite snapshots.
     const firstContext = context;
     ({ context } = await command('browsingContext.create', { type: 'tab', userContext }));
     await command('browsingContext.navigate', { context, url: base, wait: 'complete' });
-    await ready();
+    const ownershipError = await evaluate(`
+      try { await (await import('/src/db.ts')).initDB(); return ''; } catch (error) { return String(error); }
+    `);
+    assert.match(ownershipError, /already open/);
+    await evaluate(`await (await import('/src/db.ts')).closeDB();`, firstContext);
+    // Explicitly select the fallback fixture; application startup never switches
+    // an existing OPFS dataset to an empty snapshot on a lock failure.
+    await evaluate(`await new Promise((resolve, reject) => {
+      const request = indexedDB.open('coffeos-snapshots', 1);
+      request.onsuccess = () => {
+        const store = request.result;
+        const tx = store.transaction('snapshots', 'readwrite');
+        tx.objectStore('snapshots').put('indexeddb', 'backend-v1');
+        tx.oncomplete = () => { store.close(); resolve(); }; tx.onabort = () => reject(tx.error);
+      }; request.onerror = () => reject(request.error);
+    });`);
+    await reload();
     assert.ok(logs.some((entry) => entry.text?.includes('database ready (indexeddb)')));
     const fallback = await evaluate(`
       const db = await import('/src/db.ts');
@@ -182,7 +227,7 @@ try {
     });`);
     assert.deepEqual(snapshot.beans, [80, 65, 82, 49]); // PAR1
     assert.deepEqual(snapshot.sessions, [80, 65, 82, 49]);
-    console.log(`PASS Firefox ${process.env.TEST_MVP ? 'snapshot backend' : 'locked OPFS fallback'}, serialized writes, atomic Parquet snapshots, and IndexedDB restore`);
+    console.log(`PASS Firefox ${process.env.TEST_MVP ? 'snapshot backend' : 'exclusive ownership and explicit fallback fixture'}, serialized writes, atomic Parquet snapshots, and IndexedDB restore`);
 
     const failedSave = await evaluate(`
       const db = await import('/src/db.ts');

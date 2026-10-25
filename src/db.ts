@@ -33,6 +33,29 @@ const sessionColumns = `s.id, s.bean_id, b.name AS bean_name,
   s.dose_g, s.water_g, s.time_str, s.temp_c, s.grind_um, s.comment,
   s.yield_g, s.tds_pct, s.extraction_pct`;
 
+export class DatabaseStartupError extends Error {}
+let releaseOwnership: (() => void) | null = null;
+
+// A second in-memory engine would overwrite the first engine's whole snapshot.
+// Hold ownership for the engine's lifetime, including reads and exports.
+async function acquireOwnership(): Promise<void> {
+  if (!navigator.locks) throw new DatabaseStartupError('This browser cannot safely coordinate coffee storage. Please use a browser with Web Locks support.');
+  await new Promise<void>((resolve, reject) => {
+    void navigator.locks.request('coffeos-database', { ifAvailable: true }, async lock => {
+      if (!lock) {
+        reject(new DatabaseStartupError('CoffeeOS is already open in another tab or window. Close it, then reload here.'));
+        return;
+      }
+      await new Promise<void>(release => {
+        releaseOwnership = release;
+        resolve();
+      });
+    }).catch(reject);
+  });
+}
+
+export function getStorageMode(): StorageMode | null { return database?.storage ?? null; }
+
 let database: Database | null = null;
 let initialization: Promise<void> | null = null;
 let queue: Promise<unknown> = Promise.resolve();
@@ -66,24 +89,24 @@ function openSnapshots(): Promise<IDBDatabase> {
   });
 }
 
-function readSnapshot(store: IDBDatabase): Promise<Snapshot | undefined> {
+function readRecord<T>(store: IDBDatabase, key: string): Promise<T | undefined> {
   return new Promise((resolve, reject) => {
     const transaction = store.transaction('snapshots', 'readonly');
-    const request = transaction.objectStore('snapshots').get(snapshotKey);
-    transaction.oncomplete = () => resolve(request.result as Snapshot | undefined);
+    const request = transaction.objectStore('snapshots').get(key);
+    transaction.oncomplete = () => resolve(request.result as T | undefined);
     transaction.onabort = () => reject(transaction.error ?? new Error('Could not read saved coffee data.'));
     transaction.onerror = () => { /* onabort reports the final transaction failure. */ };
   });
 }
 
-function storeSnapshot(store: IDBDatabase, snapshot: Snapshot): Promise<void> {
+function storeRecord(store: IDBDatabase, key: string, value: unknown): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = store.transaction('snapshots', 'readwrite');
     transaction.oncomplete = () => resolve();
     transaction.onabort = () => reject(transaction.error ?? new Error('Could not save coffee data.'));
     transaction.onerror = () => { /* onabort reports the final transaction failure. */ };
     // Both tables belong to a single atomic record, so references stay consistent.
-    transaction.objectStore('snapshots').put(snapshot, snapshotKey);
+    transaction.objectStore('snapshots').put(value, key);
   });
 }
 
@@ -99,7 +122,7 @@ async function snapshotTables(state: Database): Promise<void> {
       await state.db.dropFile(path);
     }
   }
-  await storeSnapshot(state.snapshots, buffers);
+  await storeRecord(state.snapshots, snapshotKey, buffers);
 }
 
 async function restoreSnapshot(state: Database, snapshot: Snapshot): Promise<void> {
@@ -150,11 +173,32 @@ async function initialize(): Promise<void> {
     console.warn('Persistent storage permission was unavailable.', error);
   }
 
+  let snapshots: IDBDatabase | null = null;
+  try { snapshots = await openSnapshots(); }
+  catch (error) { console.warn('IndexedDB is unavailable.', error); }
+  let snapshot: Snapshot | undefined;
+  let preferred: StorageMode | undefined;
+  try {
+    if (snapshots) {
+      snapshot = await readRecord<Snapshot>(snapshots, snapshotKey);
+      preferred = await readRecord<StorageMode>(snapshots, 'backend-v1');
+      // Preserve fallback data from older versions, before backend tracking existed.
+      if (!preferred && snapshot) preferred = 'indexeddb';
+    }
+    await initializeEngine(snapshots, snapshot, preferred);
+  } catch (error) {
+    snapshots?.close();
+    throw error;
+  }
+}
+
+async function initializeEngine(snapshots: IDBDatabase | null, snapshot: Snapshot | undefined, preferred: StorageMode | undefined): Promise<void> {
   let { db, parquetURL, supportsOPFS } = await createEngine();
   let storage: StorageMode = 'memory';
   // The pinned MVP runtime throws _setThrew on reopening OPFS databases. Use the
   // portable snapshot backend there rather than switching datasets after reload.
-  if (supportsOPFS && window.crossOriginIsolated && typeof navigator.storage?.getDirectory === 'function') {
+  if (preferred !== 'indexeddb' && supportsOPFS && window.crossOriginIsolated && typeof navigator.storage?.getDirectory === 'function') {
+    let existingFile = false;
     try {
       const root = await navigator.storage.getDirectory();
       // Bind the URI's OPFS file to a plain DuckDB filename. This version skips
@@ -162,21 +206,27 @@ async function initialize(): Promise<void> {
       // opfs:/ internally; a plain registered filename avoids both issues.
       for (const name of ['coffeos.db', 'coffeos.db.wal']) {
         const handle = await root.getFileHandle(name, { create: true });
+        if (name === 'coffeos.db') existingFile = (await handle.getFile()).size > 0;
         await db.registerFileHandle(name, handle, duckdb.DuckDBDataProtocol.BROWSER_FSACCESS, true);
       }
       await db.open({ path: databasePath.slice('opfs://'.length), accessMode: duckdb.DuckDBAccessMode.READ_WRITE, useDirectIO: true });
       storage = 'opfs';
     } catch (error) {
-      console.warn('OPFS is unavailable or locked; using snapshot storage.', error);
+      console.warn('OPFS could not be opened.', error);
       // A failed registration/open can retain handles. Discard that worker entirely.
       await db.terminate();
+      if (existingFile || preferred === 'opfs') {
+        throw new DatabaseStartupError('Your saved coffee database could not be opened. Close other CoffeeOS tabs and reload; your saved data has been kept.');
+      }
       ({ db, parquetURL } = await createEngine());
     }
   }
 
   let connection: duckdb.AsyncDuckDBConnection | null = null;
-  let snapshots: IDBDatabase | null = null;
   try {
+    if (preferred === 'opfs' && storage !== 'opfs') {
+      throw new DatabaseStartupError('Your saved coffee database needs OPFS and cross-origin isolation. Restore browser storage access and reload.');
+    }
     if (storage !== 'opfs') await db.open({ path: ':memory:' });
     connection = await db.connect();
     await connection.query(`
@@ -205,25 +255,19 @@ async function initialize(): Promise<void> {
       );
     `);
 
-    if (storage !== 'opfs') {
-      try {
-        snapshots = await openSnapshots();
-        storage = 'indexeddb';
-      } catch (error) {
-        console.warn('IndexedDB is unavailable; coffee data will last for this tab only.', error);
-      }
-    }
-    const state = { db, connection, snapshots, storage };
+    if (storage !== 'opfs' && snapshots) storage = 'indexeddb';
+    const state = { db, connection, snapshots: storage === 'indexeddb' ? snapshots : null, storage };
     // IO also needs Parquet in OPFS and memory-only modes.
     const url = new URL(parquetURL, window.location.href).href.replaceAll("'", "''");
     await connection.query(`LOAD '${url}'`);
-    if (snapshots) {
+    if (storage === 'indexeddb' && snapshot) {
       // A damaged snapshot is an initialization error, never silently replaced by empty tables.
-      const snapshot = await readSnapshot(snapshots);
-      if (snapshot) await restoreSnapshot(state, snapshot);
+      await restoreSnapshot(state, snapshot);
     }
     await connection.query('CHECKPOINT');
     await db.flushFiles();
+    if (snapshots) await storeRecord(snapshots, 'backend-v1', storage);
+    if (storage === 'opfs') snapshots?.close();
     database = state;
     console.info(`coffeos database ready (${storage}).`);
   } catch (error) {
@@ -239,7 +283,11 @@ async function initialize(): Promise<void> {
 
 export function initDB(): Promise<void> {
   if (!initialization) {
-    initialization = enqueue(initialize).catch((error: unknown) => {
+    initialization = enqueue(async () => {
+      await acquireOwnership();
+      try { await initialize(); }
+      catch (error) { releaseOwnership?.(); releaseOwnership = null; throw error; }
+    }).catch((error: unknown) => {
       initialization = null;
       throw error;
     });
@@ -266,6 +314,21 @@ async function queryRows<T>(connection: duckdb.AsyncDuckDBConnection, sql: strin
   }
 }
 
+export class CommittedWriteError extends Error {
+  constructor(cause: unknown) {
+    super('The change is already in your collection, but storage could not be confirmed. Do not submit it again. Export a backup from IO before closing this tab.', { cause });
+  }
+}
+
+async function flushCommitted(state: Database): Promise<void> {
+  try {
+    await state.connection.query('CHECKPOINT');
+    await state.db.flushFiles();
+  } catch (error) {
+    throw new CommittedWriteError(error);
+  }
+}
+
 async function write<T>(state: Database, sql: string, params: SQLValue[]): Promise<T> {
   await state.connection.query('BEGIN TRANSACTION');
   let rows: T[];
@@ -278,8 +341,7 @@ async function write<T>(state: Database, sql: string, params: SQLValue[]): Promi
     await state.connection.query('ROLLBACK');
     throw error;
   }
-  await state.connection.query('CHECKPOINT');
-  await state.db.flushFiles();
+  await flushCommitted(state);
   return rows[0];
 }
 
@@ -289,6 +351,11 @@ export function getBeans(): Promise<Bean[]> {
 }
 
 export function addBean(input: { name: string; roast_date?: string | null; freeze_date?: string | null }): Promise<Bean> {
+  for (const date of [input.roast_date, input.freeze_date]) {
+    if (date != null && (!/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(date))) {
+      return Promise.reject(new Error('Dates must use years from 0001 to 9999.'));
+    }
+  }
   return withDatabase((state) => write<Bean>(state,
     `INSERT INTO beans VALUES (?, ?, ?, ?, ?) RETURNING ${beanColumns}`,
     [crypto.randomUUID(), input.name.trim(), input.roast_date ?? null, input.freeze_date ?? null, new Date().toISOString()]));
@@ -302,6 +369,10 @@ export function getBrewSessions(beanId?: string): Promise<BrewSession[]> {
 }
 
 export function addBrewSession(input: Omit<BrewSession, 'id' | 'brewed_at' | 'bean_name'>): Promise<BrewSession> {
+  for (const value of [input.dose_g, input.water_g, input.temp_c, input.grind_um,
+    input.yield_g, input.tds_pct, input.extraction_pct]) {
+    if (value !== null && !Number.isFinite(value)) return Promise.reject(new Error('Measurements must be finite numbers.'));
+  }
   return withDatabase((state) => write<BrewSession>(state,
     `INSERT INTO brew_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id, bean_id, strftime(brewed_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS brewed_at,
@@ -321,7 +392,8 @@ export function closeDB(): Promise<void> {
       await state.connection.close();
     } finally {
       state.snapshots?.close();
-      await state.db.terminate();
+      try { await state.db.terminate(); }
+      finally { releaseOwnership?.(); releaseOwnership = null; }
     }
   });
 }
@@ -434,7 +506,8 @@ export function importData(files: ImportFile[]): Promise<ImportResult> {
       // Reject ambiguous keys and malformed values before touching either live table.
       for (const table of tables) {
         const invalidValues = Object.entries(ioSchema[table]).filter(([, type]) => ['DATE', 'TIMESTAMP', 'DOUBLE'].includes(type))
-          .map(([key]) => `("${key}" IS NOT NULL AND NOT isfinite("${key}"))`);
+          .map(([key, type]) => `("${key}" IS NOT NULL AND (NOT isfinite("${key}")${type === 'DOUBLE' ? ''
+            : ` OR "${key}" < ${type} '0001-01-01' OR "${key}" >= ${type} '10000-01-01'`}))`);
         const required = table === 'beans' ? ['id', 'name', 'created_at'] : ['id', 'bean_id', 'brewed_at'];
         const invalid = [...required.map(key => `"${key}" IS NULL`), "length(trim(id)) = 0", ...invalidValues];
         invalid.push(table === 'beans' ? 'length(trim(name)) = 0' : 'length(trim(bean_id)) = 0');
@@ -467,10 +540,11 @@ export function importData(files: ImportFile[]): Promise<ImportResult> {
       await connection.query('ROLLBACK');
       throw error;
     } finally {
-      for (const path of paths) await db.dropFile(path);
+      for (const path of paths) {
+        try { await db.dropFile(path); } catch (error) { console.warn('Could not release import buffer.', error); }
+      }
     }
-    await connection.query('CHECKPOINT');
-    await db.flushFiles();
+    await flushCommitted(state);
     return counts;
   });
 }

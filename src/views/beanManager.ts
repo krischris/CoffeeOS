@@ -1,4 +1,4 @@
-import { addBean, getBeans, getBrewSessions } from '../db';
+import { CommittedWriteError, addBean, getBeans, getBrewSessions } from '../db';
 import type { Bean, BrewSession } from '../types';
 import { renderSessionMetrics } from './sessionMetrics';
 
@@ -147,7 +147,12 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
       await refresh();
     } catch (failure) {
       console.error('Could not add bean.', failure);
-      error.textContent = 'Your bean could not be saved. Your entries are still here; please try again.';
+      if (failure instanceof CommittedWriteError) {
+        form.reset();
+        await refresh();
+      }
+      error.textContent = failure instanceof CommittedWriteError ? failure.message
+        : 'Your bean could not be saved. Your entries are still here; please try again.';
       error.hidden = false;
     } finally {
       saving = false;

@@ -151,7 +151,7 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
     const valid = encoded('beans', beanKeys, [{ ...bean, id: `never-insert-${tag}` }]);
     const badSessions = [
       [{ ...brew, id: null }], [{ ...brew, dose_g: 'not-a-number' }], [{ ...brew, dose_g: 'NaN' }],
-      [{ ...brew, brewed_at: 'infinity' }], [{ ...brew, brewed_at: 'not-a-date' }], [brew, brew],
+      [{ ...brew, brewed_at: '10000-01-01' }], [{ ...brew, brewed_at: '0001-01-01 (BC)' }], [{ ...brew, brewed_at: 'infinity' }], [{ ...brew, brewed_at: 'not-a-date' }], [brew, brew],
     ];
     for (const rows of badSessions) {
       result = await importFiles([valid, encoded('brew_sessions', sessionKeys, rows)]);
@@ -161,6 +161,7 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
     for (const upload of [
       encoded('beans', beanKeys, [{ ...bean, name: '  ' }]),
       encoded('beans', beanKeys, [{ ...bean, roast_date: '2026-02-30' }]),
+      encoded('beans', beanKeys, [{ ...bean, roast_date: '10000-01-01' }]),
       { target: 'beans', name: 'wrong.csv', data: [...new TextEncoder().encode('id,wrong\nx,y\n')] },
       { target: 'beans', name: 'broken.parquet', data: [1, 2, 3] },
       { target: 'beans', name: 'wrong.txt', data: [1] },

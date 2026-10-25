@@ -405,3 +405,52 @@ Build the **IO** tab so the user can export and import the entire database state
   and storage lifecycle checks, plus actual deployed-host verification, remain
   unverified. Desktop Safari and mocked sharing do not replace these checks.
 
+
+---
+
+## Cross-stage bug review — 2026-10-25
+
+Reviewed the completed stages together, including database lifecycle, forms,
+backup handling, the service worker, and deployment configuration. This review
+supersedes the earlier acceptance of independent writable second-tab databases.
+
+### Fixed
+
+- **High — competing databases and lost snapshot updates:** a lifetime Web Lock
+  now permits one database engine per origin. A competing tab shows a recoverable
+  startup message rather than opening a separate dataset or overwriting another
+  tab's snapshot. Closing the engine releases ownership.
+- **High — backend changes hiding saved records:** startup remembers its durable
+  backend. Existing fallback snapshots stay on IndexedDB when OPFS becomes
+  available; an unavailable remembered OPFS database produces an error instead
+  of an empty collection. Existing OPFS files are not silently bypassed after an
+  open failure. Historical split datasets remain intact and are not auto-merged.
+- **Medium — misleading retry after commit:** checkpoint/flush failures after a
+  successful commit now tell the user the change already exists and to export a
+  backup. Forms clear committed drafts and refresh histories; rolled-back writes
+  still preserve drafts for retry. Import-buffer cleanup cannot mask a successful
+  commit or the original import error.
+- **Medium — invalid display values:** imports reject dates/timestamps outside
+  years 0001–9999; direct CRUD rejects unsupported date strings and nonfinite
+  measurements. This prevents accepted data from breaking date rendering.
+- **Medium — invisible memory-only storage:** startup displays a warning and
+  backup instructions when records will only last for the current tab.
+
+### Verification
+
+- Production build and TypeScript checks passed with the project-local toolchain.
+- Safari 27.0 on macOS passed forms, navigation, chart, storage/reload, CSV/Parquet,
+  rollback, second-tab exclusion, sticky fallback, and simulated post-commit
+  flush-failure regressions in an isolated automation session.
+- Safari also passed the production workflows under `/coffeeos/` on a plain
+  static server without isolation headers. The service worker established
+  isolation, and relative assets, forms, backup imports, and reload persistence
+  worked. Dev and preview response headers were verified separately.
+- Isolated Firefox passed both the EH/OPFS and forced MVP/IndexedDB suites,
+  including backend capability loss, ownership release, corrupt snapshots,
+  failed writes, invalid CRUD values, memory fallback, and teardown, with no
+  unhandled browser exceptions/rejections.
+- Physical iPhone/iPad touch, keyboard, Home Screen/storage lifecycle and native
+  Files/Share interactions remain unverified. Actual GitHub Pages deployment
+  remains unverified. The isolation service worker does not provide offline
+  caching; that remains outside the implemented plan.

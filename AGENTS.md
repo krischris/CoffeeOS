@@ -1,0 +1,105 @@
+# CoffeeOS development instructions
+
+## Project-local tooling
+
+Run commands from this project directory. Use `uv` to manage the local `.venv`;
+Node.js and npm are installed into that same environment with `nodeenv`.
+Do not assume global `node`, `npm`, `npx`, TypeScript, or Vite exist. Do not install
+them globally or use a system Node version manager for this project.
+
+Bootstrap a fresh checkout in this order:
+
+```sh
+uv venv
+uv pip install nodeenv
+uv run nodeenv -p --node=lts
+uv run npm ci
+```
+
+Only create `.venv` when it does not already exist. Do not recreate a working
+environment during routine development. `nodeenv -p` installs Node into the
+existing Python virtual environment; do not create a separate Node environment.
+The LTS selector resolves the current LTS release when bootstrapping.
+
+Always prefix direct `node`, `npm`, and `npx` commands with `uv run`:
+
+```sh
+uv run node --version
+uv run node -p 'process.execPath'
+uv run npm run dev
+uv run npm run typecheck
+uv run npm run build
+uv run npm run preview
+uv run npm install <package>
+uv run npm install --save-dev <package>
+uv run npx <tool>
+```
+
+`process.execPath` must point inside this project's `.venv`. npm scripts resolve
+tools from the project's `node_modules/.bin`; keep TypeScript and Vite in
+`devDependencies`. Do not use `npm install -g`. Prefer installed dependencies
+over downloading ad hoc tool versions through `npx`.
+
+`uv.toml` keeps uv's cache in `.cache/uv` and disables automatic Python downloads
+outside the project. Bootstrapping requires an existing Python interpreter. If
+one is unavailable, install it with uv using `UV_PYTHON_INSTALL_DIR` set to an
+absolute path inside this project. `.npmrc` keeps npm's cache in `.cache/npm`.
+Keep `.venv/`, `.cache/`, `node_modules/`, and `dist/` out of version control.
+Commit `package-lock.json` alongside dependency changes. Use `uv run npm ci` to
+reproduce the locked JavaScript dependencies.
+
+## Application approach
+
+This is a vanilla TypeScript application built with Vite. The entry points are
+`index.html` and `src/main.ts`; styles live in `src/style.css`. Keep the scaffold
+free of application frameworks unless the user requests one. DuckDB-Wasm is a
+local runtime dependency (`@duckdb/duckdb-wasm`). `src/db.ts` owns initialization,
+OPFS persistence, and the IndexedDB Parquet snapshot fallback.
+
+Preserve these settings in `vite.config.ts`:
+
+- `base: './'` keeps production asset paths relative for GitHub Pages subpaths.
+- `server.headers['Cross-Origin-Opener-Policy']: 'same-origin'`.
+- `server.headers['Cross-Origin-Embedder-Policy']: 'require-corp'`.
+- The same headers in `preview.headers` so local production previews use the
+  same isolation policy.
+
+When adding DuckDB workers and Wasm assets, use Vite-managed asset URLs that work
+with a relative base. Serve them from the same origin where possible; external
+assets must satisfy the embedder policy. Check the installed DuckDB-Wasm API
+before implementing database lifecycle or OPFS access, and close connections and
+workers when they are no longer needed.
+
+The isolation headers support local browser capabilities needed for database
+work; they do not implement persistence. Check browser OPFS support and
+`window.crossOriginIsolated` when implementing persistence. Vite's headers apply
+only to its dev and preview servers, not to files in `dist/`. Validate the deployed
+host's response headers separately; relative asset paths alone do not establish
+cross-origin isolation in production.
+
+## Verification
+
+Run `uv run npm run build` after changes; it type-checks both application code and
+`vite.config.ts`, then creates `dist/`. Use `uv run npm run dev` or
+`uv run npm run preview` for browser checks. Confirm the two isolation response
+headers and that generated asset paths still work under a repository subpath.
+Add targeted runtime checks when database behavior is introduced.
+
+## Browser verification — Safari first for iOS
+
+Safari is the primary browser for development and acceptance checks because
+CoffeeOS targets iOS Safari and Home Screen web apps. Run browser checks in the
+installed Safari using `safaridriver` when available. Verify startup, navigation,
+database writes and reload persistence, and the production repository subpath.
+With Vite and `safaridriver -p 4444` running, use `uv run npm run test:safari`.
+
+Desktop Safari checks do not replace physical iPhone/iPad checks for touch,
+keyboard/viewport behavior, Home Screen installation, and storage lifecycle.
+State clearly which environment was tested and which checks remain unverified.
+
+Firefox is a secondary browser for cross-browser regression checks and a fallback
+when Safari automation is unavailable. A Firefox pass does not count as Safari
+verification. Use isolated automation sessions/test profiles and localhost URLs;
+disable background services/external browser traffic where supported without
+changing the user's normal browsing profile. Do not launch Google Chrome unless
+the user explicitly requests it.

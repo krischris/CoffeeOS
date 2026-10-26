@@ -131,7 +131,14 @@ export function createBrewController(container: HTMLElement, options: {
       </section>
     </div>
     <form class="session-form card" aria-labelledby="new-session-heading" hidden>
-      <h2 id="new-session-heading" tabindex="-1">New Session</h2>
+      <div class="session-heading">
+        <h2 id="new-session-heading" tabindex="-1">New Session</h2>
+        <button class="session-date-toggle" type="button" aria-expanded="false" aria-controls="session-date-field" hidden></button>
+      </div>
+      <div class="session-date-field" id="session-date-field" hidden>
+        <label for="session-date">Brewed</label>
+        <input id="session-date" name="brewed_at" type="datetime-local" step="0.001">
+      </div>
       <p class="bean-picker-status" role="status"></p>
       <div class="bean-picker-error" role="alert" hidden>
         <p>Your beans could not be loaded. Please try again.</p>
@@ -147,10 +154,6 @@ export function createBrewController(container: HTMLElement, options: {
           <select id="session-bean" name="bean_id" required>
             <option value="">Select a bean</option>
           </select>
-        </div>
-        <div class="session-date-field" hidden>
-          <label for="session-date">Brewed</label>
-          <input id="session-date" name="brewed_at" type="datetime-local" step="0.001">
         </div>
         <div class="session-measurements">
           <div>
@@ -196,8 +199,28 @@ export function createBrewController(container: HTMLElement, options: {
   const fieldset = form.querySelector('fieldset')!;
   const bean = form.querySelector<HTMLSelectElement>('select')!;
   const output = form.querySelector('output')!;
+  const input = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
   const chart = createBrewingChart();
-  form.querySelector('h2')!.after(chart.element);
+  const dateField = form.querySelector<HTMLElement>('.session-date-field')!;
+  const dateToggle = form.querySelector<HTMLButtonElement>('.session-date-toggle')!;
+  dateField.after(chart.element);
+  function updateDateLabel(): void {
+    const value = input('brewed_at').value;
+    dateToggle.textContent = value ? new Date(value).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    }) : 'Set date';
+    dateToggle.setAttribute('aria-label', `Edit brewed timestamp: ${value || 'not set'}`);
+  }
+  dateToggle.addEventListener('click', () => {
+    dateField.hidden = !dateField.hidden;
+    dateToggle.setAttribute('aria-expanded', String(!dateField.hidden));
+    if (!dateField.hidden) input('brewed_at').focus();
+  });
+  input('brewed_at').addEventListener('input', updateDateLabel);
+  input('brewed_at').addEventListener('invalid', () => {
+    dateField.hidden = false;
+    dateToggle.setAttribute('aria-expanded', 'true');
+  });
   const newSession = feed.querySelector<HTMLButtonElement>('.new-session')!;
   const saveButton = form.querySelector<HTMLButtonElement>('.save-session')!;
   const cancel = form.querySelector<HTMLButtonElement>('.cancel-session')!;
@@ -218,7 +241,6 @@ export function createBrewController(container: HTMLElement, options: {
   let initialDate = '';
   let returnFocus: HTMLElement | null = null;
 
-  const input = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
   const number = (name: string): number | null => {
     const value = input(name).valueAsNumber;
     return Number.isFinite(value) ? value : null;
@@ -329,8 +351,9 @@ export function createBrewController(container: HTMLElement, options: {
     form.reset();
     form.querySelector('h2')!.textContent = session ? 'Edit Session' : 'New Session';
     saveButton.textContent = session ? 'Save Changes' : 'Save Session';
-    const dateField = form.querySelector<HTMLElement>('.session-date-field')!;
-    dateField.hidden = !session;
+    dateField.hidden = true;
+    dateToggle.hidden = !session;
+    dateToggle.setAttribute('aria-expanded', 'false');
     input('brewed_at').required = !!session;
     if (session) {
       for (const name of ['dose_g', 'water_g', 'time_str', 'temp_c', 'grind_um', 'comment', 'yield_g', 'tds_pct'] as const) {
@@ -339,6 +362,7 @@ export function createBrewController(container: HTMLElement, options: {
       }
       input('brewed_at').value = localDateTime(session.brewed_at);
       initialDate = input('brewed_at').value;
+      updateDateLabel();
       bean.replaceChildren(new Option(session.bean_name ?? 'Selected bean', session.bean_id));
     }
     updateExtraction();
@@ -368,6 +392,7 @@ export function createBrewController(container: HTMLElement, options: {
 
   async function save(): Promise<void> {
     saving = true;
+    dateToggle.disabled = input('brewed_at').disabled = true;
     fieldset.disabled = true;
     saveButton.disabled = true;
     cancel.disabled = true;
@@ -399,6 +424,7 @@ export function createBrewController(container: HTMLElement, options: {
       return;
     } finally {
       saving = false;
+      dateToggle.disabled = input('brewed_at').disabled = false;
       fieldset.disabled = false;
       saveButton.disabled = false;
       cancel.disabled = false;

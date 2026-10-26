@@ -265,6 +265,14 @@ try {
   assert.equal(await sync(`return document.querySelector('.session-form h2').textContent;`), 'Edit Session');
   assert.match(await sync(`return document.querySelector('.session-form figcaption').textContent;`), /19.86% extraction · 1.43% TDS/);
   await checkBrewEditor({ sync, api });
+  assert.equal(await sync(`return document.querySelector('.session-date-field').hidden;`), true);
+  const originalTimestamp = await sync(`return document.querySelector('#session-date').value;`);
+  await sync(`document.querySelector('.session-date-toggle').click();`);
+  assert.equal(await sync(`return document.activeElement.id;`), 'session-date');
+  assert.equal(await sync(`return document.querySelector('.session-date-toggle').getAttribute('aria-expanded');`), 'true');
+  await sync(`document.querySelector('.session-date-toggle').click();`);
+  assert.equal(await sync(`return document.querySelector('.session-date-field').hidden;`), true);
+  assert.equal(await sync(`return document.querySelector('#session-date').value;`), originalTimestamp);
   await sync(`document.querySelector('.cancel-session').click();`);
   assert.equal(await sync(`return document.querySelector('.session-form').hidden;`), true);
   console.log('PASS session tap opens populated editor, saved chart, fixed actions and cancel');

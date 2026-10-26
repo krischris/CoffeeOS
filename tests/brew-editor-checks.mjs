@@ -46,6 +46,9 @@ export async function checkBrewEditor({ sync, api, screenshotPath }) {
             input: bounds('.session-measurements > div:first-child'),
             output: bounds('.session-measurements > div:last-child'),
             actions: bounds('.session-actions'),
+            cancel: bounds('.cancel-session'), save: bounds('.save-session'),
+            svg: bounds('.session-form .brewing-chart-svg'),
+            caption: bounds('.session-form .brewing-chart-summary'),
             navigation: getComputedStyle(doc.querySelector('.tab-bar')).display,
             fields: [...doc.querySelectorAll('.session-form input, .session-form select')].filter(field => field.getBoundingClientRect().height > 0).map(field => ({
               font: getComputedStyle(field).fontSize, height: field.getBoundingClientRect().height,
@@ -55,6 +58,11 @@ export async function checkBrewEditor({ sync, api, screenshotPath }) {
         assert.equal(layout.width, width);
         assert.equal(layout.horizontal, false, JSON.stringify(layout));
         assert.equal(layout.navigation, 'none');
+        assert.equal(layout.cancel.top, layout.save.top);
+        assert.equal(layout.cancel.bottom, layout.save.bottom);
+        assert.ok(layout.cancel.right < layout.save.left);
+        assert.ok(layout.svg.bottom - layout.svg.top >= 220);
+        assert.ok(layout.caption.bottom - layout.caption.top <= 1);
         assert.ok(layout.chart.bottom <= layout.bean.top);
         assert.ok(layout.input.right < layout.output.left);
         assert.ok(layout.fields.every(field => field.font === '16px' && field.height >= 44));

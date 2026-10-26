@@ -1214,3 +1214,63 @@ while retaining normal tap access to the full brew editor.
 - Browser checks use isolated automation sessions and synthetic pointer gestures.
   Physical iPhone/iPad touch/scroll arbitration, native keyboard, Home Screen
   storage lifecycle and deployed-host behavior remain unverified.
+
+---
+
+## Stage 17: Compact Brew Editor Header and Larger Chart
+
+- [x] **Status:** Implemented; desktop Safari checks passed; physical iOS pending
+
+### Goal
+
+Give the brew chart more space on phones, with optional timestamp editing in
+the session header and consistently aligned Cancel/Save actions.
+
+### Tasks
+
+1. Show the existing brewed timestamp beside Edit Session as a tap target that
+   reveals and focuses the native date/time input; collapse it on each opening.
+2. Remove the visible Your brew caption while retaining accessible chart feedback,
+   and increase the phone chart from 160px to 240px (220px on shorter viewports).
+3. Normalize action-button margins and grid sizing to keep both buttons aligned.
+4. Build and verify Safari layout, timestamp disclosure, persistence regressions,
+   isolation headers, and production repository-subpath assets.
+
+### Acceptance Criteria (Stage 17 Gate)
+
+- Editing opens with the date input collapsed; tapping the header timestamp
+  reveals/focuses it, and toggling visibility preserves its value.
+- Existing timestamp precision is preserved when unchanged through the existing
+  save comparison; only an explicit timestamp change updates it.
+- The chart is larger at phone widths, with no visible Your brew caption;
+  screen-reader chart descriptions remain available.
+- Cancel and Save occupy the same row with matching vertical bounds. At 393×852
+  the collapsed editor fits with simulated 59px top/34px bottom safe areas;
+  320, 375, 393, and 430px layouts have no horizontal overflow.
+- Build and Safari checks pass; existing data formats and storage identity remain
+  unchanged, and physical-device limitations are documented.
+
+### Verification — 2026-10-26
+
+- `uv run npm run build` passed after correcting an input-helper declaration
+  ordering error caught by TypeScript. `git diff --check` passed.
+- Desktop Safari 27.2/macOS development and production `/CoffeeOS/` suites passed:
+  startup/navigation, bean/session writes and reload persistence, chart behavior,
+  editor cancel/reset, and CSV/Parquet import/export regressions.
+- Production checks confirmed collapsed timestamp editing, tap-to-focus,
+  expanded-state accessibility, and unchanged input value after toggling.
+  The existing unchanged-date save comparison remains intact; no database write
+  or timestamp conversion semantics were changed.
+- Exact-width Safari frame checks passed at 320, 375, 393, and 430px:
+  aligned Cancel/Save bounds, chart height at least 220px (240px at 393×852),
+  visually hidden caption, no horizontal overflow, and 44px/16px form controls.
+  The 393×852 editor fits with simulated 59/34px safe areas.
+- Development and production preview returned COOP `same-origin` and COEP
+  `require-corp`; generated JS/CSS returned HTTP 200 under `/CoffeeOS/assets/`.
+- UI-only changes: no schema, persistence/startup code, storage identifiers,
+  backup formats, dependencies, service workers, deployment origin, or hosting
+  settings changed. Previous-build OPFS/IndexedDB upgrade checks were not rerun;
+  this stage does not claim new upgrade-path verification.
+- Physical iPhone/iPad native picker, software keyboard, Safari browser chrome,
+  actual reported button gap, Home Screen behavior, and deployed-host checks
+  remain unverified. Desktop Safari geometry does not replace device testing.

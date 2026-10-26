@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 export async function checkBrewingChart({ sync, fillSession }) {
-  const state = () => sync(`const chart = document.querySelector('.brewing-chart');
+  const state = () => sync(`const chart = document.querySelector('.session-form .brewing-chart');
     const point = chart.querySelector('.brewing-chart-point');
     return {
       hidden: chart.querySelector('.brewing-chart-result').hasAttribute('hidden'),

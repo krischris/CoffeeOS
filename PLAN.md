@@ -823,3 +823,166 @@ Home Screen mode while retaining clearance for the iOS home indicator.
 - Physical iPhone/iPad Home Screen gap resolution, rotation, keyboard dismissal,
   and actual hosted behavior remain unverified. Safe-area padding is intentionally
   retained so controls do not overlap the home indicator.
+
+---
+
+## Stage 11: Compact Mobile Brew Cards and Expandable EY Charts
+
+- [x] **Status:** Implemented; Firefox and desktop Safari checks passed (Stage 12), physical iOS verification pending
+
+### Goal
+
+Make the Brew Controller easier to scan on an iPhone 15 Pro, with compact
+summaries and full brew details available on tap.
+
+### Tasks
+
+1. Show date, bean name, and EY percentage in collapsed native disclosure cards.
+2. Reveal the complete timestamp, measurements, comment, and existing brewing
+   chart on expansion; create charts only when a card is first opened.
+3. Reduce phone layout spacing, headings, card padding, and navigation height
+   while preserving safe areas, 44px controls, and 16px form inputs.
+4. Verify build, disclosure behavior, chart values, narrow layout, and regressions.
+
+### Acceptance Criteria (Stage 11 Gate)
+
+- Sessions start collapsed; tapping toggles full details and the saved EY/TDS chart.
+- Missing EY displays a dash; missing chart measurements explain why no point is
+  plotted; existing chart range feedback remains available.
+- Long bean names wrap without horizontal overflow at 393px viewport width.
+- Existing records and precision remain unchanged; local headers and production
+  subpath assets remain valid. Browser/platform limitations are documented.
+
+### Verification — 2026-10-26
+
+- `uv run npm run build` passed; Node resolves inside the project's `.venv`.
+- Dev and production preview return COOP `same-origin` and COEP `require-corp`.
+- Safari was attempted first with `safaridriver`; session creation timed out
+  connecting to Safari before any assertions ran. Safari verification is pending.
+- Storage, startup, formats, dependencies, service workers, and deployment settings
+  are unchanged. This presentation-only update requires no data migration.
+- Physical iPhone/iPad touch, keyboard, Home Screen layout/storage lifecycle,
+  hosted behavior, and previous-build upgrade paths were not tested for this stage.
+- Isolated headless Firefox 158/macOS passed the production UI suite under
+  `/CoffeeOS/` using a temporary adapter for the existing Safari assertions:
+  startup/navigation, forms, chart coordinates/range feedback, compact summary,
+  tap expansion/collapse, saved EY/TDS chart, long-name wrapping without overflow
+  at 393×852, writes/reloads, and CSV/Parquet export/import regressions.
+- Dev Firefox additionally passed summary fields, dates/nulls, bean filtering,
+  safe comments, and history persistence before the temporary adapter stopped at
+  an unsupported multi-window command. The full dev suite did not complete;
+  production checks completed successfully. Temporary adapter files were removed.
+- `git diff --check` passed. Touch targets remain at least 44px and form input
+  text remains 16px in the narrow-window checks. Firefox results do not establish
+  Safari or physical iPhone verification. No deployment was performed.
+
+---
+
+## Stage 12: Safari Automation Retry for Compact Brew Cards
+
+- [x] **Status:** Completed; desktop Safari dev/production checks passed, intermittent fixture failure recorded
+
+### Goal
+
+Retry desktop Safari automation for Stage 11 and establish the current build's
+navigation, compact-card, chart, and persistence regression results.
+
+### Tasks
+
+1. Reuse the project-local environment and available localhost Safari/Vite servers.
+2. Build and run Safari checks against development and production `/CoffeeOS/`.
+3. Investigate failures, preserve application storage behavior, and record results.
+
+### Acceptance Criteria (Stage 12 Gate)
+
+- Safari starts an isolated automation session and exercises startup/navigation,
+  compact disclosure cards, charts, narrow layout, and bean/session writes/reloads.
+- The production suite passes under `/CoffeeOS/`; development checks either pass
+  or have a concrete failure and remaining verification gap documented.
+- Build and local isolation-header checks pass; existing application data/storage
+  behavior remains unchanged, with physical-device and upgrade limitations stated.
+
+### Verification — 2026-10-26
+
+- Node resolves inside this project's `.venv`; `uv run npm run build` passed.
+- Safari 27.0/macOS automation connected successfully through the existing driver.
+  Existing dev/preview servers were reused; localhost requests required sandbox
+  escalation. Both responses include COOP `same-origin` and COEP `require-corp`.
+- `TEST_PRODUCTION=1 TEST_BASE_URL=http://127.0.0.1:4173/CoffeeOS/ uv run npm run
+  test:safari` passed: startup/navigation, validation, writes/reloads, live and saved
+  charts, collapsed-card expansion/collapse, narrow layouts, CSV/Parquet UI exports
+  and imports, atomic invalid-import rejection, and import reload persistence.
+- Initial development run passed UI/chart/disclosure checks, database writes/joins,
+  dates/nulls, histories, tab ownership, save rollback/retry, post-commit warnings,
+  and exact CSV/Parquet round trips. It failed in the empty-engine backup fixture
+  with an OPFS/cross-origin-isolation recovery error. A temporary diagnostic
+  run passed, and a final unchanged `uv run npm run test:safari` rerun passed
+  completely, including all four empty-engine backup restores. The initial
+  failure did not reproduce; its cause remains unconfirmed. No fix is claimed.
+- Physical iPhone/iPad touch, keyboard/viewport, Home Screen/storage lifecycle,
+  Safari OPFS upgrades, previous-build upgrades, and hosted behavior are not
+  established by this rerun. No application, dependency, or deployment change.
+- `git diff --check` passed. Temporary diagnostic scripts were removed; only
+  this plan was edited during the retry. Pre-existing application/test edits were
+  preserved. No normal browsing profile was used or server process stopped.
+
+---
+
+## Stage 13: Contain Bean Date Fields on Narrow iPhone Layouts
+
+- [x] **Status:** Implemented; desktop Safari checks passed, physical iOS confirmation pending
+
+### Goal
+
+Keep the Bean Manager's roast and freeze date inputs within their form card and
+aligned with the name input on narrow screens, including iPhone 15 Pro width.
+
+### Tasks
+
+1. Check actual date-field bounds at exact phone widths, with empty and filled dates.
+2. Remove native date-control appearance that can override iOS sizing; retain
+   native date inputs, existing border-box sizing, padding, and minimum touch size.
+3. Build, verify Safari layout and application regressions, and check production
+   repository-subpath assets and local isolation headers.
+
+### Acceptance Criteria (Stage 13 Gate)
+
+- At 320–420px viewport widths, both date fields match the name field's width
+  and remain within the card, empty or populated, without horizontal overflow.
+- Above the existing mobile breakpoint, dates fit their two grid columns.
+- Date values retain their meaning and native input type; inputs remain at least
+  44px high with 16px text. Bean/session writes and reload persistence still pass.
+- Build, desktop Safari checks, production `/CoffeeOS/` assets, and local isolation
+  headers pass; physical iOS and other unverified paths are explicitly recorded.
+
+### Verification — 2026-10-26
+
+- Before the change, Safari 27/macOS passed exact-width layout checks at 320,
+  375, 390, 393, 420, 430, and 852px, with empty and populated dates. This does
+  not reproduce or rule out the iOS-specific issue: WebKit bug 301648 documents
+  date/time inputs calculating padded 100% widths incorrectly on iOS while
+  macOS works (https://bugs.webkit.org/show_bug.cgi?id=301648).
+- Added scoped date appearance/width constraints and an internal value minimum
+  height/alignment rule. No storage, schema, startup, backup, dependency,
+  service-worker, or deployment changes; no data migration is needed.
+- `uv run npm run build` passed; Node resolves inside this project's `.venv`.
+- Post-change exact-width checks passed on Safari 27/macOS against development
+  and production `/CoffeeOS/`, using same-origin iframe fixtures with the actual
+  form markup and stylesheet to control the CSS viewport precisely. At 393×852,
+  the name and both date fields were each 327px wide, within the 361px card.
+  All seven widths above passed empty/populated date checks without overflow;
+  two-column dates fitted their grid cells at 430 and 852px. Production computed
+  styles confirmed `appearance: none` and `border-box`; native `type="date"`,
+  values, 16px text, and at least 44px input height were preserved.
+- `uv run npm run test:safari` passed fully: startup/navigation, bean/session
+  saves and reloads, chart/disclosure regressions, failure recovery, exact
+  CSV/Parquet round trips, and all empty-engine backup fixtures.
+- `TEST_PRODUCTION=1 TEST_BASE_URL=http://127.0.0.1:4173/CoffeeOS/ uv run npm run
+  test:safari` passed, including production UI imports and reload persistence.
+  The preview served the newly built stylesheet under `/CoffeeOS/assets/`.
+- Dev and production preview returned COOP `same-origin` and COEP `require-corp`.
+  `git diff --check` passed. Isolated Safari automation sessions were used;
+  temporary layout-check files were removed and existing servers left running.
+- Physical iPhone/iPad date-picker interaction, keyboard/viewport behavior, Home
+  Screen mode, hosted behavior, and previous-build storage upgrades remain
+  unverified. Existing uncommitted project changes were preserved.

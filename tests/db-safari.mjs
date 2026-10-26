@@ -230,7 +230,7 @@ try {
   assert.equal(await sync(`return document.activeElement.classList.contains('new-session');`), true);
   await openSession();
   assert.equal(await extractionOutput(), '—');
-  assert.equal(await sync(`return document.querySelector('.brewing-chart-result').hasAttribute('hidden');`), true);
+  assert.equal(await sync(`return document.querySelector('.session-form .brewing-chart-result').hasAttribute('hidden');`), true);
   assert.deepEqual(await sync(`return [...document.querySelectorAll('.session-form input, .session-form select')].map(field => field.value);`), Array(9).fill(''));
   const beforeBrews = await brewCards();
   const comment = "Tasting <img src=x onerror=alert(1)> & coffee's notes";
@@ -248,6 +248,24 @@ try {
     'Grind (µm)': '700', 'Yield (g)': '250', 'TDS (%)': '1.43', 'Extraction (%)': '19.86',
   });
   assert.equal(await sync(`return document.querySelectorAll('.session-card img').length;`), 0);
+  await api('/window/rect', { width: 393, height: 852 });
+  assert.equal(await sync(`return document.querySelector('.session-card').open;`), false);
+  assert.equal(await sync(`return document.querySelector('.session-summary .session-ey').textContent;`), 'EY 19.86%');
+  await sync(`document.querySelector('.session-summary').click();`);
+  await waitFor(`document.querySelector('.session-card .brewing-chart')`);
+  const expanded = await sync(`const card = document.querySelector('.session-card');
+    return { open: card.open, summary: card.querySelector('figcaption').textContent,
+      point: !card.querySelector('.brewing-chart-result').hasAttribute('hidden'),
+      overflow: document.querySelector('.app-content').scrollWidth > document.querySelector('.app-content').clientWidth,
+      height: card.querySelector('summary').getBoundingClientRect().height };`);
+  assert.equal(expanded.open, true);
+  assert.equal(expanded.point, true);
+  assert.match(expanded.summary, /19.86% extraction · 1.43% TDS/);
+  assert.equal(expanded.overflow, false);
+  assert.ok(expanded.height >= 44);
+  await sync(`document.querySelector('.session-summary').click();`);
+  assert.equal(await sync(`return document.querySelector('.session-card').open;`), false);
+  console.log('PASS compact brew summary, tap expansion/collapse, saved EY chart, and narrow layout');
   // Inspect the hidden Bean Manager before visiting it: saving must refresh both views immediately.
   let beanHistory = (await beanCards()).find(card => card.id === cards[0].id);
   assert.equal(beanHistory.sessions[0].id, brews[0].id);

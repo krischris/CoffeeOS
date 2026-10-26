@@ -3,29 +3,54 @@ import type { BrewSession } from '../types';
 import { renderSessionMetrics } from './sessionMetrics';
 import { createBrewingChart } from './brewingChart';
 
+const dateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 function renderSession(session: BrewSession): HTMLElement {
-  const card = document.createElement('article');
+  const card = document.createElement('details');
   card.className = 'session-card card';
   card.dataset.sessionId = session.id;
+  const summary = document.createElement('summary');
+  summary.className = 'session-summary';
   const heading = document.createElement('h3');
   heading.textContent = session.bean_name ?? 'Unknown bean';
   const time = document.createElement('time');
   time.dateTime = session.brewed_at;
-  time.textContent = dateTimeFormatter.format(new Date(session.brewed_at));
-  card.append(heading, time);
+  time.textContent = dateFormatter.format(new Date(session.brewed_at));
+  time.title = dateTimeFormatter.format(new Date(session.brewed_at));
+  const ey = document.createElement('span');
+  ey.className = 'session-ey';
+  ey.textContent = `EY ${session.extraction_pct?.toFixed(2) ?? '—'}${session.extraction_pct === null ? '' : '%'}`;
+  summary.append(time, heading, ey);
+  const body = document.createElement('div');
+  body.className = 'session-details';
+  const fullDate = document.createElement('p');
+  fullDate.className = 'session-date';
+  fullDate.textContent = time.title;
+  body.append(fullDate);
+  card.append(summary, body);
   for (const group of ['input', 'result'] as const) {
     const label = document.createElement('h4');
     label.textContent = group === 'input' ? 'Input' : 'Result';
-    card.append(label, renderSessionMetrics(session, group));
+    body.append(label, renderSessionMetrics(session, group));
   }
   if (session.comment) {
     const comment = document.createElement('p');
     comment.className = 'brew-comment';
     comment.textContent = session.comment;
-    card.append(comment);
+    body.append(comment);
   }
+  // Build the SVG only when requested, keeping long brew histories lightweight.
+  card.addEventListener('toggle', () => {
+    if (!card.open || body.querySelector('.brewing-chart')) return;
+    const chart = createBrewingChart();
+    chart.update(session.extraction_pct, session.tds_pct);
+    if (session.extraction_pct === null || session.tds_pct === null || session.extraction_pct <= 0 || session.tds_pct <= 0) {
+      chart.element.querySelector('figcaption')!.textContent = 'This brew has no positive EY and TDS measurements to plot.';
+      chart.element.querySelector('svg')!.setAttribute('aria-label', 'Coffee brewing control chart. This brew has no positive EY and TDS measurements to plot.');
+    }
+    body.append(chart.element);
+  });
   return card;
 }
 

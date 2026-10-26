@@ -1,5 +1,47 @@
 # CoffeeOS development instructions
 
+## Plan maintenance
+
+Record every future project update as the next sequentially numbered stage in
+`PLAN.md`. Follow the same structure as the existing stages: a descriptive stage
+title, status checkbox, Goal, Tasks, Acceptance Criteria (stage gate), and dated
+Verification notes. Define concrete acceptance criteria for each update and record
+the checks performed, their results, and any remaining unverified items. Keep the
+stage status accurate and preserve earlier stages as a record of completed work.
+
+## Data compatibility and persistence — mandatory for future updates
+
+Every app update, refactor, dependency upgrade, and deployment MUST preserve
+existing users' beans and brew sessions. Preserve record IDs, bean/session
+relationships, field meanings and units, dates, null values, comments, and numeric
+precision. Existing stored records and previously exported CSV/Parquet backups
+must remain readable. Prefer additive, optional fields with compatible defaults;
+changes to existing formats require explicit, versioned, data-preserving migrations.
+
+Keep storage identity stable: the OPFS database and WAL filenames, IndexedDB
+database/object-store names, snapshot keys, backend-selection metadata, and database
+ownership lock. Do not derive them from app versions, build hashes, or asset URLs.
+Changing any identifier requires a migration that locates and preserves existing
+data. Preserve the deployment origin and storage access; an origin change requires
+an explicit transfer/recovery plan because browser storage does not follow it.
+
+Never clear, delete, truncate, or recreate user storage during startup, refactoring,
+deployment, or service-worker/cache updates. Never handle an open, restore,
+compatibility, migration, lock, or permission failure by silently starting an empty
+database, switching datasets/backends, or overwriting saved snapshots. Preserve
+the original data and show a recoverable error when it cannot be opened safely.
+Initialize an empty database only for a confirmed first use; any destructive reset
+must be a separate, explicit user action. Migrations must be repeatable, preserve a
+recoverable pre-migration copy, and leave existing data intact on failure.
+
+For changes affecting storage, formats, startup, dependencies, service workers, or
+deployment, verify an upgrade from a previous build with populated OPFS and
+IndexedDB fixtures in the same isolated browser profile and origin. Confirm all
+records survive the build replacement, startup, and reload; old backups still
+import; and failed upgrades preserve data without presenting an empty collection.
+Record the results and any unverified upgrade paths in the new `PLAN.md` stage.
+Fresh-database and same-build reload checks alone do not establish upgrade safety.
+
 ## Project-local tooling
 
 Run commands from this project directory. Use `uv` to manage the local `.venv`;

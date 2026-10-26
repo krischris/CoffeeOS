@@ -4,6 +4,7 @@ export interface Bean {
   roast_date: string | null;
   freeze_date: string | null;
   created_at: string;
+  photo_jpeg?: string | null;
 }
 
 export interface BrewSession {

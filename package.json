@@ -12,7 +12,9 @@
     "test:db": "node tests/db-browser.mjs",
     "test:safari": "node tests/db-safari.mjs",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:upgrade": "node tests/bean-upgrade.mjs",
+    "test:upgrade:firefox": "TEST_FIREFOX=1 node tests/bean-upgrade.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

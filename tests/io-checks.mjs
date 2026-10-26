@@ -132,7 +132,7 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
   if (!production) {
     const state = () => evaluate(`const db = await getDB(); return { beans: await db.getBeans(), sessions: await db.getBrewSessions() };`);
     let stored = await state();
-    assert.deepEqual(stored.beans.find(item => item.id === bean.id), updatedBean);
+    assert.deepEqual(stored.beans.find(item => item.id === bean.id), { ...updatedBean, photo_jpeg: null });
     assert.deepEqual(stored.sessions.find(item => item.id === brew.id), { ...updatedBrew, bean_name: emptyBean.name });
     // Import a literal null marker, an empty string, and a NULL in separate string fields.
     result = await importFiles([encoded('brew_sessions', sessionKeys, [brew])]);
@@ -193,18 +193,24 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
     assert.deepEqual(await state(), stored);
     console.log('PASS exact CSV/Parquet round trips (null/empty/literal \\N, dates, zeroes, full precision), strict invalid-file rejection, atomic failed snapshots, successful retry, and reload persistence');
     // Restore each backup into a genuinely empty engine, isolated from durable browser data.
-    const memory = await evaluate(`
+    const isolated = await evaluate(`
       const db = await getDB();
       const originalIndexedDB = Object.getOwnPropertyDescriptor(window, 'indexedDB');
       const originalDirectory = Object.getOwnPropertyDescriptor(navigator.storage, 'getDirectory');
+      const originalIsolation = Object.getOwnPropertyDescriptor(window, 'crossOriginIsolated');
+      const realIDB = indexedDB;
+      const testStores = [];
       const expected = { beans: await db.getBeans(), sessions: await db.getBrewSessions() };
       const results = [];
       try {
         for (const format of ['csv', 'parquet']) for (const combined of [false, true]) {
           const exported = await db.exportData(format, combined);
           await db.closeDB();
-          Object.defineProperty(window, 'indexedDB', { configurable: true, value: undefined });
-          Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: undefined });
+          const testName = 'coffeeos-import-test-' + crypto.randomUUID();
+          testStores.push(testName);
+          Object.defineProperty(window, 'indexedDB', { configurable: true, value: {open: () => realIDB.open(testName, 1)} });
+          Object.defineProperty(window, 'crossOriginIsolated', {configurable:true, value:false});
+          Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: async () => ({getFileHandle: async () => {throw new DOMException('missing', 'NotFoundError');}}) });
           await db.initDB();
           const initial = { beans: await db.getBeans(), sessions: await db.getBrewSessions() };
           const inputs = files => files.map((file, i) => ({ ...file,
@@ -220,19 +226,22 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
         else delete window.indexedDB;
         if (originalDirectory) Object.defineProperty(navigator.storage, 'getDirectory', originalDirectory);
         else delete navigator.storage.getDirectory;
+        if (originalIsolation) Object.defineProperty(window, 'crossOriginIsolated', originalIsolation);
+        else delete window.crossOriginIsolated;
+        for (const name of testStores) realIDB.deleteDatabase(name);
         await db.initDB();
       }
       return results;
     `);
-    assert.equal(memory.length, 4);
-    for (const result of memory) {
+    assert.equal(isolated.length, 4);
+    for (const result of isolated) {
       assert.deepEqual(result.initial, { beans: [], sessions: [] });
       assert.deepEqual(result.empty, { beans: 0, brew_sessions: 0 });
       assert.deepEqual(result.imported, { beans: stored.beans.length, brew_sessions: stored.sessions.length });
       assert.equal(result.equal, true);
     }
     assert.deepEqual(await state(), stored);
-    console.log('PASS all backup formats/layouts restore into an empty memory-only database, empty exports re-import, and durable data stays intact');
+    console.log('PASS all backup formats/layouts restore into an empty isolated test database, empty exports re-import, and durable data stays intact');
   } else {
     await reload();
     await sync(`document.querySelector('#tab-bean-manager').click();`);

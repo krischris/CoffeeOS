@@ -152,7 +152,7 @@ try {
   assert.equal(cards[0].name, nameOnly);
   assert.deepEqual(cards[0].dates, []);
   assert.equal(cards[0].empty, 'No brew sessions yet');
-  assert.deepEqual(await sync(`return [...document.querySelectorAll('.bean-form input')].map(input => input.value);`), ['', '', '']);
+  assert.deepEqual(await sync(`return [...document.querySelectorAll('.bean-form input')].map(input => input.value);`), ['', '', '', '']);
   const datedName = `Safari's <img src=x onerror=alert(1)> ☕ ${Date.now()}`;
   await submitBean(`  ${datedName}  `, '2026-10-01', '2026-10-20');
   cards = await beanCards();
@@ -173,7 +173,7 @@ try {
     fields: [...document.querySelectorAll('.bean-form input')].map(input => ({
       font: getComputedStyle(input).fontSize, height: input.getBoundingClientRect().height,
     })),
-    buttonHeight: document.querySelector('.bean-form button').getBoundingClientRect().height,
+    buttonHeight: document.querySelector('.bean-form button[type=submit]').getBoundingClientRect().height,
   };`);
   assert.equal(layout.overflow, false);
   assert.ok(layout.fields.every(field => field.font === '16px' && field.height >= 44));
@@ -383,7 +383,7 @@ try {
     try {
       await submitBean('Retry after storage failure', '2026-10-01');
       assert.equal(await sync(`return document.querySelector('.bean-form .form-error').hidden;`), false);
-      assert.deepEqual(await sync(`return [...document.querySelectorAll('.bean-form input')].map(input => input.value);`), ['Retry after storage failure', '2026-10-01', '']);
+      assert.deepEqual(await sync(`return [...document.querySelectorAll('.bean-form input')].map(input => input.value);`), ['Retry after storage failure', '2026-10-01', '', '']);
       assert.deepEqual(await beanCards(), beforeFailure);
     } finally {
       await sync(`IDBObjectStore.prototype.put = window.__originalSnapshotPut; delete window.__originalSnapshotPut;`);

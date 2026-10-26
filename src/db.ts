@@ -7,6 +7,8 @@ import ehParquet from './vendor/duckdb/eh/parquet.duckdb_extension.wasm?url';
 import mvpParquet from './vendor/duckdb/mvp/parquet.duckdb_extension.wasm?url';
 import type { Bean, BrewSession } from './types';
 
+import { isBeanPhoto } from './photos';
+
 type StorageMode = 'opfs' | 'indexeddb' | 'memory';
 type SQLValue = string | number | null;
 
@@ -27,7 +29,7 @@ const snapshotKey = 'tables-v1';
 const tables = ['beans', 'brew_sessions'] as const;
 const beanColumns = `id, name, CAST(roast_date AS VARCHAR) AS roast_date,
   CAST(freeze_date AS VARCHAR) AS freeze_date,
-  strftime(created_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS created_at`;
+  strftime(created_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS created_at, photo_jpeg`;
 const sessionColumns = `s.id, s.bean_id, b.name AS bean_name,
   strftime(s.brewed_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS brewed_at,
   s.dose_g, s.water_g, s.time_str, s.temp_c, s.grind_um, s.comment,
@@ -110,7 +112,7 @@ function storeRecord(store: IDBDatabase, key: string, value: unknown): Promise<v
   });
 }
 
-async function snapshotTables(state: Database): Promise<void> {
+async function snapshotTables(state: Database, key = snapshotKey): Promise<void> {
   if (!state.snapshots) return;
   const buffers = {} as Snapshot;
   for (const table of tables) {
@@ -122,7 +124,17 @@ async function snapshotTables(state: Database): Promise<void> {
       await state.db.dropFile(path);
     }
   }
-  await storeRecord(state.snapshots, snapshotKey, buffers);
+  await storeRecord(state.snapshots, key, buffers);
+}
+
+async function validateStoredSchema(connection: duckdb.AsyncDuckDBConnection, table: typeof tables[number], source: string): Promise<void> {
+  const result = await connection.query(`DESCRIBE SELECT * FROM ${source}`);
+  const columns = result.toArray().map(row => [row.column_name, row.column_type]);
+  const expected = Object.entries(ioSchema[table]);
+  const legacy = table === 'beans' && JSON.stringify(columns) === JSON.stringify(expected.filter(([name]) => name !== 'photo_jpeg'));
+  if (!legacy && JSON.stringify(columns) !== JSON.stringify(expected)) {
+    throw new DatabaseStartupError('The saved database format is unsupported. Use a compatible CoffeeOS version; saved data has been kept.');
+  }
 }
 
 async function restoreSnapshot(state: Database, snapshot: Snapshot): Promise<void> {
@@ -131,9 +143,10 @@ async function restoreSnapshot(state: Database, snapshot: Snapshot): Promise<voi
     // Restore parents first to satisfy the foreign key on brew_sessions.
     for (const table of tables) {
       const path = `restore-${table}.parquet`;
-      await state.db.registerFileBuffer(path, snapshot[table]);
+      await state.db.registerFileBuffer(path, new Uint8Array(snapshot[table]));
       try {
-        await state.connection.query(`INSERT INTO ${table} SELECT * FROM read_parquet('${path}')`);
+        await validateStoredSchema(state.connection, table, `read_parquet('${path}')`);
+        await state.connection.query(`INSERT INTO ${table} BY NAME SELECT * FROM read_parquet('${path}')`);
       } finally {
         await state.db.dropFile(path);
       }
@@ -175,13 +188,22 @@ async function initialize(): Promise<void> {
 
   let snapshots: IDBDatabase | null = null;
   try { snapshots = await openSnapshots(); }
-  catch (error) { console.warn('IndexedDB is unavailable.', error); }
+  catch (error) { throw new DatabaseStartupError('Saved storage metadata could not be read. Restore browser storage access and reload; no replacement database was opened.', { cause: error }); }
   let snapshot: Snapshot | undefined;
   let preferred: StorageMode | undefined;
   try {
     if (snapshots) {
       snapshot = await readRecord<Snapshot>(snapshots, snapshotKey);
       preferred = await readRecord<StorageMode>(snapshots, 'backend-v1');
+      if (preferred !== undefined && preferred !== 'opfs' && preferred !== 'indexeddb') {
+        throw new DatabaseStartupError('This storage backend is unsupported. Open CoffeeOS with a compatible version; saved data has been kept.');
+      }
+      if (preferred === 'indexeddb' && snapshot === undefined) {
+        throw new DatabaseStartupError('Your saved snapshot is missing. Restore browser storage access or recover a backup; no empty replacement was created.');
+      }
+      if (snapshot !== undefined && (!snapshot || !(snapshot.beans instanceof Uint8Array) || !(snapshot.brew_sessions instanceof Uint8Array))) {
+        throw new DatabaseStartupError('The saved snapshot format is unsupported or damaged. Saved data has been kept; use a compatible version or recover a backup.');
+      }
       // Preserve fallback data from older versions, before backend tracking existed.
       if (!preferred && snapshot) preferred = 'indexeddb';
     }
@@ -193,12 +215,30 @@ async function initialize(): Promise<void> {
 }
 
 async function initializeEngine(snapshots: IDBDatabase | null, snapshot: Snapshot | undefined, preferred: StorageMode | undefined): Promise<void> {
+  // Inspect legacy storage before creating an engine or files. Failure to inspect
+  // is not evidence of first use, even when backend metadata predates tracking.
+  let existingOPFS = false;
+  if (preferred !== 'indexeddb') {
+    if (typeof navigator.storage?.getDirectory !== 'function') {
+      throw new DatabaseStartupError('Cannot inspect saved OPFS storage. Restore browser storage access and reload.');
+    }
+    try {
+      const root = await navigator.storage.getDirectory();
+      for (const name of ['coffeos.db', 'coffeos.db.wal']) {
+        try { await root.getFileHandle(name); existingOPFS = true; }
+        catch (error) { if (!(error instanceof DOMException) || error.name !== 'NotFoundError') throw error; }
+      }
+      if (preferred === 'opfs') await root.getFileHandle('coffeos.db');
+    } catch (error) {
+      throw new DatabaseStartupError('Saved OPFS storage could not be inspected. Restore access and reload; your data has been kept.', { cause: error });
+    }
+  }
   let { db, parquetURL, supportsOPFS } = await createEngine();
   let storage: StorageMode = 'memory';
   // The pinned MVP runtime throws _setThrew on reopening OPFS databases. Use the
   // portable snapshot backend there rather than switching datasets after reload.
   if (preferred !== 'indexeddb' && supportsOPFS && window.crossOriginIsolated && typeof navigator.storage?.getDirectory === 'function') {
-    let existingFile = false;
+    let existingFile = existingOPFS;
     try {
       const root = await navigator.storage.getDirectory();
       // Bind the URI's OPFS file to a plain DuckDB filename. This version skips
@@ -206,7 +246,7 @@ async function initializeEngine(snapshots: IDBDatabase | null, snapshot: Snapsho
       // opfs:/ internally; a plain registered filename avoids both issues.
       for (const name of ['coffeos.db', 'coffeos.db.wal']) {
         const handle = await root.getFileHandle(name, { create: true });
-        if (name === 'coffeos.db') existingFile = (await handle.getFile()).size > 0;
+        if (name === 'coffeos.db') existingFile ||= (await handle.getFile()).size > 0;
         await db.registerFileHandle(name, handle, duckdb.DuckDBDataProtocol.BROWSER_FSACCESS, true);
       }
       await db.open({ path: databasePath.slice('opfs://'.length), accessMode: duckdb.DuckDBAccessMode.READ_WRITE, useDirectIO: true });
@@ -224,11 +264,14 @@ async function initializeEngine(snapshots: IDBDatabase | null, snapshot: Snapsho
 
   let connection: duckdb.AsyncDuckDBConnection | null = null;
   try {
-    if (preferred === 'opfs' && storage !== 'opfs') {
+    if ((preferred === 'opfs' || existingOPFS) && storage !== 'opfs') {
       throw new DatabaseStartupError('Your saved coffee database needs OPFS and cross-origin isolation. Restore browser storage access and reload.');
     }
     if (storage !== 'opfs') await db.open({ path: ':memory:' });
     connection = await db.connect();
+    if (storage === 'opfs' && existingOPFS) {
+      for (const table of tables) await validateStoredSchema(connection, table, table);
+    }
     await connection.query(`
       SET autoinstall_known_extensions = false;
       SET autoload_known_extensions = false;
@@ -237,22 +280,10 @@ async function initializeEngine(snapshots: IDBDatabase | null, snapshot: Snapsho
         name VARCHAR NOT NULL CHECK (length(trim(name)) > 0),
         roast_date DATE,
         freeze_date DATE,
-        created_at TIMESTAMP NOT NULL
+        created_at TIMESTAMP NOT NULL,
+        photo_jpeg VARCHAR
       );
-      CREATE TABLE IF NOT EXISTS brew_sessions (
-        id VARCHAR PRIMARY KEY,
-        bean_id VARCHAR NOT NULL REFERENCES beans(id),
-        brewed_at TIMESTAMP NOT NULL,
-        dose_g DOUBLE,
-        water_g DOUBLE,
-        time_str VARCHAR,
-        temp_c DOUBLE,
-        grind_um DOUBLE,
-        comment VARCHAR,
-        yield_g DOUBLE,
-        tds_pct DOUBLE,
-        extraction_pct DOUBLE
-      );
+      CREATE TABLE IF NOT EXISTS brew_sessions ${brewSessionDefinition};
     `);
 
     if (storage !== 'opfs' && snapshots) storage = 'indexeddb';
@@ -264,6 +295,28 @@ async function initializeEngine(snapshots: IDBDatabase | null, snapshot: Snapsho
       // A damaged snapshot is an initialization error, never silently replaced by empty tables.
       await restoreSnapshot(state, snapshot);
     }
+    // Schema v2: retain an immutable v1 recovery snapshot before the additive migration.
+    // For IndexedDB the original Parquet record is retained before any future write.
+    const columns = await queryRows<{ name: string }>(connection, 'PRAGMA table_info(beans)');
+    const recoveryKey = 'schema-v1-before-photos';
+    if (snapshots && await readRecord(snapshots, recoveryKey) === undefined) {
+      if (storage === 'indexeddb' && snapshot) await storeRecord(snapshots, recoveryKey, snapshot);
+      else if (!columns.some(column => column.name === 'photo_jpeg')) {
+        await snapshotTables({ ...state, snapshots }, recoveryKey);
+      }
+    }
+    if (!columns.some(column => column.name === 'photo_jpeg')) {
+      await connection.query('BEGIN TRANSACTION');
+      try {
+        await connection.query('ALTER TABLE beans ADD COLUMN photo_jpeg VARCHAR');
+        await connection.query('COMMIT');
+      } catch (error) {
+        await connection.query('ROLLBACK');
+        throw error;
+      }
+    }
+    // Establish even an empty first-use snapshot before remembering this backend.
+    if (storage === 'indexeddb' && snapshot === undefined) await snapshotTables(state);
     await connection.query('CHECKPOINT');
     await db.flushFiles();
     if (snapshots) await storeRecord(snapshots, 'backend-v1', storage);
@@ -314,6 +367,21 @@ async function queryRows<T>(connection: duckdb.AsyncDuckDBConnection, sql: strin
   }
 }
 
+const brewSessionDefinition = `(
+  id VARCHAR PRIMARY KEY,
+  bean_id VARCHAR NOT NULL REFERENCES beans(id),
+  brewed_at TIMESTAMP NOT NULL,
+  dose_g DOUBLE,
+  water_g DOUBLE,
+  time_str VARCHAR,
+  temp_c DOUBLE,
+  grind_um DOUBLE,
+  comment VARCHAR,
+  yield_g DOUBLE,
+  tds_pct DOUBLE,
+  extraction_pct DOUBLE
+)`;
+
 export class CommittedWriteError extends Error {
   constructor(cause: unknown) {
     super('The change is already in your collection, but storage could not be confirmed. Do not submit it again. Export a backup from IO before closing this tab.', { cause });
@@ -350,15 +418,16 @@ export function getBeans(): Promise<Bean[]> {
     `SELECT ${beanColumns} FROM beans ORDER BY created_at DESC, id DESC`));
 }
 
-export function addBean(input: { name: string; roast_date?: string | null; freeze_date?: string | null }): Promise<Bean> {
+export function addBean(input: { name: string; roast_date?: string | null; freeze_date?: string | null; photo_jpeg?: string | null }): Promise<Bean> {
+  if (input.photo_jpeg != null && !isBeanPhoto(input.photo_jpeg)) return Promise.reject(new Error('Invalid JPEG photo.'));
   for (const date of [input.roast_date, input.freeze_date]) {
     if (date != null && (!/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(date))) {
       return Promise.reject(new Error('Dates must use years from 0001 to 9999.'));
     }
   }
   return withDatabase((state) => write<Bean>(state,
-    `INSERT INTO beans VALUES (?, ?, ?, ?, ?) RETURNING ${beanColumns}`,
-    [crypto.randomUUID(), input.name.trim(), input.roast_date ?? null, input.freeze_date ?? null, new Date().toISOString()]));
+    `INSERT INTO beans (id, name, roast_date, freeze_date, created_at, photo_jpeg) VALUES (?, ?, ?, ?, ?, ?) RETURNING ${beanColumns}`,
+    [crypto.randomUUID(), input.name.trim(), input.roast_date ?? null, input.freeze_date ?? null, new Date().toISOString(), input.photo_jpeg ?? null]));
 }
 
 export function getBrewSessions(beanId?: string): Promise<BrewSession[]> {
@@ -366,6 +435,31 @@ export function getBrewSessions(beanId?: string): Promise<BrewSession[]> {
     `SELECT ${sessionColumns} FROM brew_sessions s JOIN beans b ON b.id = s.bean_id
       ${beanId === undefined ? '' : 'WHERE s.bean_id = ?'} ORDER BY s.brewed_at DESC, s.id DESC`,
     beanId === undefined ? [] : [beanId]));
+}
+
+/** Delete only after an explicit user action; snapshot both tables together. */
+export function deleteBean(beanId: string): Promise<void> {
+  return withDatabase(async (state) => {
+    await state.connection.query('BEGIN TRANSACTION');
+    try {
+      // DuckDB checks foreign keys eagerly: deleting children then their parent
+      // in one transaction still sees the old FK index. Build the retained child
+      // table with the identical constraints, then swap it within this transaction.
+      // Readers are serialized; any failure restores the original tables.
+      await state.connection.query(`CREATE TABLE bean_delete_sessions ${brewSessionDefinition}`);
+      await queryRows(state.connection,
+        'INSERT INTO bean_delete_sessions SELECT * FROM brew_sessions WHERE bean_id <> ?', [beanId]);
+      await state.connection.query('DROP TABLE brew_sessions');
+      await queryRows(state.connection, 'DELETE FROM beans WHERE id = ?', [beanId]);
+      await state.connection.query('ALTER TABLE bean_delete_sessions RENAME TO brew_sessions');
+      await snapshotTables(state);
+      await state.connection.query('COMMIT');
+    } catch (error) {
+      await state.connection.query('ROLLBACK');
+      throw error;
+    }
+    await flushCommitted(state);
+  });
 }
 
 export function addBrewSession(input: Omit<BrewSession, 'id' | 'brewed_at' | 'bean_name'>): Promise<BrewSession> {
@@ -411,16 +505,16 @@ export class ImportDataError extends Error {}
 
 // One schema drives explicit projections and casts; uploaded column order is irrelevant.
 const ioSchema = {
-  beans: { id: 'VARCHAR', name: 'VARCHAR', roast_date: 'DATE', freeze_date: 'DATE', created_at: 'TIMESTAMP' },
+  beans: { id: 'VARCHAR', name: 'VARCHAR', roast_date: 'DATE', freeze_date: 'DATE', created_at: 'TIMESTAMP', photo_jpeg: 'VARCHAR' },
   brew_sessions: { id: 'VARCHAR', bean_id: 'VARCHAR', brewed_at: 'TIMESTAMP', dose_g: 'DOUBLE',
     water_g: 'DOUBLE', time_str: 'VARCHAR', temp_c: 'DOUBLE', grind_um: 'DOUBLE', comment: 'VARCHAR',
     yield_g: 'DOUBLE', tds_pct: 'DOUBLE', extraction_pct: 'DOUBLE' },
 } as const;
-const combinedBeanNames = ['bean_id', 'bean_name', 'bean_roast_date', 'bean_freeze_date', 'bean_created_at'];
+const combinedBeanNames = ['bean_id', 'bean_name', 'bean_roast_date', 'bean_freeze_date', 'bean_created_at', 'bean_photo_jpeg'];
 const combinedSessionNames = Object.keys(ioSchema.brew_sessions).filter(key => key !== 'bean_id')
   .map(key => key === 'id' ? 'session_id' : key);
 const combinedQuery = `SELECT b.id AS bean_id, b.name AS bean_name,
-  b.roast_date AS bean_roast_date, b.freeze_date AS bean_freeze_date, b.created_at AS bean_created_at,
+  b.roast_date AS bean_roast_date, b.freeze_date AS bean_freeze_date, b.created_at AS bean_created_at, b.photo_jpeg AS bean_photo_jpeg,
   s.id AS session_id, ${combinedSessionNames.slice(1).map(key => `s.${key}`).join(', ')}
   FROM beans b LEFT JOIN brew_sessions s ON s.bean_id = b.id
   ORDER BY b.created_at DESC, b.id, s.brewed_at DESC, s.id`;
@@ -463,6 +557,7 @@ export function importData(files: ImportFile[]): Promise<ImportResult> {
     const paths: string[] = [];
     await connection.query('BEGIN TRANSACTION');
     let counts: ImportResult;
+    let importedPhotos = false;
     try {
       for (const table of tables) {
         await connection.query(`CREATE TEMP TABLE incoming_${table} AS SELECT * FROM ${table} WHERE false`);
@@ -481,7 +576,10 @@ export function importData(files: ImportFile[]): Promise<ImportResult> {
         const columns = await queryRows<{ name: string }>(connection, 'PRAGMA table_info(incoming_file)');
         const expected = file.target === 'combined' ? [...combinedBeanNames, ...combinedSessionNames]
           : Object.keys(ioSchema[file.target]);
-        if (columns.length !== expected.length || columns.some(column => !expected.includes(column.name))) {
+        const photoColumn = file.target === 'combined' ? 'bean_photo_jpeg' : 'photo_jpeg';
+        if (file.target !== 'brew_sessions') importedPhotos = columns.some(column => column.name === photoColumn);
+        const requiredColumns = expected.filter(key => key !== photoColumn);
+        if (requiredColumns.some(key => !columns.some(column => column.name === key)) || columns.some(column => !expected.includes(column.name))) {
           throw new ImportDataError(`The ${file.target} file has unexpected columns. Use a CoffeeOS export with its original headers.`);
         }
         if (file.target === 'combined') {
@@ -495,7 +593,8 @@ export function importData(files: ImportFile[]): Promise<ImportResult> {
           const projection = Object.entries(ioSchema[table]).map(([key, type], index) => {
             const source = file.target !== 'combined' ? key : table === 'beans'
               ? combinedBeanNames[index]! : key === 'id' ? 'session_id' : key;
-            return `CAST("${source}" AS ${type}) AS "${key}"`;
+            return key === 'photo_jpeg' && !columns.some(column => column.name === source)
+              ? 'NULL::VARCHAR AS photo_jpeg' : `CAST("${source}" AS ${type}) AS "${key}"`;
           }).join(', ');
           const filter = file.target === 'combined' && table === 'brew_sessions' ? 'WHERE session_id IS NOT NULL' : '';
           const distinct = file.target === 'combined' && table === 'beans' ? 'DISTINCT ' : '';
@@ -516,6 +615,8 @@ export function importData(files: ImportFile[]): Promise<ImportResult> {
             CAST(count(*) - count(DISTINCT id) AS INTEGER) AS duplicates FROM incoming_${table}`);
         if (row!.invalid || row!.duplicates) throw new ImportDataError(`The ${table} file contains invalid values or duplicate IDs.`);
       }
+      const photos = await queryRows<{ photo_jpeg: string }>(connection, 'SELECT photo_jpeg FROM incoming_beans WHERE photo_jpeg IS NOT NULL');
+      if (photos.some(row => !isBeanPhoto(row.photo_jpeg))) throw new ImportDataError('The beans file contains an invalid JPEG photo.');
       const [orphans] = await queryRows<{ count: number }>(connection,
         `SELECT CAST(count(*) AS INTEGER) AS count FROM incoming_brew_sessions s
           WHERE NOT EXISTS (SELECT 1 FROM beans b WHERE b.id = s.bean_id)
@@ -528,7 +629,7 @@ export function importData(files: ImportFile[]): Promise<ImportResult> {
       for (const table of tables) {
         const columns = Object.keys(ioSchema[table]);
         // Update non-key fields in place: REPLACE can delete parents referenced by sessions.
-        await connection.query(`UPDATE ${table} SET ${columns.filter(key => key !== 'id')
+        await connection.query(`UPDATE ${table} SET ${columns.filter(key => key !== 'id' && (key !== 'photo_jpeg' || importedPhotos))
           .map(key => `"${key}" = i."${key}"`).join(', ')} FROM incoming_${table} i WHERE ${table}.id = i.id`);
         await connection.query(`INSERT INTO ${table} SELECT i.* FROM incoming_${table} i
           WHERE NOT EXISTS (SELECT 1 FROM ${table} existing WHERE existing.id = i.id)`);

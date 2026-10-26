@@ -149,6 +149,20 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   background: var(--surface);
 }
 
+/* Installed iOS apps can under-report dvh with viewport-fit=cover. Use
+   the full viewport and keep navigation in the shell's final flex row. */
+@media (display-mode: standalone) {
+  body { height: 100vh; }
+  .app-header { flex-shrink: 0; }
+  .app-content {
+    padding-bottom: 24px;
+  }
+  .tab-bar {
+    position: static;
+    flex-shrink: 0;
+  }
+}
+
 .tabs { display: flex; max-width: 680px; margin: 0 auto; }
 
 .tab {
@@ -218,6 +232,19 @@ fieldset:disabled button { cursor: wait; }
 .bean-count { color: var(--muted); font-weight: 400; }
 .bean-list { display: grid; gap: 20px; }
 .bean-card { min-width: 0; overflow-wrap: anywhere; }
+.bean-card.bean-card { position: relative; padding: 0; overflow: hidden; }
+.bean-surface { position: relative; padding: 24px; background: var(--surface); transition: transform 180ms ease; touch-action: pan-y pinch-zoom; }
+.bean-summary { cursor: pointer; padding-right: 40px; list-style: none; }
+.bean-summary::-webkit-details-marker { display: none; }
+.bean-summary .session-count { margin-bottom: 0; }
+.bean-summary .session-count::after { content: ' ▾'; }
+details[open] > .bean-summary .session-count::after { content: ' ▴'; }
+details[open] > .bean-summary { margin-bottom: 12px; }
+.bean-actions { position: absolute; top: 12px; right: 8px; width: 44px; height: 44px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.bean-delete { position: absolute; inset: 0 0 0 auto; width: 96px; min-height: 44px; border: 0; background: #a72c3c; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+.delete-revealed .bean-surface { transform: translateX(-96px); }
+.bean-delete:disabled { opacity: .65; }
+@media (prefers-reduced-motion: reduce) { .bean-surface { transition: none; } }
 .bean-card h3 { margin: 0; font-size: 20px; font-weight: 650; }
 .bean-dates { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 16px 0; }
 .bean-dates dt, .session-metrics dt { color: var(--muted); font-size: 12px; }
@@ -305,6 +332,7 @@ button:disabled { opacity: 0.65; cursor: wait; }
 @media (max-width: 420px) {
   .header-note { max-width: 140px; text-align: right; font-size: 12px; }
   .card, .bean-card { padding: 20px; }
+  .bean-surface { padding: 20px; }
   .date-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .session-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bean-form .primary-button { width: 100%; }
@@ -312,3 +340,16 @@ button:disabled { opacity: 0.65; cursor: wait; }
 }
 
 .storage-warning { max-width: 680px; margin: 0 auto 24px; padding: 16px; border: 1px solid var(--error); border-radius: 10px; color: var(--error); }
+
+.bean-photo {
+  display: block;
+  width: 100%;
+  max-width: 32rem;
+  max-height: 28rem;
+  object-fit: contain;
+  border-radius: 0.75rem;
+  margin: 1rem auto;
+}
+.bean-photo[hidden] { display: none; }
+.photo-preview { max-height: 14rem; }
+#bean-photo { max-width: 100%; }

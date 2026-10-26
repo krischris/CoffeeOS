@@ -170,7 +170,7 @@ try {
         const original = navigator.storage.getDirectory;
         Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: undefined });
         let rejected = false;
-        try { await db.initDB(); } catch (error) { rejected = error.message.includes('needs OPFS'); }
+        try { await db.initDB(); } catch (error) { rejected = error.message.includes('OPFS'); }
         finally { Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: original }); }
         if (!rejected) throw new Error('OPFS must not silently switch datasets');
         await db.initDB();
@@ -188,7 +188,7 @@ try {
       try { await (await import('/src/db.ts')).initDB(); return ''; } catch (error) { return String(error); }
     `);
     assert.match(ownershipError, /already open/);
-    await evaluate(`await (await import('/src/db.ts')).closeDB();`, firstContext);
+    const priorFiles = await evaluate(`const db = await getDB(); const files = (await db.exportData('parquet')).map(file=>Array.from(file.data)); await db.closeDB(); return files;`, firstContext);
     // Explicitly select the fallback fixture; application startup never switches
     // an existing OPFS dataset to an empty snapshot on a lock failure.
     await evaluate(`await new Promise((resolve, reject) => {
@@ -196,6 +196,7 @@ try {
       request.onsuccess = () => {
         const store = request.result;
         const tx = store.transaction('snapshots', 'readwrite');
+        tx.objectStore('snapshots').put({beans:new Uint8Array(${JSON.stringify(priorFiles[0])}),brew_sessions:new Uint8Array(${JSON.stringify(priorFiles[1])})},'tables-v1');
         tx.objectStore('snapshots').put('indexeddb', 'backend-v1');
         tx.oncomplete = () => { store.close(); resolve(); }; tx.onabort = () => reject(tx.error);
       }; request.onerror = () => reject(request.error);
@@ -210,7 +211,7 @@ try {
         tds_pct: null, extraction_pct: null });
       return { beans: await db.getBeans(), sessions: await db.getBrewSessions(), session };
     `);
-    assert.equal(fallback.beans.length, process.env.TEST_MVP ? 6 : 4);
+    assert.equal(fallback.beans.length, 6);
     await reload();
     assert.deepEqual(await evaluate(`return await (await import('/src/db.ts')).getBeans();`), fallback.beans);
     assert.deepEqual(await evaluate(`return await (await import('/src/db.ts')).getBrewSessions();`), fallback.sessions);
@@ -297,14 +298,11 @@ try {
       const db = await import('/src/db.ts');
       await db.closeDB();
       Object.defineProperty(window, 'indexedDB', { configurable: true, value: undefined });
-      await db.initDB();
-      const bean = await db.addBean({ name: 'Memory only' });
-      return { bean, beans: await db.getBeans() };
-    `).then(({ beans }) => assert.equal(beans.length, 1));
-    assert.ok(logs.some((entry) => entry.text?.includes('database ready (memory)')));
+      try { await db.initDB(); return false; } catch { return db.getStorageMode() === null; }
+    `).then(rejected => assert.equal(rejected, true));
     await evaluate(`await (await import('/src/db.ts')).closeDB();`);
     await evaluate(`await (await import('/src/db.ts')).closeDB();`, firstContext);
-    console.log('PASS absent isolation/OPFS, denied storage permission, memory-only fallback, and teardown');
+    console.log('PASS absent isolation/OPFS, denied storage permission, inaccessible metadata rejection, and teardown');
     assert.deepEqual(exceptions, []);
     console.log('PASS zero unhandled browser exceptions/rejections');
   }

@@ -45,6 +45,7 @@ export async function checkBrewEditor({ sync, api, screenshotPath }) {
             chart: bounds('.session-form .brewing-chart'), bean: bounds('.session-bean-field'),
             input: bounds('.session-measurements > div:first-child'),
             output: bounds('.session-measurements > div:last-child'),
+            grind: bounds('#session-grind'), comment: bounds('#session-comment'),
             actions: bounds('.session-actions'),
             cancel: bounds('.cancel-session'), save: bounds('.save-session'),
             svg: bounds('.session-form .brewing-chart-svg'),
@@ -65,6 +66,8 @@ export async function checkBrewEditor({ sync, api, screenshotPath }) {
         assert.ok(layout.caption.bottom - layout.caption.top <= 1);
         assert.ok(layout.chart.bottom <= layout.bean.top);
         assert.ok(layout.input.right < layout.output.left);
+        assert.ok(Math.abs(layout.grind.top - layout.comment.top) <= 1, JSON.stringify(layout));
+        assert.ok(Math.abs(layout.grind.bottom - layout.comment.bottom) <= 1, JSON.stringify(layout));
         assert.ok(layout.fields.every(field => field.font === '16px' && field.height >= 44));
         if (width === 393) {
           assert.equal(layout.vertical, false, JSON.stringify(layout));

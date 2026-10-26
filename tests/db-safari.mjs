@@ -191,7 +191,7 @@ try {
     rows: table.tBodies[0].rows.length,
   }));`), [
     { caption: 'Input', headings: ['Field', 'Value'], rows: 5 },
-    { caption: 'Output', headings: ['Field', 'Value'], rows: 3 },
+    { caption: 'Output', headings: ['Field', 'Value'], rows: 5 },
   ]);
   assert.equal(await sync(`return getComputedStyle(document.querySelector('.tab-bar')).display;`), 'none');
   assert.equal(await sync(`return getComputedStyle(document.querySelector('#brew-controller > h1')).display;`), 'none');
@@ -265,13 +265,13 @@ try {
   assert.equal(await sync(`return document.querySelector('.session-form h2').textContent;`), 'Edit Session');
   assert.match(await sync(`return document.querySelector('.session-form figcaption').textContent;`), /19.86% extraction · 1.43% TDS/);
   await checkBrewEditor({ sync, api });
-  assert.equal(await sync(`return document.querySelector('.session-date-field').hidden;`), true);
+  assert.equal(await sync(`return document.querySelector('.session-date-field');`), null);
   const originalTimestamp = await sync(`return document.querySelector('#session-date').value;`);
   await sync(`document.querySelector('.session-date-toggle').click();`);
   assert.equal(await sync(`return document.activeElement.id;`), 'session-date');
-  assert.equal(await sync(`return document.querySelector('.session-date-toggle').getAttribute('aria-expanded');`), 'true');
-  await sync(`document.querySelector('.session-date-toggle').click();`);
-  assert.equal(await sync(`return document.querySelector('.session-date-field').hidden;`), true);
+  assert.equal(await sync(`const input = document.querySelector('#session-date');
+    const rect = input.getBoundingClientRect();
+    return document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) === input;`), true);
   assert.equal(await sync(`return document.querySelector('#session-date').value;`), originalTimestamp);
   await sync(`document.querySelector('.cancel-session').click();`);
   assert.equal(await sync(`return document.querySelector('.session-form').hidden;`), true);

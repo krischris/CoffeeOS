@@ -1274,3 +1274,59 @@ the session header and consistently aligned Cancel/Save actions.
 - Physical iPhone/iPad native picker, software keyboard, Safari browser chrome,
   actual reported button gap, Home Screen behavior, and deployed-host checks
   remain unverified. Desktop Safari geometry does not replace device testing.
+
+---
+
+## Stage 18: Direct Header Date Picker and Aligned Tasting Notes
+
+- [x] **Status:** Implemented; desktop Safari development/production checks passed; physical iOS pending
+
+### Goal
+
+Open the native date/time picker directly from the Edit Session header without
+adding a Brewed field, and align Tasting notes with the Grind input beside it.
+
+### Tasks
+
+1. Place the native date/time input over its visible header timestamp, retaining
+   an accessible name, keyboard focus indicator, and existing save semantics.
+2. Remove the timestamp disclosure row and place Comment/Tasting notes in the
+   output table's matching rows so its input aligns with Grind.
+3. Build and verify Safari editing, phone-width geometry, persistence regressions,
+   isolation headers, and production repository-subpath assets.
+
+### Acceptance Criteria (Stage 18 Gate)
+
+- The header timestamp is the native date/time control's tap target; editing it
+  never reveals an additional Brewed row or shifts the chart/form layout.
+- Timestamp changes update the visible header; unchanged timestamps retain the
+  existing precision-preserving save comparison and cancel remains non-mutating.
+- Tasting notes and Grind have matching top/bottom bounds within 1px at 320, 375,
+  393, and 430px, including simulated safe areas, without horizontal overflow.
+- Build and Safari development/production checks pass; storage identity and
+  backup formats stay compatible. Physical-device limitations are documented.
+
+### Verification — 2026-10-26
+
+- `uv run npm run build` and `git diff --check` passed. Node resolves to
+  `/Users/kkrol/Projects/CoffeeOS/.venv/bin/node`.
+- Desktop Safari 27.2/macOS development suite passed: startup/navigation,
+  bean/session writes and reloads, editor opening/cancel, chart behavior, failed
+  save/retry, storage recovery guards, and CSV/Parquet import/export regressions.
+- Exact-width Safari checks passed at 320, 375, 393, and 430px with and without
+  simulated safe areas: Grind/Tasting notes bounds align within 1px, controls
+  retain 44px/16px sizing, and no horizontal overflow. The 393×852 editor fits
+  with simulated 59px top/34px bottom safe areas; actions remain fixed.
+- Safari confirmed the extra date row is absent, the header label focuses the
+  native date/time input, and hit testing over the timestamp targets that input.
+- Desktop Safari production suite passed at `http://127.0.0.1:4173/CoffeeOS/`:
+  startup/navigation, writes/reloads, both editor layouts, header date targeting,
+  chart checks, and CSV/Parquet UI import/export with reload persistence.
+- Dev and production preview responses returned COOP `same-origin` and COEP
+  `require-corp`; compiled application/style assets loaded under `/CoffeeOS/`.
+- UI-only changes: no schema, persistence/startup code, storage identifiers,
+  backup formats, dependencies, service workers, origin, or hosting changes.
+  The precision-preserving timestamp comparison is unchanged. Previous-build
+  OPFS/IndexedDB upgrades were not rerun; no new upgrade verification is claimed.
+- Physical iPhone/iPad native-picker interaction, software keyboard, Home Screen
+  behavior/storage lifecycle, and deployed-host checks remain unverified.

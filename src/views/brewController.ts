@@ -133,11 +133,10 @@ export function createBrewController(container: HTMLElement, options: {
     <form class="session-form card" aria-labelledby="new-session-heading" hidden>
       <div class="session-heading">
         <h2 id="new-session-heading" tabindex="-1">New Session</h2>
-        <button class="session-date-toggle" type="button" aria-expanded="false" aria-controls="session-date-field" hidden></button>
-      </div>
-      <div class="session-date-field" id="session-date-field" hidden>
-        <label for="session-date">Brewed</label>
-        <input id="session-date" name="brewed_at" type="datetime-local" step="0.001">
+        <label class="session-date-toggle" for="session-date" hidden>
+          <span class="session-date-label"></span>
+          <input id="session-date" name="brewed_at" type="datetime-local" step="0.001">
+        </label>
       </div>
       <p class="bean-picker-status" role="status"></p>
       <div class="bean-picker-error" role="alert" hidden>
@@ -177,12 +176,10 @@ export function createBrewController(container: HTMLElement, options: {
                 <tr><th scope="row"><label for="session-yield">Yield (g)</label></th><td><input id="session-yield" name="yield_g" type="number" step="any" inputmode="decimal"></td></tr>
                 <tr><th scope="row"><label for="session-tds">TDS%</label></th><td><input id="session-tds" name="tds_pct" type="number" step="any" inputmode="decimal"></td></tr>
                 <tr><th scope="row"><label for="session-extraction">EY (%)</label></th><td><output id="session-extraction" for="session-dose session-yield session-tds" aria-live="polite">—</output></td></tr>
+                <tr class="session-comment-label"><td colspan="2"><label for="session-comment">Comment</label></td></tr>
+                <tr class="session-comment-field"><td colspan="2"><input id="session-comment" name="comment" type="text" placeholder="Tasting notes"></td></tr>
               </tbody>
             </table>
-            <div class="session-comment-field">
-              <label for="session-comment">Comment</label>
-              <input id="session-comment" name="comment" type="text" placeholder="Tasting notes">
-            </div>
           </div>
         </div>
         <p class="field-hint session-optional-hint">Measurements and comment are optional.</p>
@@ -201,26 +198,17 @@ export function createBrewController(container: HTMLElement, options: {
   const output = form.querySelector('output')!;
   const input = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
   const chart = createBrewingChart();
-  const dateField = form.querySelector<HTMLElement>('.session-date-field')!;
-  const dateToggle = form.querySelector<HTMLButtonElement>('.session-date-toggle')!;
-  dateField.after(chart.element);
+  const dateToggle = form.querySelector<HTMLLabelElement>('.session-date-toggle')!;
+  const dateLabel = dateToggle.querySelector<HTMLElement>('.session-date-label')!;
+  form.querySelector('.session-heading')!.after(chart.element);
   function updateDateLabel(): void {
     const value = input('brewed_at').value;
-    dateToggle.textContent = value ? new Date(value).toLocaleString(undefined, {
+    dateLabel.textContent = value ? new Date(value).toLocaleString(undefined, {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     }) : 'Set date';
-    dateToggle.setAttribute('aria-label', `Edit brewed timestamp: ${value || 'not set'}`);
+    input('brewed_at').setAttribute('aria-label', `Edit brewed timestamp: ${value || 'not set'}`);
   }
-  dateToggle.addEventListener('click', () => {
-    dateField.hidden = !dateField.hidden;
-    dateToggle.setAttribute('aria-expanded', String(!dateField.hidden));
-    if (!dateField.hidden) input('brewed_at').focus();
-  });
   input('brewed_at').addEventListener('input', updateDateLabel);
-  input('brewed_at').addEventListener('invalid', () => {
-    dateField.hidden = false;
-    dateToggle.setAttribute('aria-expanded', 'true');
-  });
   const newSession = feed.querySelector<HTMLButtonElement>('.new-session')!;
   const saveButton = form.querySelector<HTMLButtonElement>('.save-session')!;
   const cancel = form.querySelector<HTMLButtonElement>('.cancel-session')!;
@@ -351,9 +339,7 @@ export function createBrewController(container: HTMLElement, options: {
     form.reset();
     form.querySelector('h2')!.textContent = session ? 'Edit Session' : 'New Session';
     saveButton.textContent = session ? 'Save Changes' : 'Save Session';
-    dateField.hidden = true;
     dateToggle.hidden = !session;
-    dateToggle.setAttribute('aria-expanded', 'false');
     input('brewed_at').required = !!session;
     if (session) {
       for (const name of ['dose_g', 'water_g', 'time_str', 'temp_c', 'grind_um', 'comment', 'yield_g', 'tds_pct'] as const) {
@@ -392,7 +378,7 @@ export function createBrewController(container: HTMLElement, options: {
 
   async function save(): Promise<void> {
     saving = true;
-    dateToggle.disabled = input('brewed_at').disabled = true;
+    input('brewed_at').disabled = true;
     fieldset.disabled = true;
     saveButton.disabled = true;
     cancel.disabled = true;
@@ -424,7 +410,7 @@ export function createBrewController(container: HTMLElement, options: {
       return;
     } finally {
       saving = false;
-      dateToggle.disabled = input('brewed_at').disabled = false;
+      input('brewed_at').disabled = false;
       fieldset.disabled = false;
       saveButton.disabled = false;
       cancel.disabled = false;

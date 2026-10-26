@@ -119,7 +119,7 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
   assert.match(result.message, /Imported 1 bean and 1 brew session/);
   assert.equal(await sync(`return document.querySelector('[data-bean-id="${emptyBean.id}"] .session-count').textContent;`), '1 brew session');
   assert.equal(await sync(`return document.querySelector('[data-bean-id="${bean.id}"] .session-count').textContent;`), '0 brew sessions');
-  assert.equal(await sync(`return document.querySelector('.session-card[data-session-id="${brew.id}"] h3').textContent;`), emptyBean.name);
+  assert.equal(await sync(`return document.querySelector('.session-card[data-session-id="${brew.id}"] .session-name').textContent;`), emptyBean.name);
   const currentCounts = await counts();
   result = await importFiles([encoded('beans', beanKeys, [{ ...bean, id: `rollback-${tag}` }]),
     encoded('brew_sessions', sessionKeys, [{ ...brew, id: `orphan-${tag}`, bean_id: 'missing-bean' }])]);

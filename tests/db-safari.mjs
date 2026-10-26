@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { checkIO } from './io-checks.mjs';
 import { checkBrewingChart } from './brewing-chart-checks.mjs';
+import { checkBrewEditor } from './brew-editor-checks.mjs';
 // Start safaridriver and Vite first; Safari uses an isolated automation session.
 const endpoint = process.env.SAFARI_WEBDRIVER_URL ?? 'http://127.0.0.1:4444';
 const base = process.env.TEST_BASE_URL ?? 'http://127.0.0.1:5173/';
@@ -81,13 +82,17 @@ async function saveSession() {
   await waitFor(`!document.querySelector('.session-form fieldset').disabled`);
   await waitFor(`document.querySelector('.session-list').getAttribute('aria-busy') === 'false' && document.querySelector('.bean-list').getAttribute('aria-busy') === 'false'`);
 }
-const brewCards = () => sync(`return [...document.querySelectorAll('.session-card')].map(card => ({
-  id: card.dataset.sessionId, name: card.querySelector('h3').textContent,
+const brewCards = async () => {
+  await openBeans(); await openBrews();
+  await waitFor(`document.querySelector('.session-form').hidden || document.querySelector('.session-form').getAttribute('aria-busy') === 'false'`);
+  return sync(`return [...document.querySelectorAll('.session-card')].map(card => ({
+  id: card.dataset.sessionId, name: card.querySelector('.session-name').textContent,
   date: card.querySelector('time').dateTime,
-  metrics: Object.fromEntries([...card.querySelectorAll('.session-metrics > div')].map(field =>
+  metrics: Object.fromEntries([...document.querySelectorAll('.bean-session[data-session-id="' + card.dataset.sessionId + '"] .session-metrics > div')].filter(field => field.querySelector('dt').textContent !== 'Comment').map(field =>
     [field.querySelector('dt').textContent, field.querySelector('dd').textContent])),
-  comment: card.querySelector('.brew-comment')?.textContent ?? null,
+  comment: [...document.querySelectorAll('.bean-session[data-session-id="' + card.dataset.sessionId + '"] .session-metrics > div')].find(field => field.querySelector('dt').textContent === 'Comment')?.querySelector('dd').textContent.replace(/^—$/, '') || null,
 }));`);
+};
 async function submitBean(name, roast = '', freeze = '') {
   await sync(`
     const form = document.querySelector('.bean-form');
@@ -185,12 +190,14 @@ try {
     caption: table.caption.textContent, headings: [...table.tHead.rows[0].cells].map(cell => cell.textContent),
     rows: table.tBodies[0].rows.length,
   }));`), [
-    { caption: 'Input', headings: ['Field', 'Value'], rows: 6 },
-    { caption: 'Result', headings: ['Field', 'Value'], rows: 3 },
+    { caption: 'Input', headings: ['Field', 'Value'], rows: 5 },
+    { caption: 'Output', headings: ['Field', 'Value'], rows: 3 },
   ]);
+  assert.equal(await sync(`return getComputedStyle(document.querySelector('.tab-bar')).display;`), 'none');
+  assert.equal(await sync(`return getComputedStyle(document.querySelector('#brew-controller > h1')).display;`), 'none');
   const formLayout = await sync(`return {
     overflow: document.querySelector('.app-content').scrollWidth > document.querySelector('.app-content').clientWidth,
-    fields: [...document.querySelectorAll('.session-form input, .session-form select')].map(field => ({
+    fields: [...document.querySelectorAll('.session-form input, .session-form select')].filter(field => field.getBoundingClientRect().height > 0).map(field => ({
       font: getComputedStyle(field).fontSize, height: field.getBoundingClientRect().height,
     })),
     buttons: [...document.querySelectorAll('.save-session, .cancel-session')].map(button => button.getBoundingClientRect().height),
@@ -228,15 +235,18 @@ try {
   assert.equal(await extractionOutput(), '19.86%');
   await sync(`document.querySelector('.cancel-session').click();`);
   assert.equal(await sync(`return document.activeElement.classList.contains('new-session');`), true);
+  assert.notEqual(await sync(`return getComputedStyle(document.querySelector('.tab-bar')).display;`), 'none');
+  assert.notEqual(await sync(`return getComputedStyle(document.querySelector('#brew-controller > h1')).display;`), 'none');
   await openSession();
   assert.equal(await extractionOutput(), '—');
   assert.equal(await sync(`return document.querySelector('.session-form .brewing-chart-result').hasAttribute('hidden');`), true);
-  assert.deepEqual(await sync(`return [...document.querySelectorAll('.session-form input, .session-form select')].map(field => field.value);`), Array(9).fill(''));
+  assert.deepEqual(await sync(`return [...document.querySelectorAll('.session-form input, .session-form select')].filter(field => field.getBoundingClientRect().height > 0).map(field => field.value);`), Array(9).fill(''));
   const beforeBrews = await brewCards();
   const comment = "Tasting <img src=x onerror=alert(1)> & coffee's notes";
   const fields = { bean_id: cards[0].id, dose_g: '18', water_g: '300', time_str: '02:30',
     temp_c: '94', grind_um: '700', comment, yield_g: '250', tds_pct: '1.43' };
   await fillSession(fields);
+  await checkBrewEditor({ sync, api });
   await saveSession();
   assert.equal(await sync(`return document.querySelector('.session-form').hidden;`), true);
   let brews = await brewCards();
@@ -249,23 +259,15 @@ try {
   });
   assert.equal(await sync(`return document.querySelectorAll('.session-card img').length;`), 0);
   await api('/window/rect', { width: 393, height: 852 });
-  assert.equal(await sync(`return document.querySelector('.session-card').open;`), false);
   assert.equal(await sync(`return document.querySelector('.session-summary .session-ey').textContent;`), 'EY 19.86%');
   await sync(`document.querySelector('.session-summary').click();`);
-  await waitFor(`document.querySelector('.session-card .brewing-chart')`);
-  const expanded = await sync(`const card = document.querySelector('.session-card');
-    return { open: card.open, summary: card.querySelector('figcaption').textContent,
-      point: !card.querySelector('.brewing-chart-result').hasAttribute('hidden'),
-      overflow: document.querySelector('.app-content').scrollWidth > document.querySelector('.app-content').clientWidth,
-      height: card.querySelector('summary').getBoundingClientRect().height };`);
-  assert.equal(expanded.open, true);
-  assert.equal(expanded.point, true);
-  assert.match(expanded.summary, /19.86% extraction · 1.43% TDS/);
-  assert.equal(expanded.overflow, false);
-  assert.ok(expanded.height >= 44);
-  await sync(`document.querySelector('.session-summary').click();`);
-  assert.equal(await sync(`return document.querySelector('.session-card').open;`), false);
-  console.log('PASS compact brew summary, tap expansion/collapse, saved EY chart, and narrow layout');
+  await waitFor(`document.querySelector('.session-form').getAttribute('aria-busy') === 'false'`);
+  assert.equal(await sync(`return document.querySelector('.session-form h2').textContent;`), 'Edit Session');
+  assert.match(await sync(`return document.querySelector('.session-form figcaption').textContent;`), /19.86% extraction · 1.43% TDS/);
+  await checkBrewEditor({ sync, api });
+  await sync(`document.querySelector('.cancel-session').click();`);
+  assert.equal(await sync(`return document.querySelector('.session-form').hidden;`), true);
+  console.log('PASS session tap opens populated editor, saved chart, fixed actions and cancel');
   // Inspect the hidden Bean Manager before visiting it: saving must refresh both views immediately.
   let beanHistory = (await beanCards()).find(card => card.id === cards[0].id);
   assert.equal(beanHistory.sessions[0].id, brews[0].id);

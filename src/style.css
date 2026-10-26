@@ -251,10 +251,10 @@ fieldset:disabled button { cursor: wait; }
 details[open] > .bean-summary .session-count::after { content: ' ▴'; }
 details[open] > .bean-summary { margin-bottom: 12px; }
 .bean-actions { position: absolute; top: 12px; right: 8px; width: 44px; height: 44px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
-.bean-delete { position: absolute; inset: 0 0 0 auto; width: 96px; min-height: 44px; border: 0; background: #a72c3c; color: white; font: inherit; font-weight: 650; cursor: pointer; }
-.delete-revealed .bean-surface { transform: translateX(-96px); }
-.bean-delete:disabled { opacity: .65; }
-@media (prefers-reduced-motion: reduce) { .bean-surface { transition: none; } }
+.bean-delete, .session-delete { position: absolute; inset: 0 0 0 auto; width: 96px; min-height: 44px; border: 0; background: #a72c3c; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+.delete-revealed > :is(.bean-surface, .session-surface) { transform: translateX(-96px); }
+.bean-delete:disabled, .session-delete:disabled { opacity: .65; }
+@media (prefers-reduced-motion: reduce) { .bean-surface, .session-card .session-surface { transition: none; } }
 .bean-card h3 { margin: 0; font-size: 20px; font-weight: 650; }
 .bean-dates { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 16px 0; }
 .bean-dates dt, .session-metrics dt { color: var(--muted); font-size: 12px; }
@@ -272,12 +272,16 @@ details[open] > .bean-summary { margin-bottom: 12px; }
 .session-count-total { color: var(--muted); font-weight: 400; }
 .session-list { display: grid; gap: 8px; }
 .session-card { min-width: 0; overflow-wrap: anywhere; }
-.session-card.card { padding: 0; border-radius: 14px; }
+.session-card.card { position: relative; padding: 0; border-radius: 14px; overflow: hidden; }
+.session-surface { position: relative; display: flex; background: var(--surface); transition: transform 180ms ease; touch-action: pan-y pinch-zoom; }
+.session-surface .session-summary { min-width: 0; flex: 1; }
+.session-menu { flex: 0 0 44px; min-height: 44px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.session-card > .form-error { position: relative; margin: 0; padding: 12px; background: var(--surface); }
 .session-summary { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto 10px; align-items: center; gap: 10px; min-height: 60px; padding: 12px; cursor: pointer; list-style: none; }
 .session-summary::-webkit-details-marker { display: none; }
-.session-summary::after { content: '▾'; color: var(--muted); font-size: 12px; }
+.session-summary::after { content: '›'; color: var(--muted); font-size: 12px; }
 .session-card[open] > .session-summary::after { content: '▴'; }
-.session-summary h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.session-summary .session-name { margin: 0; font-size: 15px; font-weight: 650; }
 .session-summary time { color: var(--muted); font-size: 12px; }
 .session-ey { color: var(--accent); font-size: 12px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .session-details { padding: 0 14px 14px; border-top: 1px solid var(--border); }
@@ -387,3 +391,77 @@ button:disabled { opacity: 0.65; cursor: wait; }
 .bean-photo[hidden] { display: none; }
 .photo-preview { max-height: 14rem; }
 #bean-photo { max-width: 100%; }
+
+/* Give the brew editor the viewport; closing it restores the normal shell. */
+#app:has(#brew-controller:not([hidden]) .session-form:not([hidden])) .app-header,
+#app:has(#brew-controller:not([hidden]) .session-form:not([hidden])) .tab-bar,
+#brew-controller:has(.session-form:not([hidden])) > :is(.eyebrow, h1, .view-description) { display: none; }
+#app:has(#brew-controller:not([hidden]) .session-form:not([hidden])) .app-content {
+  padding: calc(12px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.session-form.card { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.session-form h2 { margin: 0 0 8px; font-size: 18px; }
+.session-form .brewing-chart { margin: 0 0 12px; }
+.session-form .brewing-chart h3, .spec-table thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.session-form .brewing-chart-svg { max-height: 240px; }
+.session-form .brewing-chart-summary { margin-top: 6px; font-size: 12px; line-height: 1.4; }
+.session-bean-field { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.session-bean-field .bean-selector-label { display: flex; align-items: center; flex-shrink: 0; min-height: 44px; margin: 0; cursor: pointer; }
+.session-bean-field .field-hint { display: none; }
+.session-bean-field select { flex: 1; width: 0; margin: 0; }
+.session-measurements { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.session-measurements > div { min-width: 0; }
+.session-form .spec-table { margin: 0; }
+.session-form .spec-table caption { padding-bottom: 6px; color: var(--accent); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+.session-form .spec-table th, .session-form .spec-table td { padding: 2px 0; }
+.session-form .spec-table th:first-child { width: 48%; padding-right: 6px; }
+.session-form .spec-table label { display: flex; align-items: center; min-height: 44px; font-size: 12px; cursor: pointer; }
+.session-form .spec-table input { padding: 8px 6px; text-align: right; font-variant-numeric: tabular-nums; }
+.session-form input[type='number'] { appearance: textfield; }
+.session-form input::-webkit-inner-spin-button, .session-form input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.session-form .spec-table output { padding: 12px 0; text-align: right; font-variant-numeric: tabular-nums; }
+.session-comment-field { margin-top: 12px; }
+.session-comment-field label { display: flex; align-items: center; min-height: 44px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.session-comment-field input { margin: 0; padding: 8px; }
+.session-optional-hint { margin: 12px 0; }
+.session-actions { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
+.session-actions .cancel-session { margin: 0; }
+@media (max-width: 420px) {
+  .session-form .brewing-chart-svg { max-height: 220px; }
+  .session-measurements { gap: 12px; }
+}
+
+/* Keep editor actions reachable independently of form scrolling. */
+.session-summary { width: 100%; border: 0; background: transparent; color: inherit; text-align: left; }
+#app:has(#brew-controller:not([hidden]) .session-form:not([hidden])) .app-content {
+  padding-bottom: calc(88px + env(safe-area-inset-bottom));
+}
+.session-actions {
+  position: fixed;
+  z-index: 10;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 24px #0003;
+}
+.session-date-field { display: flex; align-items: center; gap: 12px; margin: -8px 0 8px; }
+.session-date-field label { font-size: 12px; color: var(--muted); }
+.session-date-field input { min-width: 0; flex: 1; width: 0; margin: 0; padding: 8px; appearance: none; }
+@media (max-height: 780px) {
+  .session-form .brewing-chart-svg { max-height: 160px; }
+}
+@media (max-width: 420px) {
+  .session-form .brewing-chart-svg { max-height: 160px; }
+  .session-optional-hint { display: none; }
+}

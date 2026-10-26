@@ -462,6 +462,13 @@ export function deleteBean(beanId: string): Promise<void> {
   });
 }
 
+/** Remove only the explicitly selected session through the normal durable write path. */
+export function deleteBrewSession(id: string): Promise<void> {
+  return withDatabase(async (state) => {
+    await write(state, 'DELETE FROM brew_sessions WHERE id = ? RETURNING id', [id]);
+  });
+}
+
 export function addBrewSession(input: Omit<BrewSession, 'id' | 'brewed_at' | 'bean_name'>): Promise<BrewSession> {
   for (const value of [input.dose_g, input.water_g, input.temp_c, input.grind_um,
     input.yield_g, input.tds_pct, input.extraction_pct]) {
@@ -473,6 +480,25 @@ export function addBrewSession(input: Omit<BrewSession, 'id' | 'brewed_at' | 'be
         dose_g, water_g, time_str, temp_c, grind_um, comment, yield_g, tds_pct, extraction_pct`,
     [crypto.randomUUID(), input.bean_id, new Date().toISOString(), input.dose_g, input.water_g,
       input.time_str, input.temp_c, input.grind_um, input.comment, input.yield_g, input.tds_pct, input.extraction_pct]));
+}
+
+/** Update in place so IDs and bean history links survive editing. */
+export function updateBrewSession(id: string, input: Omit<BrewSession, 'id' | 'bean_name' | 'brewed_at'> & { brewed_at?: string }): Promise<BrewSession> {
+  for (const value of [input.dose_g, input.water_g, input.temp_c, input.grind_um,
+    input.yield_g, input.tds_pct, input.extraction_pct]) {
+    if (value !== null && !Number.isFinite(value)) return Promise.reject(new Error('Measurements must be finite numbers.'));
+  }
+  return withDatabase(async (state) => {
+    const existing = await queryRows(state.connection, 'SELECT id FROM brew_sessions WHERE id = ?', [id]);
+    if (!existing.length) throw new Error('This brew session no longer exists.');
+    return write<BrewSession>(state,
+      `UPDATE brew_sessions SET bean_id = ?, brewed_at = COALESCE(?::TIMESTAMP, brewed_at), dose_g = ?, water_g = ?,
+        time_str = ?, temp_c = ?, grind_um = ?, comment = ?, yield_g = ?, tds_pct = ?, extraction_pct = ?
+        WHERE id = ? RETURNING id, bean_id, strftime(brewed_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS brewed_at,
+        dose_g, water_g, time_str, temp_c, grind_um, comment, yield_g, tds_pct, extraction_pct`,
+      [input.bean_id, input.brewed_at ?? null, input.dose_g, input.water_g, input.time_str,
+        input.temp_c, input.grind_um, input.comment, input.yield_g, input.tds_pct, input.extraction_pct, id]);
+  });
 }
 
 /** Explicit teardown for development HMR and callers that no longer need the database. */

@@ -57,6 +57,9 @@ Bootstrap the local `uv` + `nodeenv` environment, scaffold the TypeScript + Vite
 - Headless Chrome confirmed Brew Controller is the default, all three tabs switch
   correctly, keyboard navigation works, and the main content scrolls above the
   fixed tab bar at mobile and desktop widths.
+- Final Safari IndexedDB and Firefox OPFS upgrade runs also confirmed that an
+  unchanged edit preserves sub-millisecond timestamps byte-for-byte in CSV
+  exports, including native date-input normalization.
 - Dev and preview responses include COOP `same-origin` and COEP `require-corp`.
 - Served `dist/` under `/coffeeos/` without server isolation headers: all relative
   assets, manifest, and icons loaded, and the service worker enabled
@@ -986,3 +989,228 @@ aligned with the name input on narrow screens, including iPhone 15 Pro width.
 - Physical iPhone/iPad date-picker interaction, keyboard/viewport behavior, Home
   Screen mode, hosted behavior, and previous-build storage upgrades remain
   unverified. Existing uncommitted project changes were preserved.
+
+---
+
+## Stage 14: Single-Page iPhone Brew Editor
+
+- [x] **Status:** Implemented; Firefox layout/production checks passed, Safari automation unavailable, physical iOS pending
+
+### Goal
+
+Fit brew entry into an iPhone 15 Pro portrait viewport, with the live extraction
+chart above compact input/output columns and field labels that focus their inputs.
+
+### Tasks
+
+1. Hide shell branding, Brew Controller introduction, and bottom navigation while
+   the brew editor is visible; restore them on cancel, save, or another view.
+2. Move the existing live chart above the bean selector and two measurement
+   groups, with inputs on the left, outputs and comment on the right.
+3. Retain native labeled inputs, decimal precision, optional fields, safe-area
+   padding, 16px input text, 44px controls, and recoverable save failures.
+4. Build, verify Safari regressions and exact 393×852 CSS-pixel layout, capture
+   a screenshot, and check local isolation headers and production subpath assets.
+
+### Acceptance Criteria (Stage 14 Gate)
+
+- The normal populated editor fits at 393×852 without scrolling or horizontal
+  overflow; all fields and Save/Cancel are visible with the keyboard closed.
+- The chart precedes the fields, input/output groups sit side by side, and
+  tapping an editable field label focuses its associated input.
+- Navigation and introductory headings are hidden only during visible brew
+  editing, then return on exit; the chart, save/cancel, and persistence still work.
+- Build and browser regressions pass, with Safari attempted first and a documented
+  Firefox fallback when unavailable. An exact-viewport screenshot is available;
+  physical-device and other unverified checks are stated.
+
+### Verification — 2026-10-26
+
+- Final `uv run npm run build` passed; Node resolves inside this project's
+  `.venv`. `git diff --check` passed.
+- Safari was attempted first, then retried with `uv run npm run test:safari`.
+  Both attempts failed to create an automation session: safaridriver timed out
+  connecting to Safari before any assertions ran. No Safari pass is claimed.
+- An initial isolated headless Firefox 158.0.1/macOS run passed the production UI suite under
+  `/CoffeeOS/`, using a temporary BiDi adapter for the Safari assertions:
+  startup/navigation, bean/session saves and reloads, live and saved charts,
+  cancel/reset and shell restoration, disclosure cards, CSV/Parquet UI exports
+  and re-imports, atomic invalid-import rejection, and import reload persistence.
+- After the final touch-target/number-input refinements, a production repeat
+  passed the editor, chart, save/reload, and IO export/import assertions but
+  Firefox exited during the final IO reload; adapter cleanup then timed out on
+  `browsingContext.close`. That repeat did not complete. The final-build targeted
+  editor capture/save-failure/retry/reload check passed separately. No browser
+  crash fix is claimed; the full final-build production rerun remains incomplete.
+- Added exact-width frame checks using the app's actual DOM and stylesheet.
+  At 320, 375, 393, and 430px, fields stayed in their columns without horizontal
+  overflow. At 393×852 the populated editor fitted without vertical scrolling,
+  both with no safe areas and simulated 59px top/34px bottom safe areas. All
+  nine editable labels focused their native controls; inputs retained 16px text
+  and at least 44px height. These are desktop layout checks, not native iOS tests.
+- Captured `.cache/brew-editor-iphone-15-pro.png` at 393×852 CSS pixels and 3×
+  device scale; its PNG dimensions are exactly 1179×2556, verified with `sips`.
+  The Firefox-rendered preview reserves simulated safe areas, contains sample
+  data, and excludes native system/browser chrome. It is not a device screenshot.
+- A targeted injected brew-insert failure passed: the draft and live extraction
+  remained visible, buttons re-enabled, navigation stayed hidden, retry saved
+  exactly once, shell navigation returned, and the saved session survived reload.
+- The development Firefox suite passed UI/chart checks, OPFS writes/reloads,
+  dates/nulls, histories, and tab ownership, then stopped in the pre-existing
+  capability-loss/fallback fixture with `Cannot inspect saved OPFS storage`.
+  A temporary assertion adaptation accepted that recovery error instead of the
+  expected `needs OPFS` wording, but fallback initialization still failed with
+  access deliberately removed. The full development storage suite did not pass;
+  no application storage change or fix is claimed. The targeted save-error check
+  above was run separately. Temporary Firefox adapters were not committed.
+- Dev and production preview returned COOP `same-origin` and COEP `require-corp`.
+  Production was served using `vite preview --base /CoffeeOS/` on port 4174;
+  compiled stylesheet and application assets resolved under the repository path.
+- Presentation and save-button disabled-state changes only. Storage identity,
+  database schema, startup, import/export formats, dependencies, service workers,
+  deployment origin, and hosting configuration are unchanged; no migration.
+- Physical iPhone/iPad touch, software keyboard, Home Screen safe-area/storage
+  lifecycle, previous-build storage upgrades, and actual host remain unverified.
+
+---
+
+## Stage 15: Direct Brew Session Editing and Fixed Save/Cancel
+
+- [x] **Status:** Implemented; Safari UI/layout and both storage upgrade checks passed; physical iOS pending
+
+### Goal
+
+Open existing brew sessions directly in the full editor and keep Save/Cancel
+attached to the bottom of the viewport for a fast iPhone workflow.
+
+### Tasks
+
+1. Replace session disclosures with accessible edit buttons and populate the
+   editor with the selected brew, including an editable local brew date/time.
+2. Save changes through a transactional update of the original record; preserve
+   IDs, unchanged dates, precision, nulls, whitespace, and imported EY values.
+   Recalculate EY when dose, yield, or TDS changes; keep cancel non-mutating.
+3. Fix the action bar to the viewport bottom, account for safe areas and reserve
+   content space; retain scroll access on shorter screens and with larger text.
+4. Verify Safari behavior, 393×852 geometry, failures/retry, reload persistence,
+   previous-build OPFS/IndexedDB upgrades, old backups, and production subpaths.
+
+### Acceptance Criteria (Stage 15 Gate)
+
+- Each brew-feed session opens a populated editor directly; all user-entered
+  values and bean association/date can be updated and saved without duplication.
+- Cancel discards changes; opening again restores saved values. Unchanged saves
+  retain exact data, including imported values and multiline/empty comments.
+- Save/Cancel stay at the screen bottom independently of scroll, with safe-area
+  padding. Normal 393×852 editing fits with the keyboard closed.
+- Failed edits retain the draft and existing stored record; retry and reload
+  preserve the edited record with its original ID.
+- Build and Safari checks pass; populated prior-build data and old CSV/Parquet
+  remain readable. Physical-device and other unverified paths are documented.
+
+### Verification — 2026-10-26
+
+- `uv run npm run build` and `git diff --check` passed. Node resolves to
+  `/Users/kkrol/Projects/CoffeeOS/.venv/bin/node`.
+- Desktop Safari 27.2 production UI suite passed at
+  `http://127.0.0.1:4176/CoffeeOS/`: startup/navigation, new-session saves,
+  direct edit opening, populated charts, cancel/reset, reloads, CSV/Parquet
+  exports/imports, duplicate prevention, and invalid-import rollback.
+- Safari exact-width frame checks passed at 320, 375, 393, and 430px without
+  horizontal overflow. New and existing editors fit 393×852 without scrolling,
+  including simulated 59px top/34px bottom safe areas. Controls retain 16px text
+  and 44px minimum height. Forced content scrolling leaves the action bar fixed
+  at the viewport bottom; field labels focus their inputs.
+- Populated upgrades from `2ccf66cbf840e9455d54f8b31d57b4df944e3bf6` passed in
+  isolated Safari (IndexedDB) and Firefox (OPFS), each replacing builds at the
+  same origin and profile. Exact records, old CSV/Parquet imports, reloads,
+  failed startup/migration recovery, and existing photo/deletion checks passed.
+  Safari selected IndexedDB when OPFS was requested; Firefox supplies the OPFS
+  verification, not a Safari OPFS pass.
+- Targeted edit checks passed on both backends: unchanged numeric precision,
+  dates, nulls, empty strings, multiline/whitespace comments and imported EY;
+  cancel/reopen; editing every field and bean relationship; original ID retained;
+  failure rollback and database reopen; retry, double-submit prevention and reload.
+- Final Safari IndexedDB and Firefox OPFS upgrade runs also confirmed that an
+  unchanged edit preserves sub-millisecond timestamps byte-for-byte in CSV
+  exports, including native date-input normalization.
+- Dev and preview responses include COOP `same-origin` and COEP `require-corp`;
+  production assets load under `/CoffeeOS/`.
+- No schema, storage identifiers, import/export formats, dependencies, service
+  worker, deployment origin, or hosting settings changed.
+- Physical iPhone/iPad touch, native date picker, software keyboard, browser
+  chrome, enlarged text, Home Screen safe areas/storage lifecycle, and deployed
+  host remain unverified. Desktop frame geometry is not a physical-device test.
+- Existing uncommitted Stage 14 changes were preserved and extended.
+
+---
+
+## Stage 16: Swipe to Delete Brew Sessions
+
+- [x] **Status:** Implemented; Safari UI/IndexedDB and Firefox OPFS checks passed; physical iOS pending
+
+### Goal
+
+Match Bean Manager's swipe-left delete interaction in the all-sessions feed,
+while retaining normal tap access to the full brew editor.
+
+### Tasks
+
+1. Reveal a separate Delete button on a deliberate left swipe; dismiss with a
+   right swipe or Escape, preserve vertical scrolling, and suppress swipe clicks.
+2. Provide the analogous keyboard-accessible actions button and delete only the
+   selected session through the existing transactional persistence path.
+3. Refresh session counts and bean histories, prevent repeated submissions, and
+   keep failed deletions recoverable with accurate post-commit warnings.
+4. Build and check Safari interactions, production subpath assets/isolation,
+   populated previous-build upgrades on both storage backends, and old backups.
+
+### Acceptance Criteria (Stage 16 Gate)
+
+- Left swipe reveals Delete without opening the editor or deleting anything;
+  normal tap opens the full editor. Right swipe/Escape dismiss; vertical scroll,
+  short gestures and cancelled gestures do not reveal deletion.
+- Actions/Delete are accessible buttons with at least 44px touch targets;
+  session cards fit phone widths without horizontal overflow.
+- Explicit Delete removes exactly the selected session, preserves all beans and
+  sibling records exactly, updates counts/histories, and survives reload.
+- Failed deletion preserves original durable records and permits retry; a
+  post-commit failure refreshes the collection and requests a backup.
+- Build and Safari checks pass; populated previous-build OPFS/IndexedDB fixtures
+  and old CSV/Parquet remain readable. Unverified device/host checks are recorded.
+
+### Verification — 2026-10-26
+
+- `uv run npm run build` passed; Node resolves inside the project's `.venv`.
+  Existing uncommitted Stage 14/15 work is preserved.
+- Desktop Safari 27.2/macOS passed the production `/CoffeeOS/` workflow suite:
+  startup/navigation, bean/session writes and reloads, direct edit/cancel,
+  charts, fixed editor actions, and CSV/Parquet UI import/export regressions.
+- Safari IndexedDB populated upgrade checks from
+  `2ccf66cbf840e9455d54f8b31d57b4df944e3bf6` passed at the same origin/profile:
+  exact records, old CSV/Parquet, reloads, failed startup/migration preservation,
+  and existing photo/bean deletion regressions.
+- Safari targeted session checks passed: swipe-click suppression, normal tap
+  editing, right swipe/Escape dismissal, keyboard actions, vertical/short/cancelled
+  gestures, one-session deletion, unchanged beans/siblings, count/history refresh,
+  rollback and retry, duplicate-click protection, and successful-delete reload.
+  Actual app DOM/CSS in exact-width frames fitted 320, 375, 393 and 430px without
+  horizontal overflow; Edit/Actions/Delete targets were at least 44×44px.
+- Post-commit CHECKPOINT failure shows the backup warning and refreshes the live
+  collection. The check deliberately does not promise durability after a failed
+  checkpoint; the committed collection remains available for backup. An initial
+  test assumed reload durability despite that injected failure; its expectation
+  was corrected. A separate initial test hook was also corrected across reloads.
+- Isolated headless Firefox OPFS populated upgrade checks passed from the same
+  previous revision and origin/profile: exact records, old backups, failed
+  startup/migration recovery, edits, all targeted session gesture/deletion
+  checks above, backup export after post-commit failure, and photo regressions.
+  Safari supplies IndexedDB verification; no Safari OPFS pass is claimed.
+- Development and production preview responses returned COOP `same-origin` and
+  COEP `require-corp`. Newly built JS/CSS resolved with HTTP 200 beneath
+  `/CoffeeOS/assets/`. `git diff --check` passed.
+- No schema, storage identifiers, field meanings, import/export formats,
+  dependencies, service workers, origin, or hosting settings changed.
+- Browser checks use isolated automation sessions and synthetic pointer gestures.
+  Physical iPhone/iPad touch/scroll arbitration, native keyboard, Home Screen
+  storage lifecycle and deployed-host behavior remain unverified.

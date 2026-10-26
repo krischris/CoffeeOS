@@ -1,4 +1,6 @@
 import './prepare-bean-upgrade.mjs';
+import { checkSessionEditing } from './session-edit-checks.mjs';
+import { checkSessionDeletion } from './session-delete-checks.mjs';
 import { photoChecks } from './photo-checks.mjs';
 import { firefoxAdapter } from './firefox-upgrade-adapter.mjs';
 import { createServer } from 'node:http';
@@ -84,7 +86,7 @@ async function openBeans() {
   await waitFor(`document.querySelector('.bean-list')?.getAttribute('aria-busy') === 'false'`);
 }
 try {
-  for (const mode of [process.env.TEST_FIREFOX ? 'opfs' : 'indexeddb']) {
+  for (const mode of (process.env.TEST_STORAGE_MODES?.split(',') ?? [process.env.TEST_FIREFOX ? 'opfs' : 'indexeddb'])) {
     build = 'previous';
     const created = await request('/session', { capabilities: { alwaysMatch: { browserName: 'safari' } } });
     session = created.sessionId;
@@ -255,6 +257,8 @@ try {
     // A new child can still be added: FK and table schema survive deletion.
     await evaluate(`const db = await getDB(); await db.addBrewSession({bean_id:${JSON.stringify(seeded.other.id)}, dose_g:null, water_g:null,time_str:null,temp_c:null,grind_um:null,comment:null,yield_g:null,tds_pct:null,extraction_pct:null});`);
     await api('/refresh', {}); await ready(); assert.equal((await state()).sessions.length, remaining.sessions.length + 1);
+    await checkSessionEditing({sync,evaluate,waitFor,api,ready});
+    await checkSessionDeletion({sync,evaluate,waitFor,api,ready});
     await photoChecks({sync,evaluate,waitFor,openBeans,api,ready,state});
     console.log('PASS', mode, 'previous-build upgrade at /CoffeeOS/, exact fields, old CSV/Parquet, failed open preservation, collapse/swipe/delete/reload', mode === 'indexeddb' ? 'and failed-delete rollback' : '');
     await api('', undefined, 'DELETE'); session = undefined;

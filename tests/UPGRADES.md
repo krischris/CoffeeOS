@@ -20,7 +20,11 @@ The test seeds the old build and exports its historical CSV/Parquet backups,
 replaces the served build at the same origin and `/CoffeeOS/` path, updates a
 service worker with changed script bytes, and checks exact records after reload.
 It verifies old backups, new writes, failed startup recovery, stored byte digests,
-lock exclusion, and the bean deletion regressions. Failure injection is confined
+lock exclusion, bean deletion regressions, and direct session editing/deletion.
+Session checks cover swipe versus tap, dismissal and scrolling, keyboard actions,
+phone-width controls, exact sibling/bean preservation, failed-delete rollback,
+retry, history/count refresh, post-commit warnings, and reload persistence.
+Failure injection is confined
 to automation fixtures. Safari currently selects IndexedDB; Firefox covers OPFS.
 Service-worker replacement runs with host isolation headers; it is not proof of
 GitHub Pages or physical iOS Home Screen behavior.

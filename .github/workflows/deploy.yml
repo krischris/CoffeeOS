@@ -25,6 +25,8 @@ jobs:
       # Hosted CI uses setup-node; local development uses uv + nodeenv.
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist

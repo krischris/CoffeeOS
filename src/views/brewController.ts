@@ -1,6 +1,7 @@
 import { CommittedWriteError, addBrewSession, updateBrewSession, deleteBrewSession, getBeans, getBrewSessions } from '../db';
 import type { BrewSession } from '../types';
 import { createBrewingChart } from './brewingChart';
+import { stabilizeEditorViewport } from './editorViewport';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -131,6 +132,7 @@ export function createBrewController(container: HTMLElement, options: {
       </section>
     </div>
     <form class="session-form card" aria-labelledby="new-session-heading" hidden>
+      <div class="session-body">
       <div class="session-heading">
         <h2 id="new-session-heading" tabindex="-1">New Session</h2>
         <label class="session-date-toggle" for="session-date" hidden>
@@ -184,11 +186,12 @@ export function createBrewController(container: HTMLElement, options: {
         </div>
         <p class="field-hint session-optional-hint">Measurements and comment are optional.</p>
       </fieldset>
+      <p class="form-error" role="alert" hidden></p>
+      </div>
       <div class="session-actions">
         <button class="secondary-button cancel-session" type="button">Cancel</button>
         <button class="primary-button save-session" type="submit">Save Session</button>
       </div>
-      <p class="form-error" role="alert" hidden></p>
     </form>`;
 
   const feed = container.querySelector<HTMLElement>('.brew-feed')!;
@@ -201,6 +204,7 @@ export function createBrewController(container: HTMLElement, options: {
   const dateToggle = form.querySelector<HTMLLabelElement>('.session-date-toggle')!;
   const dateLabel = dateToggle.querySelector<HTMLElement>('.session-date-label')!;
   form.querySelector('.session-heading')!.after(chart.element);
+  const editorViewport = stabilizeEditorViewport(form);
   function updateDateLabel(): void {
     const value = input('brewed_at').value;
     dateLabel.textContent = value ? new Date(value).toLocaleString(undefined, {
@@ -325,6 +329,7 @@ export function createBrewController(container: HTMLElement, options: {
 
   function showFeed(): void {
     ++pickerVersion;
+    editorViewport.reset();
     editing = null;
     form.reset();
     updateExtraction();

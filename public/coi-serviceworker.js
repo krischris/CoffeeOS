@@ -23,6 +23,11 @@ if (typeof window === 'undefined') {
 
     self.addEventListener("fetch", function (event) {
         const r = event.request;
+        // Only the same-origin OAuth helper document can communicate with Google's
+        // popup. Never weaken headers on the database page or other resources.
+        const helper = new URL('drive-auth.html', self.registration.scope);
+        const requested = new URL(r.url);
+        const isDriveAuth = r.mode === 'navigate' && requested.origin === helper.origin && requested.pathname === helper.pathname;
         if (r.cache === "only-if-cached" && r.mode !== "same-origin") {
             return;
         }
@@ -52,13 +57,13 @@ if (typeof window === 'undefined') {
                     }
 
                     const newHeaders = new Headers(response.headers);
-                    newHeaders.set("Cross-Origin-Embedder-Policy",
+                    newHeaders.set("Cross-Origin-Embedder-Policy", isDriveAuth ? 'unsafe-none' :
                         coepCredentialless ? "credentialless" : "require-corp"
                     );
                     if (!coepCredentialless) {
                         newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin");
                     }
-                    newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
+                    newHeaders.set("Cross-Origin-Opener-Policy", isDriveAuth ? 'same-origin-allow-popups' : 'same-origin');
 
                     return new Response(response.body, {
                         status: response.status,

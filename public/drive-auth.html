@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <title>Connect CoffeeOS to Google Drive</title>
+  <style>
+    body { color-scheme: dark; background: #0e1222; color: #edf0fa; font: 16px system-ui; max-width: 28rem; padding: 24px; margin: auto; }
+    button { font: inherit; min-height: 44px; padding: 12px 20px; cursor: pointer; }
+    p { line-height: 1.5; }
+  </style>
+  <script src="./drive-auth.js" defer></script>
+</head>
+<body>
+  <h1>Connect Google Drive</h1>
+  <p>Choose the Google account for CoffeeOS Backups. Connecting saves your collection, or recovers the most recently uploaded backup if your collection is empty.</p>
+  <button type="button" disabled>Continue with Google</button>
+  <p role="status" aria-live="polite">Preparing authorization…</p>
+  <p>You can close this window to cancel. Return to CoffeeOS and Disconnect if authorization does not finish.</p>
+</body>
+</html>

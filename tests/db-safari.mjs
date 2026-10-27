@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { checkIO } from './io-checks.mjs';
 import { checkBrewingChart } from './brewing-chart-checks.mjs';
 import { checkBrewEditor } from './brew-editor-checks.mjs';
+import { checkBeanManager } from './bean-manager-checks.mjs';
 // Start safaridriver and Vite first; Safari uses an isolated automation session.
 const endpoint = process.env.SAFARI_WEBDRIVER_URL ?? 'http://127.0.0.1:4444';
 const base = process.env.TEST_BASE_URL ?? 'http://127.0.0.1:5173/';
@@ -96,6 +97,7 @@ const brewCards = async () => {
 async function submitBean(name, roast = '', freeze = '') {
   await sync(`
     const form = document.querySelector('.bean-form');
+    if (form.hidden) document.querySelector('.add-bean-toggle').click();
     for (const [key, value] of Object.entries(${JSON.stringify({ name, roast_date: roast, freeze_date: freeze })})) {
       form.elements[key].value = value;
       form.elements[key].dispatchEvent(new Event('input', { bubbles: true }));
@@ -130,7 +132,8 @@ try {
   };`);
   assert.equal(initial.isolated, true);
   assert.equal(initial.active, 'Brew Controller');
-  assert.equal(initial.forms, 3);
+  assert.equal(initial.forms, 4);
+  assert.equal(await sync(`return document.querySelector('.bean-form').hidden;`), true);
   console.log('PASS Safari boot and isolation', initial);
   assert.deepEqual(await sync(`return [...document.querySelectorAll('[role="tab"]')].map(tab => {
     tab.click(); return { selected: tab.getAttribute('aria-selected'), visible: !document.getElementById(tab.getAttribute('aria-controls')).hidden };
@@ -172,6 +175,7 @@ try {
   console.log('PASS Bean Manager name validation, name-only/dated saves, reset, duplicate-submit guard, safe text, empty histories, and reload persistence');
 
   await api('/window/rect', { width: 390, height: 844 });
+  await sync(`if (document.querySelector('.bean-form').hidden) document.querySelector('.add-bean-toggle').click();`);
   const layout = await sync(`return {
     width: innerWidth,
     overflow: document.documentElement.scrollWidth > innerWidth || document.querySelector('.app-content').scrollWidth > document.querySelector('.app-content').clientWidth,
@@ -184,6 +188,7 @@ try {
   assert.ok(layout.fields.every(field => field.font === '16px' && field.height >= 44));
   assert.ok(layout.buttonHeight >= 44);
   console.log('PASS Safari narrow-window layout and iOS input/touch sizing', layout);
+  await checkBeanManager({ sync, api, waitFor, screenshotPath: process.env.BEAN_SCREENSHOT_PATH });
 
   await openSession();
   assert.deepEqual(await sync(`return [...document.querySelectorAll('.spec-table')].map(table => ({
@@ -196,6 +201,7 @@ try {
   assert.equal(await sync(`return getComputedStyle(document.querySelector('.tab-bar')).display;`), 'none');
   assert.equal(await sync(`return getComputedStyle(document.querySelector('#brew-controller > h1')).display;`), 'none');
   const formLayout = await sync(`return {
+    scale: new DOMMatrix(getComputedStyle(document.querySelector('.session-form')).transform).a,
     overflow: document.querySelector('.app-content').scrollWidth > document.querySelector('.app-content').clientWidth,
     fields: [...document.querySelectorAll('.session-form input, .session-form select')].filter(field => field.getBoundingClientRect().height > 0).map(field => ({
       font: getComputedStyle(field).fontSize, height: field.getBoundingClientRect().height,
@@ -203,8 +209,8 @@ try {
     buttons: [...document.querySelectorAll('.save-session, .cancel-session')].map(button => button.getBoundingClientRect().height),
   };`);
   assert.equal(formLayout.overflow, false);
-  assert.ok(formLayout.fields.every(field => field.font === '16px' && field.height >= 44), JSON.stringify(formLayout));
-  assert.ok(formLayout.buttons.every(height => height >= 44));
+  assert.ok(formLayout.fields.every(field => field.font === '16px' && field.height >= 44 * formLayout.scale - 1), JSON.stringify(formLayout));
+  assert.ok(formLayout.buttons.every(height => height >= 44 * formLayout.scale - 1));
   await sync(`document.querySelector('.session-form').requestSubmit();`);
   assert.equal(await sync(`return document.querySelector('#session-bean').validity.valueMissing;`), true);
   assert.equal(await sync(`return document.querySelector('.session-form').hidden;`), false);

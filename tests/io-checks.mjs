@@ -14,85 +14,32 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
   await waitFor(`document.querySelector('.session-list').getAttribute('aria-busy') === 'false'`);
   const before = await counts();
   await sync(`document.querySelector('#tab-io').click();`);
-  await sync(`document.querySelector('.io-import').requestSubmit();`);
-  assert.match(await sync(`return document.querySelector('.import-error').textContent;`), /Choose/);
+  await sync(`document.querySelector('.io-legacy').open = true; document.querySelector('.legacy-import').requestSubmit();`);
+  assert.match(await sync(`return document.querySelector('.legacy-error').textContent;`), /Choose/);
   const layout = await sync(`return {
     overflow: document.querySelector('.app-content').scrollWidth > document.querySelector('.app-content').clientWidth,
-    fields: [...document.querySelectorAll('#io input, #io select')].map(field => ({
-      font: getComputedStyle(field).fontSize, height: field.getBoundingClientRect().height })),
-    buttons: [...document.querySelectorAll('#io fieldset button')].map(button => button.getBoundingClientRect().height),
+    fields: [...document.querySelectorAll('#io input')].map(field => ({font:getComputedStyle(field).fontSize,height:field.getBoundingClientRect().height})),
+    buttons: [...document.querySelectorAll('#io fieldset button')].filter(button => button.getBoundingClientRect().height > 0).map(button => button.getBoundingClientRect().height),
   };`);
   assert.equal(layout.overflow, false);
   assert.ok(layout.fields.every(field => field.font === '16px' && field.height >= 44), JSON.stringify(layout));
   assert.ok(layout.buttons.every(height => height >= 44));
-
+  // Historical exporters remain data-layer fixtures; they are absent from normal UI.
   async function exportFiles(format, combined = false) {
-    await sync(`document.querySelector('#export-layout').value = '${combined ? 'combined' : 'tables'}';
-      document.querySelector('[data-format="${format}"]').click();`);
-    await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
-    assert.equal(await sync(`return document.querySelector('.export-error').hidden;`), true,
-      await sync(`return document.querySelector('.export-error').textContent;`));
-    return evaluate(`return await Promise.all([...document.querySelectorAll('.download-file')].map(async link => ({
-      name: link.download, data: [...new Uint8Array(await (await fetch(link.href)).arrayBuffer())], href: link.href,
-    })));`);
+    return evaluate(`return (await (await getDB()).exportData('${format}', ${combined})).map(f => ({...f,data:Array.from(f.data)}));`);
   }
   async function importFiles(files) {
-    await sync(`const form = document.querySelector('.io-import'); form.reset();
+    await sync(`const form = document.querySelector('.legacy-import'); form.reset();
       for (const item of ${JSON.stringify(files)}) {
-        const transfer = new DataTransfer();
-        transfer.items.add(new File([new Uint8Array(item.data)], item.name));
+        const transfer = new DataTransfer(); transfer.items.add(new File([new Uint8Array(item.data)], item.name));
         form.elements[item.target].files = transfer.files;
       }
       form.requestSubmit(); form.requestSubmit();`);
     await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
     await waitFor(`document.querySelector('.bean-list').getAttribute('aria-busy') === 'false' && document.querySelector('.session-list').getAttribute('aria-busy') === 'false'`);
-    return sync(`return { error: !document.querySelector('.import-error').hidden,
-      message: document.querySelector('.import-status').textContent,
-      detail: document.querySelector('.import-error').textContent };`);
+    return sync(`return { error: !document.querySelector('.legacy-error').hidden,
+      message: document.querySelector('.legacy-status').textContent, detail: document.querySelector('.legacy-error').textContent };`);
   }
-  for (const format of ['csv', 'parquet']) {
-    const files = await exportFiles(format);
-    assert.deepEqual(files.map(file => file.name), [`beans.${format}`, `brew_sessions.${format}`]);
-    if (format === 'parquet') assert.ok(files.every(file => String.fromCharCode(...file.data.slice(0, 4)) === 'PAR1'));
-    else assert.match(new TextDecoder().decode(new Uint8Array(files[0].data)), /^"?id"?,/);
-    const imported = await importFiles(files.map((file, index) => ({ ...file, target: index ? 'brew_sessions' : 'beans' })));
-    assert.equal(imported.error, false, imported.detail);
-    assert.match(imported.message, new RegExp(`Imported ${before.beans} beans and ${before.sessions} brew sessions`));
-    assert.deepEqual(await counts(), before);
-    const combined = await exportFiles(format, true);
-    assert.equal(combined.length, 1);
-    assert.equal(combined[0].name, `coffeeos.${format}`);
-    const merged = await importFiles([{ ...combined[0], target: 'combined' }]);
-    assert.equal(merged.error, false, merged.detail);
-    assert.deepEqual(await counts(), before);
-  }
-  await sync(`Object.defineProperty(navigator, 'canShare', { configurable: true, writable: true, value: ({ files }) => files.length > 0 });
-    Object.defineProperty(navigator, 'share', { configurable: true, writable: true, value: async ({ files }) => {
-      window.__sharedFileNames = files.map(file => file.name);
-    } });`);
-  try {
-    await exportFiles('csv');
-    assert.equal(await sync(`return document.querySelector('.share-files').hidden;`), false);
-    await sync(`document.querySelector('.share-files').click();`);
-    await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
-    assert.deepEqual(await sync(`return window.__sharedFileNames;`), ['beans.csv', 'brew_sessions.csv']);
-    await sync(`navigator.share = async () => { throw new DOMException('Cancelled', 'AbortError'); };
-      document.querySelector('.share-files').click();`);
-    await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
-    assert.equal(await sync(`return document.querySelector('.export-error').hidden;`), true);
-    await sync(`navigator.share = async () => { throw new Error('Unsupported share'); };
-      document.querySelector('.share-files').click();`);
-    await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
-    assert.match(await sync(`return document.querySelector('.export-error').textContent;`), /Save links/);
-    assert.equal(await sync(`return document.querySelectorAll('.download-file').length;`), 2);
-    await sync(`navigator.canShare = () => false;`);
-    await exportFiles('csv');
-    assert.equal(await sync(`return document.querySelector('.share-files').hidden;`), true);
-  } finally {
-    await sync(`delete navigator.share; delete navigator.canShare; delete window.__sharedFileNames;`);
-  }
-  console.log('PASS IO two-file and combined CSV/Parquet exports, file contents, duplicate-free UI re-imports, import counts, and narrow layout');
-
   const tag = String(Date.now());
   const bean = { id: `000${tag}`, name: `IO's <img src=x> 咖啡, "quoted"\nSecond line`, roast_date: '2026-10-01', freeze_date: null, created_at: '2026-10-25T10:20:30.123Z' };
   const emptyBean = { ...bean, id: `empty-${tag}`, name: 'No sessions', roast_date: null };

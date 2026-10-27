@@ -24,6 +24,10 @@ lock exclusion, bean deletion regressions, and direct session editing/deletion.
 Session checks cover swipe versus tap, dismissal and scrolling, keyboard actions,
 phone-width controls, exact sibling/bean preservation, failed-delete rollback,
 retry, history/count refresh, post-commit warnings, and reload persistence.
+Bean edit checks cover both swipe directions and menu actions, shared-form
+prefill/cancel/save, unchanged CSV fidelity, linked-session preservation,
+photo replacement/removal, failed-edit rollback/retry and committed-flush recovery.
+Safari also checks edit-form phone geometry and saves a screenshot in `.cache/`.
 Failure injection is confined
 to automation fixtures. Safari currently selects IndexedDB; Firefox covers OPFS.
 Service-worker replacement runs with host isolation headers; it is not proof of
@@ -56,3 +60,70 @@ An origin change is outside this update. Before such a deployment, retain access
 to the old origin, export and verify a backup there, import/verify on the new
 origin, and retain the original until recovery has been confirmed. Browser
 storage will not follow an origin change automatically.
+
+Stage 22 adds fflate 0.8.3 for portable `.coffeeos` archives. The fixture builder
+compares lockfiles: equal packages may share the installed toolchain; differing
+packages install the previous lockfile with `npm ci --ignore-scripts` into the
+old fixture and build it with that installation. Candidate sources use the
+project's separately installed current dependencies. No equality guard is bypassed.
+The production `/CoffeeOS/` upgrade suite additionally prepares an archive,
+previews an overwrite without applying it, confirms the atomic merge, reloads,
+and downloads/validates the additive pre-import recovery copy. Header assertions
+cover COOP/COEP on this isolated host; deployment headers remain a separate check.
+
+Focused archive checks: with Vite/Safari driver running,
+`uv run npm run test:backups`. For OPFS use
+`TEST_FIREFOX=1 uv run npm run test:backups` with the isolated Firefox endpoint.
+`uv run python tests/backup-interoperability.py` requires PyArrow in the local
+`.venv` and independently verifies the generated `docs/fixtures/example-v1.coffeeos`.
+It also creates a Python DEFLATE repack and malformed Parquet fixtures in
+`.cache/backups`; the next browser run verifies these optional generated fixtures.
+`uv run node tests/measure-backup-memory.mjs` runs a unique-photo Safari fixture
+and records coarse peak RSS for newly started Safari/WebKit processes. The
+measurement includes shared/native process memory, not just archive buffers or
+JavaScript heap, and does not establish a safe physical iPhone memory budget.
+
+Stage 24 adds optional Drive backup and a helper-only isolation exception. For
+the recent-build populated upgrade use `TEST_PREVIOUS_REF=abcddcd` with the same
+Safari/Firefox upgrade commands. The harness detects whether the old fixture
+actually needs the photo migration, preserves existing photos, and only injects
+legacy migration failures when that migration applies. Startup diagnostics stay
+in test fixtures. The original pinned legacy fixture remains the default.
+
+With Vite and Safari WebDriver running, `uv run npm run test:drive` checks the
+simulated GIS helper, shared in-app self-tests, mocked Drive transfer with actual
+DuckDB empty recovery, revision/race guards, rollback, reload and normal
+connection controls. Set `TEST_BASE_URL` if Vite uses a port other than 5173. Use `TEST_FIREFOX=1`
+for the same OPFS checks in an isolated Firefox profile. These are not real
+Google OAuth/transfer verification.
+
+After `uv run npm run build`, start
+`uv run npm run preview -- --host 127.0.0.1 --port 4174 --base /CoffeeOS/` and run
+`uv run node tests/drive-isolation.mjs`. Its isolated Safari session serves the
+built app on port 5176 without host isolation headers, installs the previous
+isolation worker, then verifies the helper can update that worker, retain its
+one-time BroadcastChannel, and leave the database page isolated. It also checks
+native production preview headers. Google is never loaded in that test.
+
+Google configuration and the normal IO connection flow are documented in
+`docs/google-drive-backups.md`. Live authorization, a real Drive round trip,
+fresh-profile recovery and physical iOS/Home Screen checks remain separate gates.
+
+Stage 27 extends the populated upgrade checks with database-worker error,
+message-decoding failure and silent-instantiation cases. Use
+`TEST_PREVIOUS_REF=f5babb8` to upgrade from the deployed Stage 24 build. Fixture
+injection adds a worker URL query and shortens the 120-second deadline only in
+automation; production identifiers/URLs remain unchanged. Each failure compares
+durable storage hashes, checks the recoverable error and uses Reload to reopen
+exact records. A separate simulated elapsed-time check verifies that pending
+startup exposes read-only details after ten seconds. Document identifiers in the
+fixture synchronize Reload before readiness checks; no automatic test retry
+conceals an application startup error.
+
+
+Stage 28 uses the registered public Google client and removes manual ID entry and
+in-app test controls. `test:drive` loads its shared checks from
+`tests/driveChecks.ts`; production does not import them. Real Google testing was
+deferred at the user's request. Only `https://krischris.github.io` is authorized;
+localhost regressions continue to mock OAuth and Drive. Populated upgrade checks
+use `TEST_PREVIOUS_REF=a0a427d` for the preceding build.

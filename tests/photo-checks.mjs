@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 export async function photoChecks({sync, evaluate, waitFor, openBeans, api, ready, state}) {
   await openBeans();
+  await sync(`if(document.querySelector('.bean-form').hidden)document.querySelector('.add-bean-toggle').click();`);
   await evaluate(`const canvas=document.createElement('canvas');canvas.width=2400;canvas.height=1800;
     canvas.getContext('2d').fillRect(0,0,2400,1800);
     const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
@@ -17,7 +18,7 @@ export async function photoChecks({sync, evaluate, waitFor, openBeans, api, read
   const before=await state();
   const bean=before.beans.find(bean=>bean.name==='Photo bean');
   assert.equal(bean.photo_jpeg,photo.src);
-  await sync(`document.querySelector('[data-bean-id="${bean.id}"] details').open=true;`);
+  await sync(`document.querySelector('[data-bean-id="${bean.id}"] summary').click();`);
   assert.equal(await sync(`return document.querySelector('[data-bean-id="${bean.id}"] .bean-photo').src;`),photo.src);
   for (const format of ['csv','parquet']) for (const combined of [false,true]) {
     await evaluate(`const db=await getDB();const files=await db.exportData('${format}',${combined});
@@ -30,6 +31,7 @@ export async function photoChecks({sync, evaluate, waitFor, openBeans, api, read
   assert.deepEqual(await state(),before);
   await api('/refresh',{});await ready();assert.deepEqual(await state(),before);
   await openBeans();
+  await sync(`if(document.querySelector('.bean-form').hidden)document.querySelector('.add-bean-toggle').click();`);
   await evaluate(`const transfer=new DataTransfer();transfer.items.add(new File(['invalid'],'bad.jpg',{type:'image/jpeg'}));
     const input=document.querySelector('#bean-photo');input.files=transfer.files;input.dispatchEvent(new Event('change'));`);
   await waitFor(`!document.querySelector('.bean-form .form-error').hidden`);

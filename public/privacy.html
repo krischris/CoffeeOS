@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="About CoffeeOS and how it handles local coffee records and optional Google Drive backups." />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0e1222" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="stylesheet" href="./privacy.css" />
+    <title>About &amp; privacy · CoffeeOS</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #0e1222; color: #f5f4f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+      body > header, body > main { padding: 24px max(24px, env(safe-area-inset-right)) 24px max(24px, env(safe-area-inset-left)); }
+      body > header { padding-top: calc(16px + env(safe-area-inset-top)); border-bottom: 1px solid #363c50; }
+      body > header a { display: inline-flex; align-items: center; min-height: 44px; color: #d4a68d; text-underline-offset: 3px; }
+      body > main { padding-top: 32px; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+      :focus-visible { outline: 3px solid #d4a68d; outline-offset: 4px; }
+    </style>
+  </head>
+  <body>
+    <header><a href="./">Back to CoffeeOS</a></header>
+    <main class="privacy-content">
+      <h1>About CoffeeOS</h1>
+      <p>CoffeeOS is a coffee journal for your beans, brew sessions, photos and tasting notes. Your collection is stored on your device. You can export and import backup files, and optionally connect Google Drive to back up or restore your collection.</p>
+      <p>CoffeeOS is maintained by <a href="https://github.com/krischris">krischris</a>. The source code and project contact are available on <a href="https://github.com/krischris/CoffeeOS">GitHub</a>.</p>
+
+      <h2 id="privacy-policy">Privacy policy</h2>
+      <p class="policy-date">Effective date: <time datetime="2026-10-27">27 October 2026</time></p>
+      <p>CoffeeOS has no developer-operated backend for your records or Google account details. The app does not send those details to its developer. It has no advertising, analytics or tracking cookies, and does not sell your data or use it to train AI models.</p>
+
+      <h3>Your collection stays on your device by default</h3>
+      <p>The beans, brew sessions, dates, measurements, photos and comments you enter or import are processed and stored in your browser. Photos are resized on your device. Local recovery copies may be kept when you import records. You can use the coffee journal without a Google account.</p>
+      <p>Downloading a backup saves a copy where your browser or device puts downloads. If you choose Share, the file goes to the destination you select. Those copies are under your control; CoffeeOS does not receive them.</p>
+
+      <h3>Google Drive is optional</h3>
+      <p>When you choose Connect Google Drive, Google handles sign-in and asks for permission. CoffeeOS receives your email address, a Google account identifier and a temporary access token. The app uses these to verify and display the connected account and authorize backup transfers. It does not receive your Google password.</p>
+      <p>CoffeeOS requests Google sign-in and email permissions, plus <code>drive.file</code> access. This limits Drive access to files created by the app or explicitly shared with it, rather than your entire Drive. CoffeeOS uses that access for its CoffeeOS Backups folder and backup files.</p>
+      <p>Connecting starts one sync. If your collection contains records, it uploads a snapshot, including photos and comments, directly from your browser to your Google Drive. If your local collection is empty, it can download the most recently uploaded backup and restore it after validation. Sync now repeats this once. There is no background sync; earlier cloud backups are kept.</p>
+      <p>Transfers also use file metadata such as names, IDs, creation times, sizes and integrity checks to find and verify backups. Google account details and the access token stay in memory for the connection; CoffeeOS does not save them in its database, backups or persistent browser storage. Reloading, closing the page or choosing Disconnect clears the app's connection. Google's own login session and permission grant may remain.</p>
+      <p>CoffeeOS uses Google user data only for the account display and backup/restore features described here. It does not send it to the developer or to advertising or analytics services. Its use of information received from Google APIs follows the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including its Limited Use requirements.</p>
+
+      <h3>Hosting and Google services</h3>
+      <p>GitHub Pages hosts this website and receives the network requests needed to deliver it. GitHub states that it logs visitors' IP addresses for security purposes. See the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.</p>
+      <p>If you connect Drive, your browser also contacts Google for sign-in, account verification and backup transfers. Google processes these requests and stores your Drive backups under its own terms and <a href="https://policies.google.com/privacy">Privacy Policy</a>. CoffeeOS does not control GitHub's or Google's retention practices or where they process service data.</p>
+
+      <h3>Retention, deletion and your choices</h3>
+      <ul>
+        <li><strong>Local data:</strong> records remain in browser storage until you remove them or the browser/device clears them. You can edit or delete records in CoffeeOS. To remove all local data, including recovery copies, clear this site's data in your browser settings. Export a backup first if you want to keep your collection.</li>
+        <li><strong>Drive backups:</strong> snapshots remain in your Google Drive until you delete them there. Editing or deleting a record locally does not change earlier snapshots. To remove cloud copies, delete the relevant CoffeeOS backups in Drive and empty Drive's trash as appropriate.</li>
+        <li><strong>Google access:</strong> Disconnect clears the app's temporary connection and cancels pending work where possible; a request already accepted by Google may finish. It does not delete local or cloud records or revoke Google's permission grant. You can revoke access separately in your <a href="https://myaccount.google.com/connections">Google Account connections</a>.</li>
+        <li><strong>Exported or shared files:</strong> delete copies from downloads, file storage or recipients separately. Deleting data in CoffeeOS does not remove those copies.</li>
+      </ul>
+      <p>Google requests use HTTPS. CoffeeOS does not add password protection or end-to-end encryption to your local records or backup files. Protect your device, Google account and exported files accordingly. Browser storage can be lost, so keep backups of records you want to retain.</p>
+
+      <h3>Questions and changes</h3>
+      <p>For privacy questions or requests, contact the maintainer through the <a href="https://github.com/krischris/CoffeeOS">CoffeeOS GitHub project</a>. GitHub issues are public: include only information you are comfortable making public. The developer cannot retrieve or delete records stored only on your device or in your Google Drive.</p>
+      <p>This policy will be updated when CoffeeOS's data practices change, with a revised effective date. If Google data would be used for a new purpose, users will be informed and asked for consent before that use begins.</p>
+    </main>
+  </body>
+</html>

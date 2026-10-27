@@ -1,8 +1,10 @@
 import './style.css';
-import { initDB, DatabaseStartupError, getStorageMode } from './db';
+import { initDB, DatabaseStartupError, getStorageMode, getDatabaseStartupPhase } from './db';
+import { createStartupView } from './startupView';
 import { createBeanManager } from './views/beanManager';
 import { createBrewController } from './views/brewController';
 import { createIOView } from './views/ioView';
+import { createAboutView } from './views/aboutView';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 
@@ -10,23 +12,16 @@ if (!app) {
   throw new Error('Missing #app element');
 }
 
-app.innerHTML = '<p class="startup-status" role="status">Loading your coffee data…</p>';
-app.setAttribute('aria-busy', 'true');
+const startup = createStartupView(app, getDatabaseStartupPhase);
 try {
   await initDB();
 } catch (error) {
   console.error('Could not initialize the coffee database.', error);
-  app.setAttribute('aria-busy', 'false');
-  app.innerHTML = `
-    <div class="startup-status" role="alert">
-      <p>Your coffee data could not be opened. Please reload to try again.</p>
-      <button type="button">Reload</button>
-    </div>`;
-  if (error instanceof DatabaseStartupError) app.querySelector('p')!.textContent = error.message;
-  app.querySelector('button')?.addEventListener('click', () => window.location.reload());
+  startup.failed(error instanceof DatabaseStartupError ? error.message : 'Your coffee data could not be opened. Please reload to try again.', error);
 }
 
 if (app.getAttribute('aria-busy') === 'true') {
+  startup.ready();
   renderShell(app);
   app.setAttribute('aria-busy', 'false');
 }
@@ -62,7 +57,10 @@ function renderShell(app: HTMLDivElement): void {
   app.innerHTML = `
     <header class="app-header">
       <a class="wordmark" href="./" aria-label="coffeos home">coffeos<span aria-hidden="true">.</span></a>
-      <span class="header-note">A little space for better coffee</span>
+      <a class="about-link" href="./privacy.html" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.01"/></svg>
+        <span>About &amp; privacy</span>
+      </a>
     </header>
     <main class="app-content">
       ${getStorageMode() === 'memory' ? '<p class="storage-warning" role="alert">Storage is unavailable. Your coffee data will be lost when this tab closes. Export a backup from IO before leaving.</p>' : ''}
@@ -95,6 +93,7 @@ function renderShell(app: HTMLDivElement): void {
     </nav>
   `;
 
+  createAboutView(app);
   const tabs = Array.from(app.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
   const panels = Array.from(app.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
   const beanContainer = document.createElement('div');
@@ -106,7 +105,7 @@ function renderShell(app: HTMLDivElement): void {
     onSaved: () => beanManager.refresh(),
     onAddBean: () => {
       activateTab(1);
-      app.querySelector<HTMLInputElement>('#bean-name')!.focus();
+      beanManager.openForm();
     },
   });
   void brewController.refresh();

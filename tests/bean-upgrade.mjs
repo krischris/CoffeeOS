@@ -1,7 +1,10 @@
-import './prepare-bean-upgrade.mjs';
+import { checkDriveRestore } from './drive-restore-checks.mjs';
+import { checkBackupUpgrade } from './backup-upgrade-checks.mjs';
 import { checkSessionEditing } from './session-edit-checks.mjs';
 import { checkSessionDeletion } from './session-delete-checks.mjs';
 import { photoChecks } from './photo-checks.mjs';
+import { checkBeanManager } from './bean-manager-checks.mjs';
+import { checkBeanEditing } from './bean-edit-checks.mjs';
 import { firefoxAdapter } from './firefox-upgrade-adapter.mjs';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -9,13 +12,22 @@ import { resolve, extname } from 'node:path';
 let build = 'previous';
 let failStartup = false;
 let failPhotoMigration = '';
+let failWorker = '';
 const mime = {'.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm'};
 const server = createServer(async (req, res) => {
   try {
-    const path = new URL(req.url, 'http://localhost').pathname;
+    const requested = new URL(req.url, 'http://localhost');
+    const path = requested.pathname;
     if (!path.startsWith('/CoffeeOS/')) { res.writeHead(404).end(); return; }
     const relative = path.slice('/CoffeeOS/'.length) || 'index.html';
     let data = await readFile(resolve('.cache/bean-upgrade', build, relative));
+    if (relative.includes('.worker-') && requested.searchParams.has('startup-failure')) {
+      data = Buffer.from(requested.searchParams.get('startup-failure') === 'error' ? "throw new Error('Injected database worker load failure');" : '');
+    }
+    if (relative === 'index.html' && failWorker) data = Buffer.from(data.toString().replace('<head>', `<head><script>
+      const RealWorker=Worker;window.Worker=class extends RealWorker{constructor(url,options){const target=new URL(url,location.href);target.searchParams.set('startup-failure','${failWorker}');super(target,options);if('${failWorker}'==='message')setTimeout(()=>this.dispatchEvent(new MessageEvent('messageerror')),0);}};
+      const realTimeout=window.setTimeout;window.setTimeout=(fn,delay,...args)=>realTimeout(fn,delay===120000?100:delay,...args);
+    </script>`));
     if (relative === 'index.html' && failStartup) data = Buffer.from(data.toString().replace('<head>', "<head><script>indexedDB.open = () => {throw new Error('Injected upgrade permission failure');};</script>"));
     if (relative === 'index.html' && failPhotoMigration) data = Buffer.from(data.toString().replace('<head>', `<head><script>window.__failPhotoMigration=${failPhotoMigration === 'alter'}; const put=IDBObjectStore.prototype.put; IDBObjectStore.prototype.put=function(value,key){if(${failPhotoMigration === 'copy'} && key==='schema-v1-before-photos') throw new Error('Injected recovery-copy failure');return put.call(this,value,key);};</script>`));
     res.writeHead(200, {'Content-Type': mime[extname(relative)] ?? 'application/octet-stream',
@@ -23,11 +35,15 @@ const server = createServer(async (req, res) => {
     res.end(relative === 'coi-serviceworker.js' ? Buffer.concat([data, Buffer.from('\n// Upgrade fixture: ' + build)]) : data);
   } catch { res.writeHead(404).end(); }
 });
-await new Promise(resolve => server.listen(5175, '127.0.0.1', resolve));
+await new Promise((resolve, reject) => { server.once('error', reject); server.listen(5175, '127.0.0.1', resolve); });
+await import('./prepare-bean-upgrade.mjs');
 import assert from 'node:assert/strict';
 // Start safaridriver and Vite first; Safari uses an isolated automation session.
 const endpoint = process.env.SAFARI_WEBDRIVER_URL ?? 'http://127.0.0.1:4444';
 const base = 'http://127.0.0.1:5175/CoffeeOS/';
+const response = await fetch(base);
+assert.equal(response.headers.get('Cross-Origin-Opener-Policy'), 'same-origin');
+assert.equal(response.headers.get('Cross-Origin-Embedder-Policy'), 'require-corp');
 let session;
 const firefoxRequest = process.env.TEST_FIREFOX ? await firefoxAdapter() : null;
 async function request(path, body, method = body === undefined ? 'GET' : 'POST') {
@@ -47,6 +63,7 @@ const evaluate = (script) => api('/execute/async', {
   script: `const done = arguments[arguments.length - 1];
     (async () => {
       const getDB = async () => window.__testDB;
+      const getBackups = async () => window.__testBackups;
       ${script}
     })().then(value => done({ value }), error => done({ error: String(error), stack: error.stack }));`,
   args: [],
@@ -58,7 +75,7 @@ async function ready() {
   for (let i = 0; i < 100; i++) {
     const state = await sync(`return { ready: document.querySelector('#app')?.getAttribute('aria-busy') === 'false',
       startupError: document.querySelector('.startup-status[role="alert"]')?.textContent };`);
-    if (state.startupError) { await evaluate('await (await getDB()).initDB();'); throw new Error(state.startupError); }
+    if (state.startupError) throw new Error(state.startupError + JSON.stringify(await sync('return window.__startupErrors;')));
     if (state.ready) {
       await sync(`if (!window.__safariErrors) {
         window.__safariErrors = [];
@@ -100,7 +117,8 @@ try {
     }
     assert.equal(await evaluate(`return (await getDB()).getStorageMode();`), mode);
     const seeded = await evaluate(`const db = await getDB();
-      const bean = await db.addBean({name: 'Old bean ☕', roast_date:'2025-01-02', freeze_date:null});
+      const canvas=document.createElement('canvas');canvas.width=16;canvas.height=16;canvas.getContext('2d').fillRect(0,0,16,16);
+      const bean = await db.addBean({name: 'Old bean ☕', roast_date:'2025-01-02', freeze_date:null, photo_jpeg:canvas.toDataURL('image/jpeg')});
       const other = await db.addBean({name: 'Keep this bean'});
       const values = {dose_g: 15.123456789, water_g: 0, time_str:'', temp_c:null, grind_um:222.222222222,
         comment:'line one\\nline two ☕', yield_g:null, tds_pct:1.123456789, extraction_pct:null};
@@ -112,7 +130,10 @@ try {
     await evaluate(`await (await getDB()).closeDB();`);
     await api('/url', {url:'about:blank'});
     build = 'candidate';
-    for (const failure of mode === 'opfs' ? ['copy', 'alter'] : ['copy']) {
+    // Recent previous builds already migrated photos. Inject migration failures
+    // only for legacy fixtures that actually require that migration.
+    const needsPhotoMigration = seeded.beans.some(bean => !('photo_jpeg' in bean));
+    for (const failure of needsPhotoMigration ? (mode === 'opfs' ? ['copy', 'alter'] : ['copy']) : []) {
       failPhotoMigration = failure;
       await api('/url', {url:base});
       await waitFor(`document.querySelector('.startup-status[role="alert"]')`);
@@ -132,7 +153,7 @@ try {
       if (worker && worker.state !== 'activated') await new Promise(resolve => worker.addEventListener('statechange', () => {if(worker.state === 'activated') resolve();}));`);
     await api('/refresh', {}); await ready();
     const state = () => evaluate(`const db = await getDB(); return {beans:await db.getBeans(), sessions:await db.getBrewSessions()};`);
-    const expected = {beans:seeded.beans.map(bean => ({...bean, photo_jpeg:null})), sessions:seeded.sessions};
+    const expected = {beans:seeded.beans.map(bean => ({photo_jpeg:null, ...bean})), sessions:seeded.sessions};
     assert.deepEqual(await state(), expected);
     await api('/refresh', {}); await ready(); assert.deepEqual(await state(), expected);
     for (const backup of seeded.backups) {
@@ -177,6 +198,25 @@ try {
       const result={backend};if(snapshot) for(const table of ['beans','brew_sessions']) result[table]=await digest(snapshot[table]);
       if(backend==='opfs'){const root=await navigator.storage.getDirectory();for(const name of ['coffeos.db','coffeos.db.wal'])result[name]=await digest(await (await (await root.getFileHandle(name)).getFile()).arrayBuffer());}
       return result;`);
+    for (const failure of ['error', 'message', 'silent']) {
+      const before = await durable();
+      failWorker = failure;
+      await api('/refresh', {});
+      await waitFor(`document.querySelector('.startup-status[role="alert"]')`);
+      const result = await sync(`return {mode:window.__testDB.getStorageMode(),busy:document.querySelector('#app').getAttribute('aria-busy'),
+        message:document.querySelector('.startup-message').textContent,report:document.querySelector('#startup-report').value};`);
+      assert.equal(result.mode, null); assert.equal(result.busy, 'false');
+      assert.match(result.message, failure === 'silent' ? /stopped responding/ : /worker could not load/);
+      assert.match(result.report, /Phase: Loading the database worker and Wasm/);
+      assert.deepEqual(await durable(), before, failure + ' worker failure preserved durable bytes');
+      failWorker = '';
+      const previousDocument = await sync(`return window.__startupDocument;`);
+      await sync(`document.querySelector('.startup-reload').click();`);
+      await waitFor(`window.__startupDocument && window.__startupDocument !== ${JSON.stringify(previousDocument)}`);
+      await ready();
+      assert.deepEqual(await state(), expected, failure + ' worker retry preserved exact records');
+      console.log('PASS worker', failure, 'exits startup, preserves durable bytes and reload recovers exact records');
+    }
     for (const [name, inject, restore] of failures) {
       const before = await durable();
       const outcome = await evaluate(`const db=await getDB();await db.closeDB();${inject}
@@ -187,6 +227,19 @@ try {
       await api('/refresh',{}); await ready(); assert.deepEqual(await state(),expected,name);
       console.log('PASS preserved previous-build data after',name);
     }
+    const slowLoading = await evaluate(`const box=document.createElement('section');document.body.append(box);
+      const originalNow=performance.now;const start=originalNow.call(performance);
+      const view=window.__testStartupView(box,()=> 'Reading the saved backend and snapshot');
+      try {
+        Object.defineProperty(performance,'now',{configurable:true,value:()=>start+11000});
+        await new Promise(resolve=>setTimeout(resolve,600));
+        return {visible:!box.querySelector('.startup-help').hidden,busy:box.getAttribute('aria-busy'),
+          phase:box.querySelector('.startup-phase').textContent,report:box.querySelector('#startup-report').value};
+      } finally {view.ready();delete performance.now;box.remove();}`);
+    assert.equal(slowLoading.visible,true); assert.equal(slowLoading.busy,'true');
+    assert.match(slowLoading.report,/Phase: Reading the saved backend and snapshot/);
+    assert.match(slowLoading.report,/Isolated: true/);
+    console.log('PASS slow startup exposes read-only phase/details while database opening remains pending');
     await evaluate(`await (await getDB()).closeDB();`);
     failStartup = true;
     try {
@@ -210,6 +263,7 @@ try {
     seeded.beans = expected.beans; seeded.sessions = expected.sessions;
     await api('/refresh',{});await ready();assert.deepEqual(await state(),expected);
     await openBeans();
+    await checkBeanManager({sync, api, waitFor});
     const selector = `.bean-card[data-bean-id="${seeded.bean.id}"]`;
     assert.equal(await sync(`return document.querySelector('${selector} details').open;`), false);
     await sync(`document.querySelector('${selector} summary').click();`);
@@ -259,7 +313,10 @@ try {
     await api('/refresh', {}); await ready(); assert.equal((await state()).sessions.length, remaining.sessions.length + 1);
     await checkSessionEditing({sync,evaluate,waitFor,api,ready});
     await checkSessionDeletion({sync,evaluate,waitFor,api,ready});
+    await checkBeanEditing({sync,evaluate,waitFor,api,ready});
     await photoChecks({sync,evaluate,waitFor,openBeans,api,ready,state});
+    await checkBackupUpgrade({sync,evaluate,waitFor,api,ready,state});
+    await checkDriveRestore({evaluate,api,ready});
     console.log('PASS', mode, 'previous-build upgrade at /CoffeeOS/, exact fields, old CSV/Parquet, failed open preservation, collapse/swipe/delete/reload', mode === 'indexeddb' ? 'and failed-delete rollback' : '');
     await api('', undefined, 'DELETE'); session = undefined;
   }

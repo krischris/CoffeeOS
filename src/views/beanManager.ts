@@ -1,4 +1,4 @@
-import { CommittedWriteError, addBean, deleteBean, getBeans, getBrewSessions } from '../db';
+import { CommittedWriteError, addBean, updateBean, deleteBean, getBeans, getBrewSessions } from '../db';
 import { compressBeanPhoto, isBeanPhoto } from '../photos';
 import type { Bean, BrewSession } from '../types';
 import { renderSessionMetrics } from './sessionMetrics';
@@ -25,7 +25,7 @@ function renderSession(session: BrewSession): HTMLElement {
   return card;
 }
 
-function renderBean(bean: Bean, sessions: BrewSession[], onDelete: () => Promise<void>): HTMLElement {
+function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onDelete: () => Promise<void>): HTMLElement {
   const card = document.createElement('article');
   card.className = 'bean-card';
   card.dataset.beanId = bean.id;
@@ -50,21 +50,32 @@ function renderBean(bean: Bean, sessions: BrewSession[], onDelete: () => Promise
   }
   if (dates.childElementCount) summary.append(dates);
   summary.append(textElement('p', `${sessions.length} brew ${sessions.length === 1 ? 'session' : 'sessions'}`, 'session-count'));
+  summary.append(textElement('span', 'Tap anywhere to close', 'bean-close-hint'));
   details.append(summary);
+  const history = document.createElement('div');
+  history.className = 'bean-history';
+  history.tabIndex = 0;
+  history.setAttribute('role', 'region');
+  history.setAttribute('aria-label', `Brew sessions for ${bean.name}`);
   if (bean.photo_jpeg && isBeanPhoto(bean.photo_jpeg)) {
     const photo = document.createElement('img');
     photo.className = 'bean-photo';
     photo.src = bean.photo_jpeg;
     photo.alt = `Photo of ${bean.name}`;
     photo.loading = 'lazy';
-    details.append(photo);
+    history.append(photo);
   }
-  if (sessions.length) details.append(...sessions.map(renderSession));
-  else details.append(textElement('p', 'No brew sessions yet', 'bean-empty'));
+  if (sessions.length) history.append(...sessions.map(renderSession));
+  else history.append(textElement('p', 'No brew sessions yet', 'bean-empty'));
+  details.append(history);
   const actions = textElement('button', '•••', 'bean-actions');
   actions.type = 'button';
   actions.setAttribute('aria-label', `Actions for ${bean.name}`);
   actions.setAttribute('aria-expanded', 'false');
+  const edit = textElement('button', 'Edit', 'bean-edit');
+  edit.type = 'button';
+  edit.setAttribute('aria-label', `Edit ${bean.name}`);
+  edit.hidden = true;
   const remove = textElement('button', 'Delete', 'bean-delete');
   remove.type = 'button';
   remove.setAttribute('aria-label', `Delete ${bean.name} and all ${sessions.length} brew sessions`);
@@ -73,18 +84,23 @@ function renderBean(bean: Bean, sessions: BrewSession[], onDelete: () => Promise
   failure.setAttribute('role', 'alert');
   failure.hidden = true;
   let deleting = false;
-  function reveal(open: boolean): void {
+  let revealed: 'edit' | 'delete' | 'menu' | null = null;
+  function reveal(action: typeof revealed): void {
     if (deleting) return;
-    card.classList.toggle('delete-revealed', open);
-    remove.hidden = !open;
-    actions.setAttribute('aria-expanded', String(open));
+    revealed = action;
+    card.classList.toggle('edit-revealed', action === 'edit');
+    card.classList.toggle('delete-revealed', action === 'delete');
+    card.classList.toggle('actions-revealed', action === 'menu');
+    edit.hidden = action !== 'edit' && action !== 'menu';
+    remove.hidden = action !== 'delete' && action !== 'menu';
+    actions.setAttribute('aria-expanded', String(action !== null));
   }
   actions.addEventListener('click', () => {
-    reveal(Boolean(remove.hidden));
-    if (!remove.hidden) remove.focus();
+    reveal(revealed === 'menu' ? null : 'menu');
+    if (!edit.hidden) edit.focus();
   });
   card.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { reveal(false); actions.focus(); }
+    if (event.key === 'Escape') { reveal(null); if (!details.open) actions.focus(); }
   });
   let gesture: { id: number; x: number; y: number; horizontal: boolean } | null = null;
   let suppressClick = false;
@@ -107,17 +123,48 @@ function renderBean(bean: Bean, sessions: BrewSession[], onDelete: () => Promise
   surface.addEventListener('pointerup', event => {
     if (!gesture || gesture.id !== event.pointerId) return;
     const dx = event.clientX - gesture.x;
-    if (gesture.horizontal && Math.abs(dx) >= 40) reveal(dx < 0);
+    if (gesture.horizontal && Math.abs(dx) >= 40) reveal(dx < 0 ? 'delete' : 'edit');
     gesture = null;
   });
   surface.addEventListener('pointercancel', () => { gesture = null; suppressClick = false; });
   surface.addEventListener('click', event => {
     if (suppressClick) { event.preventDefault(); event.stopPropagation(); suppressClick = false; }
   }, true);
+  let listScrollTop = 0;
+  function setExpanded(open: boolean): void {
+    const content = card.closest<HTMLElement>('.app-content');
+    if (open) listScrollTop = content?.scrollTop ?? 0;
+    details.open = open;
+    card.classList.toggle('is-expanded', open);
+    if (content) content.scrollTop = open ? 0 : listScrollTop;
+    if (open) history.scrollTop = 0;
+    else summary.focus({ preventScroll: true });
+  }
+  surface.addEventListener('click', event => {
+    if (event.defaultPrevented || (event.target as Element).closest('button, a, input, select, textarea')) return;
+    // A scroll gesture is handled by the browser; text selection should also
+    // remain possible without dismissing a long history.
+    if (window.getSelection()?.toString()) return;
+    event.preventDefault();
+    setExpanded(!details.open);
+  });
+  card.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && details.open) {
+      event.preventDefault();
+      setExpanded(false);
+    }
+  });
+  edit.addEventListener('click', () => {
+    if (deleting) return;
+    reveal(null);
+    if (details.open) setExpanded(false);
+    onEdit();
+  });
   remove.addEventListener('click', () => {
     if (deleting) return;
     deleting = true;
     remove.disabled = true;
+    edit.disabled = true;
     actions.disabled = true;
     remove.textContent = 'Deleting…';
     failure.hidden = true;
@@ -129,20 +176,22 @@ function renderBean(bean: Bean, sessions: BrewSession[], onDelete: () => Promise
     }).finally(() => {
       deleting = false;
       remove.disabled = false;
+      edit.disabled = false;
       actions.disabled = false;
       remove.textContent = 'Delete';
     });
   });
-  surface.append(details, actions, failure);
-  card.append(remove, surface);
+  summary.append(actions);
+  surface.append(details, failure);
+  card.append(edit, remove, surface);
   return card;
 }
 
 /** Mount once; refresh on tab entry so newly saved sessions are reflected here. */
-export function createBeanManager(container: HTMLElement): { refresh: () => Promise<void> } {
+export function createBeanManager(container: HTMLElement): { refresh: () => Promise<void>; openForm: () => void } {
   container.innerHTML = `
-    <form class="bean-form card" aria-labelledby="add-bean-heading">
-      <h2 id="add-bean-heading">Add a bean</h2>
+    <button id="add-bean-toggle" class="secondary-button add-bean-toggle" type="button" aria-expanded="false" aria-controls="add-bean-form">Add a bean <span aria-hidden="true">＋</span></button>
+    <form id="add-bean-form" class="bean-form card" aria-labelledby="add-bean-toggle" hidden>
       <fieldset>
         <label for="bean-name">Name <span class="field-hint">(required)</span></label>
         <input id="bean-name" name="name" type="text" required placeholder="e.g. Ethiopia · Yirgacheffe">
@@ -154,11 +203,16 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
         </div>
         <label for="bean-photo">Photo <span class="field-hint">(optional)</span></label>
         <input id="bean-photo" type="file" accept="image/*">
-        <p class="field-hint">Take a photo or choose one from your library. Saved as a compressed JPEG.</p>
-        <img class="bean-photo photo-preview" alt="Selected bean photo" hidden>
-        <button class="secondary-button remove-photo" type="button" hidden>Remove photo</button>
+        <p class="field-hint photo-hint">Camera or library · saved as JPEG</p>
+        <div class="bean-photo-selection">
+          <img class="bean-photo photo-preview" alt="Selected bean photo" hidden>
+          <button class="secondary-button remove-photo" type="button" hidden>Remove photo</button>
+        </div>
         <p class="photo-status" role="status"></p>
-        <button class="primary-button" type="submit">Add Bean</button>
+        <div class="bean-form-actions">
+          <button class="secondary-button cancel-bean" type="button" hidden>Cancel</button>
+          <button class="primary-button" type="submit">Add Bean</button>
+        </div>
       </fieldset>
       <p class="form-message" role="status" aria-live="polite"></p>
       <p class="form-error" role="alert" hidden></p>
@@ -174,11 +228,36 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
     </section>`;
 
   const form = container.querySelector<HTMLFormElement>('form')!;
+  const toggle = container.querySelector<HTMLButtonElement>('.add-bean-toggle')!;
+  function setFormOpen(open: boolean): void {
+    form.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.querySelector('span')!.textContent = open ? '−' : '＋';
+    if (open) {
+      const content = container.closest<HTMLElement>('.app-content');
+      if (content) content.scrollTop = 0;
+    }
+  }
+  function openForm(): void {
+    if (saving) return;
+    if (editing) resetEditor();
+    setFormOpen(true);
+    name.focus({ preventScroll: true });
+  }
+  toggle.addEventListener('click', () => setFormOpen(form.hidden === true));
+  form.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !saving) {
+      if (editing) resetEditor();
+      setFormOpen(false);
+      toggle.focus({ preventScroll: true });
+    }
+  });
   const fieldset = form.querySelector('fieldset')!;
   const name = form.querySelector<HTMLInputElement>('[name="name"]')!;
   const roastDate = form.querySelector<HTMLInputElement>('[name="roast_date"]')!;
   const freezeDate = form.querySelector<HTMLInputElement>('[name="freeze_date"]')!;
   const submit = form.querySelector<HTMLButtonElement>('button[type=submit]')!;
+  const cancel = form.querySelector<HTMLButtonElement>('.cancel-bean')!;
   const message = form.querySelector<HTMLElement>('.form-message')!;
   const error = form.querySelector<HTMLElement>('.form-error')!;
   const list = container.querySelector<HTMLElement>('.bean-list')!;
@@ -187,38 +266,86 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
   const listError = container.querySelector<HTMLElement>('.list-error')!;
   let refreshVersion = 0;
   let saving = false;
+  let editing: Bean | null = null;
   let photo: string | null = null;
   let processingPhoto = false;
+  let photoVersion = 0;
   const photoInput = form.querySelector<HTMLInputElement>('#bean-photo')!;
   const preview = form.querySelector<HTMLImageElement>('.photo-preview')!;
   const removePhoto = form.querySelector<HTMLButtonElement>('.remove-photo')!;
   const photoStatus = form.querySelector<HTMLElement>('.photo-status')!;
   function resetPhoto(): void {
+    photoVersion++;
+    processingPhoto = false;
+    photoInput.disabled = removePhoto.disabled = submit.disabled = false;
     photo = null;
     photoInput.value = '';
     preview.removeAttribute('src');
     preview.hidden = removePhoto.hidden = true;
     photoStatus.textContent = '';
   }
+  function resetEditor(): void {
+    editing = null;
+    form.reset();
+    name.setCustomValidity('');
+    resetPhoto();
+    cancel.hidden = true;
+    submit.textContent = 'Add Bean';
+    toggle.firstChild!.textContent = 'Add a bean ';
+    message.textContent = '';
+    error.hidden = true;
+  }
+  function editBean(bean: Bean): void {
+    if (saving) return;
+    resetEditor();
+    editing = bean;
+    name.value = bean.name;
+    if (bean.roast_date) roastDate.value = bean.roast_date;
+    else roastDate.valueAsDate = null;
+    if (bean.freeze_date) freezeDate.value = bean.freeze_date;
+    else freezeDate.valueAsDate = null;
+    photo = bean.photo_jpeg ?? null;
+    if (photo) {
+      preview.src = photo;
+      preview.hidden = removePhoto.hidden = false;
+    }
+    cancel.hidden = false;
+    submit.textContent = 'Save';
+    toggle.firstChild!.textContent = 'Edit bean ';
+    setFormOpen(true);
+    name.focus({ preventScroll: true });
+  }
+  cancel.addEventListener('click', () => {
+    if (saving) return;
+    const id = editing?.id;
+    resetEditor();
+    setFormOpen(false);
+    const card = [...list.querySelectorAll<HTMLElement>('.bean-card')].find(card => card.dataset.beanId === id);
+    (card?.querySelector<HTMLButtonElement>('.bean-actions') ?? toggle).focus({ preventScroll: true });
+  });
   removePhoto.addEventListener('click', resetPhoto);
   photoInput.addEventListener('change', () => {
     const file = photoInput.files?.[0];
     if (!file) return;
+    const version = ++photoVersion;
     processingPhoto = true;
     photoInput.disabled = removePhoto.disabled = submit.disabled = true;
     photoStatus.textContent = 'Preparing photo…';
     error.hidden = true;
     void compressBeanPhoto(file).then(jpeg => {
+      if (version !== photoVersion) return;
       photo = jpeg;
       preview.src = jpeg;
       preview.hidden = removePhoto.hidden = false;
       photoStatus.textContent = `JPEG ready · ${Math.round(jpeg.length * 0.75 / 1024)} KB`;
     }).catch(failure => {
+      if (version !== photoVersion) return;
       photoInput.value = '';
       photoStatus.textContent = '';
       error.textContent = failure instanceof Error ? failure.message : 'Could not read this photo.';
       error.hidden = false;
     }).finally(() => {
+      if (version !== photoVersion) return;
       processingPhoto = false;
       photoInput.disabled = removePhoto.disabled = submit.disabled = false;
     });
@@ -238,7 +365,7 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
         history.push(session);
         byBean.set(session.bean_id, history);
       }
-      list.replaceChildren(...beans.map(bean => renderBean(bean, byBean.get(bean.id) ?? [], async () => {
+      list.replaceChildren(...beans.map(bean => renderBean(bean, byBean.get(bean.id) ?? [], () => editBean(bean), async () => {
         try { await deleteBean(bean.id); }
         catch (failure) {
           if (failure instanceof CommittedWriteError) {
@@ -278,22 +405,24 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
   });
 
   async function save(): Promise<void> {
+    const original = editing;
     saving = true;
     fieldset.disabled = true;
-    submit.textContent = 'Adding…';
+    toggle.disabled = true;
+    submit.textContent = original ? 'Saving…' : 'Adding…';
     message.textContent = '';
     error.hidden = true;
     try {
-      const bean = await addBean({ name: name.value.trim(), roast_date: roastDate.value || null, freeze_date: freezeDate.value || null, photo_jpeg: photo });
-      form.reset();
-      resetPhoto();
-      message.textContent = `Added ${bean.name}.`;
+      const input = { name: original && name.value === original.name ? original.name : name.value.trim(), roast_date: roastDate.value || null, freeze_date: freezeDate.value || null, photo_jpeg: photo };
+      const bean = await (original ? updateBean(original.id, input) : addBean(input));
+      resetEditor();
+      if (original) setFormOpen(false);
+      message.textContent = `${original ? 'Saved' : 'Added'} ${bean.name}.`;
       await refresh();
     } catch (failure) {
-      console.error('Could not add bean.', failure);
+      console.error('Could not save bean.', failure);
       if (failure instanceof CommittedWriteError) {
-        form.reset();
-        resetPhoto();
+        resetEditor();
         await refresh();
       }
       error.textContent = failure instanceof CommittedWriteError ? failure.message
@@ -302,10 +431,12 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
     } finally {
       saving = false;
       fieldset.disabled = false;
-      submit.textContent = 'Add Bean';
+      toggle.disabled = false;
+      submit.textContent = editing ? 'Save' : 'Add Bean';
+      if (original && form.hidden) toggle.focus({ preventScroll: true });
     }
   }
 
   listError.querySelector('button')!.addEventListener('click', () => void refresh());
-  return { refresh };
+  return { refresh, openForm };
 }

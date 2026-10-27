@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="A little space for better coffee." />
+    <meta name="description" content="Track coffee beans, brew sessions and tasting notes on your device, with optional Google Drive backups." />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#0e1222" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -12,7 +12,13 @@
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" type="image/svg+xml" href="./icon.svg" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="stylesheet" href="/privacy.css" />
     <title>coffeos</title>
+    <style>
+      body:has(.public-home) { margin: 0; background: #0e1222; color: #f5f4f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+      .public-home { box-sizing: border-box; width: 100%; padding: calc(32px + env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 32px max(24px, env(safe-area-inset-left)); overflow-y: auto; }
+      .public-home a { display: inline-flex; align-items: center; min-height: 44px; }
+    </style>
     <script>
       window.coi = {
         coepCredentialless: () => false,
@@ -23,7 +29,15 @@
     <script vite-ignore src="./coi-serviceworker.js"></script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <main class="public-home privacy-content">
+        <h1>CoffeeOS</h1>
+        <p>A coffee journal for your beans, brew sessions, photos and tasting notes. Track your brewing measurements and keep your coffee collection on your device.</p>
+        <p>Export and import backup files, or optionally connect Google Drive to back up or restore your collection. You can use the journal without a Google account.</p>
+        <p><a href="./privacy.html">About &amp; privacy policy</a></p>
+        <noscript><p>Enable JavaScript to use the coffee journal. The privacy policy is available without JavaScript.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

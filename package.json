@@ -14,13 +14,16 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:upgrade": "node tests/bean-upgrade.mjs",
-    "test:upgrade:firefox": "TEST_FIREFOX=1 node tests/bean-upgrade.mjs"
+    "test:upgrade:firefox": "TEST_FIREFOX=1 node tests/bean-upgrade.mjs",
+    "test:backups": "node tests/backups-browser.mjs",
+    "test:drive": "node tests/drive-auth-helper.mjs && node tests/drive-browser.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
   },
   "dependencies": {
-    "@duckdb/duckdb-wasm": "1.33.1-dev57.0"
+    "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
+    "fflate": "0.8.3"
   }
 }

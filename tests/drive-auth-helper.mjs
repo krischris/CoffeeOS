@@ -28,7 +28,11 @@ for(const outcome of ['success','denied','blocked','cancelled','late','timeout']
  assert.equal(h.config.scope,'https://www.googleapis.com/auth/drive.file openid email');
  h.listeners.click();assert.equal(h.button.disabled,true);
  const authorized={access_token:'test-only-token',scope:h.config.scope,expires_in:3600};
- if(outcome==='success') {h.config.callback(authorized);assert.equal(h.messages.at(-1).type,'authorized');}
+ if(outcome==='success') {
+   const before=Date.now();h.config.callback(authorized);const after=Date.now();
+   assert.equal(h.messages.at(-1).type,'authorized');
+   assert.ok(h.messages.at(-1).expiresAt>=before+3570000 && h.messages.at(-1).expiresAt<=after+3570000,'Google lifetime minus existing 30-second margin');
+ }
  if(outcome==='denied') {h.config.callback({error:'access_denied'});assert.equal(h.messages.at(-1).type,'error');}
  if(outcome==='blocked') {h.config.error_callback({type:'popup_failed_to_open'});assert.equal(h.messages.at(-1).type,'error');}
  if(outcome==='cancelled'||outcome==='late') {h.channel.onmessage({data:{type:'cancel'}});h.config.callback(authorized);assert.equal(h.messages.length,1);}

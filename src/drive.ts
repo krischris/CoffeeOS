@@ -15,12 +15,14 @@ const fields = 'id,createdTime,size,sha256Checksum,appProperties';
 const marker = (kind: string) => `appProperties has { key='coffeeosKind' and value='${kind}' }`;
 const escapeQuery = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
-/** No account or token is persisted. All requests are bounded and cancellation-aware. */
+/** All requests are bounded and cancellation-aware; the view owns credential caching. */
 export class DriveClient {
   constructor(private account: DriveAccount, private signal: AbortSignal, private transport: typeof fetch = fetch,
     private progress: (message: string) => void = () => undefined,
-    private reauthorize?: () => Promise<DriveAccount>) {}
+    private reauthorize?: () => Promise<DriveAccount>,
+    private invalidateAccount: (account: DriveAccount) => void = () => undefined) {}
   private async renew(): Promise<void> {
+    this.invalidateAccount(this.account);
     if (!this.reauthorize) throw new DriveAuthError('Google authorization expired. Reconnect to try again.');
     const next = await this.reauthorize();
     this.signal.throwIfAborted();
@@ -66,6 +68,7 @@ export class DriveClient {
       }
       driveResponse(phase, response.status);
       if (response.status === 401) {
+        this.invalidateAccount(this.account);
         if (renewed) throw new DriveAuthError('Google access was revoked. Cancel and reconnect.');
         await this.renew(); renewed = true; continue;
       }

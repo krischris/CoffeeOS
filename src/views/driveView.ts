@@ -1,6 +1,7 @@
 import { driveStep, driveFailure } from '../driveDiagnostics';
-import { authorizeDrive } from '../driveAuth';
-import { DriveClient, DriveError, syncDrive } from '../drive';
+import { authorizeDrive, verifyDriveAccount } from '../driveAuth';
+import { driveAuthorizationKey, forgetDriveAuthorization, readDriveAuthorization, saveDriveAuthorization } from '../driveAuthorization';
+import { DriveAuthError, DriveClient, DriveError, syncDrive } from '../drive';
 import type { DriveAccount, RemoteFile } from '../drive';
 import { CommittedWriteError, ImportDataError } from '../db';
 import { confirmBackup, prepareBackup, replaceBackup } from '../backups';
@@ -37,6 +38,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
         <button class="secondary-button drive-dismiss" type="button">Cancel restore</button>
       </div>
     </div>
+    <p class="drive-retention field-hint"></p>
     <p class="field-hint">Disconnect keeps local records and Drive files. Revoke Google access separately in your Google account. Brewing and file backups work offline. No background sync. Transfers pause for reconnect when authorization expires; keep this page open.</p>
   </section>`;
   const find = <T extends HTMLElement>(selector: string) => container.querySelector<T>(selector)!;
@@ -45,10 +47,21 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
   const select = find<HTMLSelectElement>('#drive-snapshot');
   const status = find('.drive-status'), error = find('.drive-error');
   let account: DriveAccount | null = null;
+  let verified = false, storageUnavailable = false;
   let operation: AbortController | null = null;
   let generation = 0, committing = false, switching = false, enabled = true;
   let history: RemoteFile[] = [], prepared: PreparedBackup | null = null, pinned: RemoteFile | null = null;
   let renew: ((account: DriveAccount) => void) | null = null;
+  function remember(): void {
+    storageUnavailable = Boolean(account && !saveDriveAuthorization(googleDriveClientId, account, enabled));
+  }
+  function restore(): void {
+    const saved = readDriveAuthorization(googleDriveClientId);
+    account = saved?.account ?? null; verified = false; storageUnavailable = false;
+    enabled = saved?.enabled ?? true;
+    if (saved) status.textContent = enabled ? 'Connection remembered. Choose Sync now to back up or recover your collection.' : 'Confirm enabling backup to the displayed account before any transfer.';
+    render();
+  }
   function clearPreview(): void {
     prepared = null; pinned = null; find('.drive-preview').hidden = true; find('.drive-confirm').hidden = true;
   }
@@ -63,8 +76,11 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     find<HTMLButtonElement>('.drive-switch').disabled = Boolean(operation) || !account;
     select.disabled = Boolean(operation);
     find<HTMLButtonElement>('.drive-review').disabled = Boolean(operation) || !select.value || !enabled;
-    find<HTMLButtonElement>('.drive-refresh').disabled = Boolean(operation) || !enabled;
+    find<HTMLButtonElement>('.drive-refresh').disabled = Boolean(operation) || !account || !enabled;
     find('.drive-account').textContent = account ? `Connected: ${account.email}${enabled ? '' : ' · confirm enabling backup before any transfer'}` : 'Not connected';
+    find('.drive-retention').textContent = account && storageUnavailable
+      ? 'This connection lasts while the page stays open. Browser storage is unavailable; reconnect after reopening.'
+      : 'Your connection is remembered on this device until Google’s token expires. Reopening does not start a sync. Disconnect removes the saved connection.';
     find('.drive-history').hidden = !account;
     container.setAttribute('aria-busy', String(Boolean(operation)));
   }
@@ -101,19 +117,25 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
       if (authorize) {
         status.textContent = 'Continue in the Google authorization window…';
         const next = await driveStep('Authorize Google', () => authorizeDrive(googleDriveClientId, controller.signal));
-        controller.signal.throwIfAborted(); account = next;
+        controller.signal.throwIfAborted(); account = next; verified = true; enabled = !switching; remember();
       }
       if (!account) return;
+      if (!verified && Date.now() < account.expiresAt) {
+        status.textContent = 'Checking the remembered Google connection…';
+        const next = await driveStep('Authorize Google', () => verifyDriveAccount(account!, controller.signal));
+        controller.signal.throwIfAborted(); account = next; verified = true; remember();
+      }
       const client = new DriveClient(account, controller.signal, fetch, message => {
         if (current === generation) status.textContent = message;
       }, () => new Promise<DriveAccount>((resolve, reject) => {
         renew = resolve; status.textContent = 'Authorization expired. Reconnect with the same account to resume this operation.';
         controller.signal.addEventListener('abort', () => { renew = null; reject(controller.signal.reason); }, { once: true }); render();
-      }));
+      }), invalid => forgetDriveAuthorization(invalid.token));
       render(); await task(client, controller.signal);
     } catch (failure) {
       driveFailure('Drive operation', failure);
       if (current !== generation) return;
+      if (failure instanceof DriveAuthError) { forgetDriveAuthorization(account?.token); account = null; verified = false; }
       status.textContent = '';
       error.textContent = failure instanceof DriveError || failure instanceof ImportDataError || failure instanceof CommittedWriteError
         ? failure.message : 'Drive operation could not finish. Your collection and earlier backups are kept. Check your connection and storage, then retry.';
@@ -141,7 +163,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
         if (next.sub !== expected) {
           renew = resolve; error.textContent = 'Choose the same account to resume, or cancel before switching accounts.'; error.hidden = false; render(); return;
         }
-        account = next; resolve(next); render();
+        account = next; verified = true; remember(); resolve(next); render();
       }).catch(() => {
         if (controller !== operation) return;
         renew = resolve; error.textContent = 'Authorization did not complete. Reconnect to resume or cancel.'; error.hidden = false; render();
@@ -153,7 +175,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
       await synchronize(client, signal);
     }, true);
   });
-  sync.addEventListener('click', () => { enabled = true; void run(synchronize); });
+  sync.addEventListener('click', () => { enabled = true; if (account) remember(); void run(synchronize); });
   find('.drive-refresh').addEventListener('click', () => { void run(async (client, signal) => {
     clearPreview(); history = await driveStep('Read cloud history', () => client.history()); signal.throwIfAborted(); showHistory(); status.textContent = history.length ? 'History refreshed.' : 'No Drive backup yet.';
   }); });
@@ -177,7 +199,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
   });
   find('.drive-dismiss').addEventListener('click', () => { clearPreview(); status.textContent = 'Restore cancelled. Your collection is unchanged.'; });
   function clear(): void {
-    generation++; operation?.abort(); operation = null; renew = null; account = null; history = []; clearPreview(); showHistory();
+    generation++; operation?.abort(); operation = null; renew = null; account = null; verified = false; storageUnavailable = false; history = []; clearPreview(); showHistory();
     render();
   }
   cancel.addEventListener('click', () => {
@@ -185,13 +207,25 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     status.textContent = 'Transfer cancelled. A file already accepted by Drive may still finish; refresh history before another upload.';
   });
   disconnect.addEventListener('click', () => {
+    forgetDriveAuthorization();
     clear(); switching = false; enabled = true; error.hidden = true;
     status.textContent = 'Disconnected. Local records and Drive files are kept. A transfer already accepted by Drive may still finish.';
   });
   find('.drive-switch').addEventListener('click', () => {
+    forgetDriveAuthorization();
     clear(); switching = true; enabled = false; status.textContent = 'Connect the new Google account, then confirm enabling backup.';
   });
   window.addEventListener('pagehide', clear);
-  if (import.meta.hot) import.meta.hot.dispose(clear);
-  render();
+  const shown = (event: PageTransitionEvent) => { if (event.persisted) restore(); };
+  window.addEventListener('pageshow', shown);
+  const changed = (event: StorageEvent) => {
+    if ((event.key === driveAuthorizationKey || event.key === null) && event.storageArea === localStorage) {
+      clear(); status.textContent = 'The Drive connection changed in another window. Reconnect to continue.';
+    }
+  };
+  window.addEventListener('storage', changed);
+  if (import.meta.hot) import.meta.hot.dispose(() => {
+    clear(); window.removeEventListener('pagehide', clear); window.removeEventListener('pageshow', shown); window.removeEventListener('storage', changed);
+  });
+  restore();
 }

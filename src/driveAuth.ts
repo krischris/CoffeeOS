@@ -1,6 +1,21 @@
 import { DRIVE_SCOPE, DriveAuthError } from './drive';
 import type { DriveAccount } from './drive';
 
+/** Recheck persisted credentials before any Drive read, upload or recovery. */
+export async function verifyDriveAccount(account: DriveAccount, signal: AbortSignal): Promise<DriveAccount> {
+  const response = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+    headers: { Authorization: `Bearer ${account.token}` }, signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+    credentials: 'omit', redirect: 'error', cache: 'no-store',
+  });
+  if (response.status === 401 || response.status === 403) throw new DriveAuthError('Google authorization is no longer valid. Reconnect to try again.');
+  if (!response.ok) throw new Error('Account verification unavailable');
+  const identity = await response.json();
+  if (identity.sub !== account.sub || typeof identity.email !== 'string' || !identity.email || identity.email_verified !== true) {
+    throw new DriveAuthError('The saved Google account could not be verified. Reconnect to try again.');
+  }
+  return { ...account, email: identity.email };
+}
+
 /** The isolated database window never loads Google's script or relaxes its headers. */
 export function authorizeDrive(clientId: string, signal: AbortSignal): Promise<DriveAccount> {
   if (!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(clientId)) return Promise.reject(new DriveAuthError('Google Drive is not configured correctly. Please contact the app owner.'));

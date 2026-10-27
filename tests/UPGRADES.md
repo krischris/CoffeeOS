@@ -97,6 +97,13 @@ connection controls. Set `TEST_BASE_URL` if Vite uses a port other than 5173. Us
 for the same OPFS checks in an isolated Firefox profile. These are not real
 Google OAuth/transfer verification.
 
+Stage 41 adds `uv run npm run test:drive:authorization` (or set `TEST_FIREFOX=1`)
+for token reuse across actual reloads, unchanged expiry, account verification,
+revocation/renewal, switch confirmation, cancellation and credential-storage
+failures. Google is simulated, and the normal browser profile is never used.
+The populated previous-build upgrade baseline for this update is
+`TEST_PREVIOUS_REF=fa42a52`; run the Safari and Firefox upgrades sequentially.
+
 After `uv run npm run build`, start
 `uv run npm run preview -- --host 127.0.0.1 --port 4174 --base /CoffeeOS/` and run
 `uv run node tests/drive-isolation.mjs`. Its isolated Safari session serves the

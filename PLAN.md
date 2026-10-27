@@ -856,7 +856,8 @@ with offline/local data independent of Google availability.
 1. Follow `docs/google-drive-backups.md`: registered public web client from
    `src/driveConfig.ts`, optional nonempty `VITE_GOOGLE_CLIENT_ID` override; no
    secret/manual ID input. GIS browser token flow requests `drive.file`, `openid`,
-   `email`, verifies scopes/identity and keeps tokens/expiry only in memory.
+   `email`, verifies scopes/identity and originally kept tokens/expiry only in
+   memory (Stage 41 adds reuse of unexpired authorization between visits).
 2. Load GIS only in `drive-auth.html`; preserve main database COOP/COEP. Narrowly
    except only the helper, with a random one-time BroadcastChannel, three-minute
    expiry/cancellation and late-result suppression. Test helper updating an old
@@ -985,7 +986,8 @@ merge/replacement, preserving existing records and cloud snapshots.
    destructive work after ambiguous commit or automatically upload after restore.
 9. Account switching clears old authorization/operations/selections and requires
    confirmation before sending the local collection to the new account. Preserve
-   no remembered authorization or secret preferences. Disconnect is non-destructive;
+   originally no remembered authorization or secret preferences (Stage 41 adds
+   unexpired-token reuse). Disconnect is non-destructive;
    explain revoking Google's grant separately. Offline file/brew flows remain usable.
 10. Opt-in `?drive-debug=1` diagnostics only: safe phase/status/exception locations,
     copy report and read-only local snapshot/rollback-only staging comparison.
@@ -1327,3 +1329,86 @@ hashes existed, and restore the gap below the Google Drive card in I/O.
 - No storage identity, schema/archive format, dependency, origin or deployment
   changed; no normal user collection was used. Safari OPFS, physical iOS/Home
   Screen/storage lifecycle, live Google and deployed-host checks remain unverified.
+
+## Stage 41: Reuse Unexpired Google Drive Authorization Between Visits
+
+- [x] **Status:** Complete locally; Safari/IndexedDB and Firefox/OPFS checks passed, live Google and physical iOS pending.
+
+### Goal
+
+Avoid repeating Google account selection while Google's existing access token
+remains valid, preserving explicit transfers and all local records/backups.
+
+### Tasks
+
+1. Cache the verified token/account, original expiry and backup-enabled choice in
+   a versioned, app-path/client-scoped localStorage value. Keep Google's supplied
+   lifetime and existing 30-second margin; never extend it or request a refresh token.
+2. Restore valid authorization without a popup, network request or automatic sync.
+   Reverify the restored account before the first Drive operation. Clear expired,
+   malformed, incompatible-client, revoked or mismatched credentials safely.
+3. Remove the cache on Disconnect/Switch account, stop work on cross-window
+   connection changes, preserve switch confirmation over reload, and tolerate
+   blocked/full credential storage without changing collection persistence.
+4. Update privacy/help text and add focused reload/reuse, expiry, rejection,
+   identity, cancellation and storage-failure checks. Run build, Safari app/Drive
+   checks, production subpath/isolation checks and populated previous-build
+   IndexedDB/OPFS upgrades. Record live/device/environment gaps.
+
+### Acceptance Criteria (Stage 41 Gate)
+
+- Reopening restores an unexpired connection without requesting another token;
+  explicit sync/history uses it after identity verification. Reuse retains the
+  original expiry, and opening alone never uploads/downloads/restores records.
+- Expired/malformed/wrong-client cache entries cannot authorize requests; Google
+  rejection or account mismatch clears credentials before a transfer. Transient
+  verification failures preserve the collection and allow retry without a popup.
+- Disconnect/switch remove remembered credentials. Pending switch confirmation
+  survives reload. Wrong-account renewals/cancelled late callbacks never persist
+  or transfer data. Blocked/full localStorage leaves memory authorization usable.
+- Tokens/account details stay out of database/backups/logs; clear only the new
+  credential key. Preserve all database identities, records/relationships/units,
+  dates/nulls/precision, old CSV/Parquet imports, backend selection and origin.
+- Build, focused authorization and Safari regressions, relative subpath assets,
+  isolation headers and populated prior-build IndexedDB/OPFS upgrades pass, with
+  failed-startup preservation verified and remaining coverage gaps explicit.
+
+### Verification — 2026-10-27
+
+- `uv run npm run build`, `git diff --check`, Safari `test:drive` and
+  `test:safari`, and Safari/Firefox `test:drive:authorization` passed. Desktop
+  Safari 27.2 used isolated automation sessions; Firefox used a separate test
+  profile with external services/traffic disabled. Google authorization and
+  transport were simulated; no normal user profile or collection was used.
+- Focused authorization checks passed: actual reload retains valid authorization
+  and exact records without automatic Google requests/transfers; explicit history
+  verifies identity once without a popup and keeps the original expiry. Tests
+  cover expiry-timer removal, malformed/wrong-client/expired cache, transient
+  verification retry, revoked tokens, Drive 401 invalidation, wrong-account
+  renewal rejection, same-account resume, switch confirmation over reload,
+  Disconnect, cancelled late verification, simulated cross-window storage events
+  and back/forward-cache events, denied reads and quota failures. In-memory
+  requests remain usable after cache writes fail, with a visible retention hint.
+- Populated upgrades from prior build `fa42a52` passed in the same isolated
+  profile/origin at `/CoffeeOS/` for Safari/IndexedDB and Firefox/OPFS. Exact
+  records/photos/relationships/dates/nulls/precision survived replacement/startup
+  and reload. Historical CSV/Parquet imports, archive merge/replacement/recovery
+  and write rollback passed. Injected schema/metadata/permission/worker startup
+  failures preserved durable data and exposed recoverable errors without an empty
+  collection; reload recovered the original records.
+- Built production `/CoffeeOS/` Safari probe passed restored-token use, original
+  expiry, no automatic Google access, account verification without a popup,
+  Disconnect/reload, navigation and relative assets. `drive-isolation.mjs` passed
+  the helper/worker boundary and dev/preview main/helper COOP/COEP checks.
+- No database identifiers, schema, archive format, dependencies, origin or
+  deployment changed. Credentials are confined to the new app-path/client cache,
+  excluded from collection/backup/diagnostic code paths, and documented in the
+  privacy policy/help. Expired stored credentials are removed on next open if the
+  app was closed or browser timers were suspended.
+- Reviewed Google's browser token model and token-handling guidance: use the
+  returned lifetime, obtain fresh authorization from a user gesture after expiry,
+  and handle revocation. Persistent browser storage retains its same-origin
+  script-access exposure; documentation now discloses it.
+- Live Google renewal/revocation, Safari OPFS, actual browser-restart cookie/token
+  lifecycle, physical iPhone/iPad/Home Screen/storage lifecycle and deployed-host
+  behavior remain unverified. No deployment or Google Console change performed.

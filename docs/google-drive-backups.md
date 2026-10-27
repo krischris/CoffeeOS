@@ -1,7 +1,8 @@
 # Google Drive backup and recovery (Stages 24–25)
 
 Google Drive is optional. File backups and offline brewing work without a Google
-connection. There is no automatic background sync or remembered login.
+connection. There is no automatic background sync. Stage 41 remembers a valid
+Google connection between visits until the access token expires.
 
 ## Google app configuration
 
@@ -106,15 +107,36 @@ and fingerprinted before comparison; their files remain untouched. Failed
 listing, validation or comparison stops sync and preserves local data. The
 comparison uses the newest snapshot only: reverting to an older collection
 uploads a new snapshot so empty-collection recovery still finds that state.
-No local hash cache, account state, storage identity or archive format changes.
+No local hash cache, storage identity or archive format changes.
 
 Progress reports transferred bytes. Cancel stops pending requests, but a request
 already accepted by Google may finish. Refresh history before starting another
 upload. Authorization expiry offers **Reconnect to resume transfer** from a new
 user gesture. Choose the same account; the pending operation resumes without
-another connect-time sync. Session URLs, tokens, archive buffers and account state
-stay in memory only. Reloading loses the transfer session; inspect history before
-starting again. No account preferences or remembered authorization are persisted.
+another connect-time sync. Session URLs and archive buffers stay in memory only.
+Reloading loses the transfer session; inspect history before starting again.
+
+CoffeeOS saves the verified account identifier/email, access token, its original
+expiry and whether backup was enabled in app-path-scoped `localStorage`
+(`coffeeos-drive-authorization:/CoffeeOS/` on the production path). The value has
+schema version 1 and is tied to the configured OAuth client. Tokens never enter
+the collection database, exports, recovery copies or diagnostic reports. As with
+other browser storage, scripts running on the same origin can access this cache;
+it is not a protected OS credential store. There is no refresh token.
+
+The expiry comes from Google's `expires_in`, with the existing 30-second safety
+margin; it is never extended on reload, use or save. A valid connection reappears
+after reopening, with no popup, Google request or automatic sync. The first explicit
+Drive operation rechecks Google's userinfo response and requires the original
+account before accessing Drive. Network/verification failures stop the operation;
+they never become empty history or trigger a different account/dataset.
+Expired, malformed, incompatible-client or rejected credentials are discarded.
+Expired credentials are removed by a timer while the app runs, or on the next
+open if it was closed/suspended. When storage is blocked/full, the connection
+works in memory and the UI explains that reopening will require reconnecting.
+Disconnect and Switch account remove the saved connection. Connection changes
+in another window cancel this window's pending work. Switching still requires
+explicitly enabling backup, even if the page is reloaded before confirmation.
 
 ## Restore and switch accounts
 

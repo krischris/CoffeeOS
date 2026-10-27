@@ -1257,3 +1257,73 @@ backup first and clearly named local backup options below.
   button, Drive connect/sync and previous snapshot selection on localhost; the
   production `/CoffeeOS/` preview also passed ordering/labels/navigation, relative
   assets and isolation headers. Physical iOS and live Google remain unverified.
+
+## Stage 40: Skip Unchanged Drive Backups & Separate Backup Cards
+
+- [x] **Status:** Complete locally; Safari/IndexedDB and Firefox/OPFS checks passed, live Google and physical iOS pending.
+
+### Goal
+
+Avoid uploading unchanged collections, including those backed up before content
+hashes existed, and restore the gap below the Google Drive card in I/O.
+
+### Tasks
+
+1. Fingerprint captured logical records with SHA-256 and a versioned, deterministic
+   encoding: fixed table/column order, rows sorted by ID, exact strings/nulls,
+   microsecond timestamps and IEEE-754 doubles. Ignore archive identity/dates/layout.
+2. Store the optional fingerprint in Drive app metadata and verify it after upload.
+   Compare the latest completed cloud snapshot before packaging/uploading; show an
+   explicit unchanged result. Validate/download/hash older snapshots without this
+   metadata. Stop on comparison failures; never replace old backups or local data.
+3. Preserve newest-snapshot recovery semantics: a match to an older backup alone
+   does not suppress a new upload. Keep cancellation, account scoping, capture-time
+   consistency and upload reconciliation. No persistent cache or format migration.
+4. Put 24px below the first Drive card. Document behavior and add focused hash,
+   unchanged/changed/legacy/failure/reload and card-spacing regressions.
+
+### Acceptance Criteria (Stage 40 Gate)
+
+- Consecutive unchanged syncs and a reloaded collection create no new upload;
+  new metadata avoids archive downloads. Existing hashless backups compare after
+  validation. Real edits upload once, with older history and selection preserved.
+- Parquet row order/compression, capture dates and archive IDs do not affect the
+  fingerprint. Every column, numeric precision, microseconds, null/empty/text/photo
+  differences affect it; stable blocks cover more than 256 records.
+- Failed reads/listing/checksums/validation and cancellation preserve records and
+  prevent uploads; failed upload verification never retries with a new archive.
+  Empty recovery, merge/replace and old CSV/Parquet/archive imports remain intact.
+- Drive/local cards have at least 24px separation at phone width; no horizontal
+  overflow. Build, Safari app/Drive checks, subpath assets/isolation and populated
+  previous-build IndexedDB/OPFS upgrades pass, with environment gaps recorded.
+- Keep all storage identifiers, schema/archive contracts, dependencies and origin.
+
+### Verification — 2026-10-27
+
+- `uv run npm run build`, `git diff --check`, full `test:safari`, Safari and
+  Firefox `test:drive`, and Safari `test:drive:diagnostics` passed. Drive transport
+  and Google authorization were simulated; no live Google pass is claimed.
+- Fingerprint checks passed for every one of the 18 stored fields, adjacent
+  high-precision doubles, microsecond timestamps, null/empty/literal-null strings,
+  Unicode/multiline values, photos, reordered/compressed Parquet and 257-row blocks.
+  Signed-zero fixture passed; existing Parquet normalization limits remain unchanged.
+  A reused temporary path exposed DuckDB's cached Parquet metadata during testing;
+  unique virtual filenames fixed it, and failed-read cleanup/retry passed.
+- Unchanged syncs skipped upload/download with metadata, including after reload;
+  hashless archives downloaded/validated and skipped upload. Changed collections
+  uploaded once, previous selection/history stayed available, and restoring older
+  contents uploaded when the newest backup differed. Corrupt downloads, mismatched
+  metadata, incomplete history, hashing failures and cancellation preserved records
+  without uploads. New hash metadata is checked on completion/reconciliation.
+- Populated previous-build `642d9ee` upgrades passed in isolated desktop Safari
+  27.2/IndexedDB and Firefox/OPFS at the same `/CoffeeOS/` origin/profile. Exact
+  records/photos/relationships, old CSV/Parquet imports, old/new logical hashes,
+  merge/replacement/recovery and reloads passed. Injected startup/permission/worker
+  failures preserved durable bytes and showed recoverable errors. Firefox's
+  focused archive suite also passed historical archives and invalid-file rejection.
+- At phone width, Drive/local cards had at least 24px separation with no horizontal
+  overflow. Production subpath assets/startup and dev/preview isolation headers
+  passed, including the helper exception and prior isolation-worker update.
+- No storage identity, schema/archive format, dependency, origin or deployment
+  changed; no normal user collection was used. Safari OPFS, physical iOS/Home
+  Screen/storage lifecycle, live Google and deployed-host checks remain unverified.

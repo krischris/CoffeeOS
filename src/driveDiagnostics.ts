@@ -4,7 +4,8 @@ import { packageBackup, prepareBackup } from './backups';
 export type DriveStep = 'Authorize Google' | 'Read cloud history' | 'Capture local snapshot' | 'Package local snapshot'
   | 'Validate packaged snapshot' | 'Discover backup folder' | 'Upload snapshot' | 'Download snapshot'
   | 'Validate downloaded snapshot' | 'Recover empty collection' | 'Refresh app views' | 'Merge snapshot' | 'Replace snapshot'
-  | 'Check exact local round trip';
+  | 'Check exact local round trip' | 'Fingerprint local snapshot' | 'Fingerprint cloud snapshot'
+  | 'Download snapshot for comparison' | 'Validate comparison snapshot';
 interface Entry {
   sequence: number; elapsedMs: number; step: string; outcome: 'started' | 'passed' | 'failed' | 'response';
   status?: number; errorType?: string; category?: string; frames?: string[];

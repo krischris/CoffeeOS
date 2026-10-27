@@ -156,6 +156,11 @@ try {
     const expected = {beans:seeded.beans.map(bean => ({photo_jpeg:null, ...bean})), sessions:seeded.sessions};
     assert.deepEqual(await state(), expected);
     await api('/refresh', {}); await ready(); assert.deepEqual(await state(), expected);
+    if(seeded.beans.every(bean=>'photo_jpeg' in bean)) {
+      const hashes=await evaluate(`const db=await getDB();const files=${JSON.stringify(seeded.backups[1])};
+        return [await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data),await db.hashBackupContents({beans:new Uint8Array(files[0].data),brew_sessions:new Uint8Array(files[1].data)})];`);
+      assert.equal(hashes[0],hashes[1],'previous-build Parquet hashes match upgraded records');
+    }
     for (const backup of seeded.backups) {
       await evaluate(`await (await getDB()).importData(${JSON.stringify(backup)}.map(f => ({...f, data:new Uint8Array(f.data)})));`);
       assert.deepEqual(await state(), expected);

@@ -364,7 +364,8 @@ button:disabled { opacity: 0.65; cursor: wait; }
 .brewing-chart-point { fill: var(--accent); stroke: #fff8ed; stroke-width: 2.5; }
 .brewing-chart-summary { margin-top: 12px; font-size: 14px; line-height: 1.6; color: var(--accent); }
 
-.io-import, .io-drive { margin-top: 24px; }
+.io-import { margin-top: 24px; }
+.io-drive { margin-bottom: 24px; }
 .io-export, .io-import, .io-drive { min-width: 0; overflow-wrap: anywhere; }
 .io-export h2, .io-import h2, .io-drive h2 { margin: 0 0 20px; font-size: 20px; }
 .io-export fieldset, .io-import fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }

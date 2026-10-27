@@ -9,6 +9,7 @@ import type { Bean, BrewSession } from './types';
 
 import { isBeanPhoto } from './photos';
 import { backupLimits } from './backupContract';
+import { sha256 } from './hash';
 
 type StorageMode = 'opfs' | 'indexeddb' | 'memory';
 type SQLValue = string | number | null;
@@ -658,6 +659,50 @@ export function exportBackupSnapshot(): Promise<BackupSnapshot> { return withDat
 /** Read counts, bytes and revision together; failed reads never establish emptiness. */
 export function captureDriveSnapshot(): Promise<{ snapshot: BackupSnapshot; revision: number }> {
   return withDatabase(async state => ({ snapshot: await captureBackup(state), revision: collectionRevision }));
+}
+
+/** Version 1 logical fingerprint: independent of Parquet layout and archive metadata.
+ * Read the captured bytes, never a later live revision. No storage writes occur.
+ * Fixed 256-row blocks bound encoding allocations; changing this algorithm needs v2.
+ */
+export function hashBackupContents(data: BackupSnapshot['data']): Promise<string> {
+  return withDatabase(async state => {
+    const encoder = new TextEncoder();
+    const digest = (value: unknown) => sha256(encoder.encode(JSON.stringify(value)));
+    const float = new DataView(new ArrayBuffer(8));
+    const binary64 = (value: number) => {
+      float.setFloat64(0, value, false);
+      return [...new Uint8Array(float.buffer)].map(v => v.toString(16).padStart(2, '0')).join('');
+    };
+    const result = [];
+    for (const table of tables) {
+      // DuckDB caches Parquet metadata by path; each buffer needs a fresh virtual
+      // filename even after dropFile. These are not persistent storage identities.
+      const path = `fingerprint-${crypto.randomUUID()}-${table}.parquet`;
+      try {
+        await state.db.registerFileBuffer(path, new Uint8Array(data[table]));
+        const columns = Object.entries(ioSchema[table]);
+        // Keep timestamps in DuckDB until converted to full microsecond strings.
+        // DOUBLEs cross Arrow unchanged and are encoded as IEEE-754 bits, not JSON numbers.
+        const projection = columns.map(([name, type]) => type === 'TIMESTAMP'
+          ? `strftime(${name}, '%Y-%m-%dT%H:%M:%S.%f') AS ${name}`
+          : type === 'DATE' ? `CAST(${name} AS VARCHAR) AS ${name}` : name).join(', ');
+        const rows = await state.connection.query(`SELECT ${projection} FROM read_parquet('${path}') ORDER BY id`);
+        const blocks = [];
+        for (let offset = 0; offset < rows.numRows; offset += 256) {
+          const block = [];
+          for (let i = offset; i < Math.min(offset + 256, rows.numRows); i++) {
+            const row = rows.get(i)!;
+            block.push(columns.map(([name, type]) => row[name] === null ? null
+              : type === 'DOUBLE' ? binary64(row[name]) : row[name]));
+          }
+          blocks.push(await digest(block));
+        }
+        result.push([table, columns, rows.numRows, blocks]);
+      } finally { await state.db.dropFile(path); }
+    }
+    return digest(['coffeeos-content-v1', result]);
+  });
 }
 
 async function retainImportRecovery(state: Database): Promise<void> {

@@ -33,9 +33,16 @@ try {
     diagnostics.driveFailure('Drive operation',error);
     const native=crypto.subtle.digest;
     crypto.subtle.digest=()=>Promise.reject(new TypeError('PRIVATE hashing sentinel'));
-    try { await window.coffeeosDriveDebug.runLocalChecks(); } finally { crypto.subtle.digest=native; }
+    try {
+      await window.coffeeosDriveDebug.runLocalChecks();
+      const d=await import('/src/drive.ts');const controller=new AbortController();let requests=0,failed=false;
+      const client=new d.DriveClient({token:'PRIVATE test-token',expiresAt:Date.now()+3600000,sub:'test',email:'test@example.invalid'},controller.signal,async()=>{requests++;throw new Error('No transfer allowed');});
+      try{await d.syncDrive(client,controller.signal);}catch{failed=true;}
+      check(failed&&requests===0);
+    } finally { crypto.subtle.digest=native; }
     const final=window.coffeeosDriveDebug.report();check(!final.includes('PRIVATE'));check(!final.includes(bean.id));
     check(JSON.parse(final).entries.some(e=>e.step==='Package local snapshot'&&e.outcome==='failed'));
+    check(JSON.parse(final).entries.some(e=>e.step==='Fingerprint local snapshot'&&e.outcome==='failed'));
     const unchanged=JSON.stringify({beans:await db.getBeans(),sessions:await db.getBrewSessions(),revision:(await db.captureDriveSnapshot()).revision,copies:await db.listImportRecoveries()});check(before===unchanged);
     window.__diagnosticExpected=JSON.stringify({beans:await db.getBeans(),sessions:await db.getBrewSessions()});
     return {backend:db.getStorageMode(),entries:JSON.parse(final).entries.length};

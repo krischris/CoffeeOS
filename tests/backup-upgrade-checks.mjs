@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 /** Exercise final production backup controls after a populated old-build upgrade. */
 export async function checkBackupUpgrade({sync,evaluate,waitFor,api,ready,state}) {
  const before=await state();
+ const originalHash=await evaluate(`const db=await getDB();return db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data);`);
  await evaluate(`window.__upgradeBackup=await (await getBackups()).saveBackup();`);
  await sync(`document.querySelector('#tab-io').click();document.querySelector('.save-backup').click();`);
  await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
@@ -19,6 +20,7 @@ export async function checkBackupUpgrade({sync,evaluate,waitFor,api,ready,state}
  assert.equal(await sync(`return document.querySelector('.import-error').hidden;`),true,await sync(`return document.querySelector('.import-error').textContent;`));
  assert.deepEqual(await state(),before);
  await api('/refresh',{});await ready();assert.deepEqual(await state(),before);
+ assert.equal(await evaluate(`const db=await getDB();return db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data);`),originalHash,'logical hash survives production merge/reload');
  const recovery=await evaluate(`const db=await getDB(),b=await getBackups();const copies=await db.listImportRecoveries();const file=await b.packageBackup(await db.readImportRecovery(copies[0].key));const prepared=await b.prepareBackup(file.data);return {copies:copies.length,updated:prepared.preview.beans.updated};`);
  assert.ok(recovery.copies>=1);assert.equal(recovery.updated,1);
  console.log('PASS upgraded production /CoffeeOS/ archive download, preview-only selection, explicit atomic merge, recovery download and reload');

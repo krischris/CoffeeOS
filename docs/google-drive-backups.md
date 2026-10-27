@@ -54,8 +54,10 @@ Closed windows also expire after three minutes.
 
 One sync runs after authorization:
 
-- A collection with any beans or sessions uploads a new immutable `.coffeeos`
-  snapshot. Older files stay in Drive.
+- A collection with any beans or sessions is compared with the most recently
+  uploaded snapshot. Identical contents show “Already backed up” without an
+  upload. Changed contents upload a new immutable `.coffeeos` snapshot; older
+  files stay in Drive.
 - A successfully opened, unchanged empty collection downloads and validates the
   most recently uploaded completed snapshot and imports it transactionally.
 - Empty local and empty cloud collections show “No Drive backup yet.” There is no
@@ -78,13 +80,33 @@ Incomplete searches stop safely. Ordering uses server `createdTime`, then file I
 ascending for ties; this is upload order, not proof of latest edits.
 
 Uploads use Google's [resumable protocol](https://developers.google.com/workspace/drive/api/guides/manage-uploads)
-with 1 MiB chunks and app properties `coffeeosKind=snapshot-v1`, `backupId` and
-`archiveSha256`. The folder retains `coffeeosKind=backups-folder-v1`. Success
+with 1 MiB chunks and app properties `coffeeosKind=snapshot-v1`, `backupId`,
+`archiveSha256` and optional `contentSha256V1` (see Google's
+[private app properties](https://developers.google.com/workspace/drive/api/guides/properties)). The folder retains
+`coffeeosKind=backups-folder-v1`. Success
 requires server size and SHA-256 verification. Interrupted chunks query the same
 session's confirmed offset before resending. Transient reads/status probes retry
 up to three times with bounded backoff. An uncertain upload is reconciled using
 the same backup ID; no blind second upload is started. Expired sessions stop with
 an unconfirmed result: inspect history and keep a local backup before a new sync.
+
+`contentSha256V1` is a logical SHA-256 fingerprint, separate from the archive's
+integrity checksum. Version 1 reads both captured Parquet tables in ID order,
+with fixed schema column order. Each row is a JSON array: strings remain exact,
+missing values are null, dates use ISO dates, timestamps retain six fractional
+digits, and doubles use big-endian IEEE-754 hex bytes (including signed zero).
+Each fixed block of 256 rows is hashed; the final hash covers the version tag
+`coffeeos-content-v1` and ordered table names, column names/types, counts and block
+hashes. Backup IDs, capture dates, ZIP timestamps, Parquet layout and insertion
+order do not affect it. A future algorithm must use a new metadata key/version.
+
+New snapshots compare using Drive metadata without downloading the archive.
+Older snapshots without a usable content hash are downloaded, fully validated
+and fingerprinted before comparison; their files remain untouched. Failed
+listing, validation or comparison stops sync and preserves local data. The
+comparison uses the newest snapshot only: reverting to an older collection
+uploads a new snapshot so empty-collection recovery still finds that state.
+No local hash cache, account state, storage identity or archive format changes.
 
 Progress reports transferred bytes. Cancel stops pending requests, but a request
 already accepted by Google may finish. Refresh history before starting another

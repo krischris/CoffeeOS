@@ -10,7 +10,7 @@ import { googleDriveClientId } from '../driveConfig';
 export function createDriveView(container: HTMLElement, onImported: () => Promise<void>): void {
   container.innerHTML = `<section class="card io-drive" aria-labelledby="drive-heading">
     <h2 id="drive-heading">Google Drive backup</h2>
-    <p>Connect to save your collection to Drive, or recover the most recently uploaded backup into an empty collection. Sync now repeats this once.</p>
+    <p>Connect to save your collection to Drive, or recover the most recently uploaded backup into an empty collection. Unchanged collections skip the upload. Sync now repeats this once.</p>
     <p class="drive-account">Not connected</p>
     <div class="io-actions">
       <button class="secondary-button drive-connect" type="button">Connect Google Drive</button>

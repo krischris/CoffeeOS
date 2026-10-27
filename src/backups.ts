@@ -3,7 +3,9 @@ import { backupColumns, backupLimits, backupTables, sessionForeignKeys } from '.
 import type { BackupTable } from './backupContract';
 import { exportBackupSnapshot, previewBackupData, mergeBackupData, replaceBackupData, ImportDataError } from './db';
 import type { BackupSnapshot, ExportFile, ImportFile, ImportPreview, ImportResult } from './db';
+import { sha256 } from './hash';
 
+export { sha256 } from './hash';
 export { backupLimits } from './backupContract';
 interface TableDescriptor {
   name: BackupTable; path: string; row_count: number; byte_length: number; sha256: string;
@@ -26,10 +28,6 @@ const matches = (actual: unknown, expected: unknown): boolean => {
   if (object(expected)) return object(actual) && Object.entries(expected).every(([key, value]) => matches(actual[key], value));
   return actual === expected;
 };
-export async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
-  return [...new Uint8Array(digest)].map(v => v.toString(16).padStart(2, '0')).join('');
-}
 export function validateManifest(value: unknown): BackupManifest {
   if (!object(value) || value.format !== 'coffeeos-backup') fail('This is not a CoffeeOS backup. Choose the original .coffeeos file.');
   if (value.format_version !== 1 || value.data_schema_version !== 1) fail('This backup needs a different CoffeeOS version. Keep the original and open it in a compatible version.');

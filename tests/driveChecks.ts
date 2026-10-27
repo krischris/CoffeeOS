@@ -91,6 +91,23 @@ export async function runDriveSelfTests(): Promise<DriveCheck[]> {
     await client(async (_url, init) => { if (init?.method === 'POST') { posts++; return new Response(null, { headers: { Location: 'https://www.googleapis.com/upload/drive/v3/files?upload_id=test' } }); } return json(remote); })
       .upload('folder', bytes, 'test-backup', 'test.coffeeos'); assert(posts === 1);
   });
+  await test('Logical hash is stored and verified with upload completion', async () => {
+    for (const kept of [true, false]) {
+      let posts = 0;
+      const api = client(async (_url, init) => {
+        if (init?.method === 'POST') {
+          posts++;
+          assert(JSON.parse(String(init.body)).appProperties.contentSha256V1 === hash);
+          return new Response(null, { headers: { Location: 'https://www.googleapis.com/upload/drive/v3/files?upload_id=hash' } });
+        }
+        const file = { ...remote, appProperties: { ...remote.appProperties, ...(kept ? { contentSha256V1: hash } : {}) } };
+        return json(init?.method === 'PUT' ? file : new URL(_url).searchParams.has('q') ? { files: [file] } : file);
+      });
+      if (kept) await api.upload('folder', bytes, 'test-backup', 'test.coffeeos', hash);
+      else await rejects(() => api.upload('folder', bytes, 'test-backup', 'test.coffeeos', hash), 'unconfirmed');
+      assert(posts === 1);
+    }
+  });
   await test('Lost upload response reconciles the same backup without a second POST', async () => {
     let posts = 0;
     const result = await client(async (url, init) => {

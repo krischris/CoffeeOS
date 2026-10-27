@@ -1,4 +1,5 @@
 import { checkDriveRestore } from './drive-restore-checks.mjs';
+import { checkDriveFingerprints } from './drive-content-checks.mjs';
 import assert from 'node:assert/strict';
 import { firefoxAdapter } from './firefox-upgrade-adapter.mjs';
 const endpoint = process.env.SAFARI_WEBDRIVER_URL ?? 'http://127.0.0.1:4444';
@@ -37,7 +38,7 @@ try {
     const state=async()=>JSON.stringify({beans:await db.getBeans(),sessions:await db.getBrewSessions()});
     const c=new AbortController();
     const initial=await db.captureDriveSnapshot();
-    window.__driveCloud=[];window.__drivePosts=0;window.__driveOpens=0;window.__driveHold=false;
+    window.__driveCloud=[];window.__drivePosts=0;window.__driveOpens=0;window.__driveHold=false;window.__driveDownloads=0;
     const account={token:'test-only-token',expiresAt:Date.now()+3600000,sub:'test',email:'test@example.invalid'};
     window.__driveTransport=async(url,init={})=>{
       const u=new URL(url);
@@ -65,6 +66,7 @@ try {
       const found=window.__driveCloud.find(f=>u.pathname.endsWith('/'+f.remote.id));
       if(!found)throw new Error('Unknown fake route: '+url);
       if(u.searchParams.get('alt')==='media'){
+        window.__driveDownloads++;
         if(window.__driveHold){await new Promise(resolve=>window.__driveRelease=resolve);}
         return new Response(found.bytes);
       }
@@ -82,6 +84,28 @@ try {
     await db.addBrewSession({bean_id:bean.id,dose_g:18.1234567890123,water_g:0,time_str:'',temp_c:null,grind_um:700.1234567890123,comment:'Drive\n精度 ☕',yield_g:null,tds_pct:1.4300000000000002,extraction_pct:null});
     const expected=await state();const saved=await db.captureDriveSnapshot();
     const first=await d.syncDrive(client,c.signal);check(!first.imported&&window.__drivePosts===1,'populated upload');check(await state()===expected,'upload no mutation');
+    const hash=await db.hashBackupContents(saved.snapshot.data);
+    check(window.__driveCloud[0].remote.appProperties.contentSha256V1===hash,'uploaded logical hash');
+    const repeat=await d.syncDrive(client,c.signal);
+    check(repeat.message.includes('Already backed up')&&window.__drivePosts===1&&window.__driveDownloads===0,'unchanged metadata-only skip');
+    delete window.__driveCloud[0].remote.appProperties.contentSha256V1;
+    const legacy=await d.syncDrive(client,c.signal);
+    check(legacy.message.includes('Already backed up')&&window.__drivePosts===1&&window.__driveDownloads===1,'legacy validated comparison skips upload');
+    const legacyBytes=window.__driveCloud[0].bytes;
+    window.__driveCloud[0].bytes=new Uint8Array(legacyBytes);window.__driveCloud[0].bytes[0]^=255;
+    await rejects(()=>d.syncDrive(client,c.signal),'corrupt legacy comparison');
+    check(window.__drivePosts===1&&await state()===expected,'corrupt comparison never uploads or mutates');
+    window.__driveCloud[0].bytes=legacyBytes;
+    window.__driveCloud[0].remote.appProperties.contentSha256V1=hash;
+    const archiveHash=window.__driveCloud[0].remote.appProperties.archiveSha256;
+    window.__driveCloud[0].remote.appProperties.archiveSha256='0'.repeat(64);
+    await rejects(()=>d.syncDrive(client,c.signal),'inconsistent remote checksums');
+    window.__driveCloud[0].remote.appProperties.archiveSha256=archiveHash;
+    const cancelled=new AbortController();cancelled.abort();
+    await rejects(()=>d.syncDrive(new d.DriveClient(account,cancelled.signal,window.__driveTransport),cancelled.signal),'cancelled comparison');
+    check(window.__drivePosts===1&&await state()===expected,'failed or cancelled comparison never uploads or mutates');
+    await rejects(()=>d.syncDrive(new d.DriveClient(account,c.signal,async()=>new Response(JSON.stringify({files:[],incompleteSearch:true}))),c.signal),'incomplete history');
+    check(window.__drivePosts===1&&await state()===expected,'failed comparison preserves collection');
     const recoveryCopies=JSON.stringify(await db.listImportRecoveries());
     const diagnostic=await (await import('/tests/driveChecks.ts')).testDriveRoundTrip(client,c.signal);check(diagnostic.startsWith('PASS')&&window.__drivePosts===2,'live-style round trip');check(await state()===expected,'round trip no mutation');
     check((await db.captureDriveSnapshot()).revision===saved.revision,'round trip kept revision');check(JSON.stringify(await db.listImportRecoveries())===recoveryCopies,'round trip kept recovery copies');
@@ -112,12 +136,20 @@ try {
     await db.deleteBean(local.id);window.__driveHold=false;
     const recovered=await d.syncDrive(client,c.signal);check(recovered.imported,'empty recovery');check(await state()===expected,'exact restored fields');check(window.__drivePosts===2,'recovery did not upload');
     window.__driveExpected=expected;
-    return {storage:db.getStorageMode(),bytes:window.__driveCloud[0].bytes.length,diagnostic};
+    return {storage:db.getStorageMode(),bytes:window.__driveCloud[0].bytes.length,diagnostic,hash,remote:window.__driveCloud[0].remote};
   `);
   console.log('PASS empty/populated sync, exact photo/precision round trip, guarded empty recovery, add-delete race, insert/commit/snapshot rollback',result);
   await api('/refresh',{}); await wait(`document.querySelector('#app')?.getAttribute('aria-busy')==='false'`);
   assert.equal(await evaluate(`const db=await getDB();return (await db.getBeans()).length===1&&(await db.getBrewSessions()).length===1;`),true);
+  const afterReload=await evaluate(`const db=await getDB(),d=await import('/src/drive.ts');const remote=${JSON.stringify(result.remote)};
+    const controller=new AbortController();let requests=0;
+    const client=new d.DriveClient({token:'fake',expiresAt:Date.now()+3600000,sub:'test',email:'test@example.invalid'},controller.signal,async(url,init)=>{
+      if(init.method||!new URL(url).searchParams.get('q'))throw new Error('Reload should need only history metadata');requests++;
+      return new Response(JSON.stringify({files:[remote]}));
+    });const response=await d.syncDrive(client,controller.signal);return {message:response.message,requests,hash:await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data)};`);
+  assert.equal(afterReload.hash,result.hash);assert.match(afterReload.message,/Already backed up/);assert.equal(afterReload.requests,1);
   console.log('PASS recovered records survive reload');
+  await checkDriveFingerprints(evaluate);
   await checkDriveRestore({evaluate,api,ready:()=>wait(`document.querySelector('#app')?.getAttribute('aria-busy')==='false'`)});
   // Recreate mock cloud after reload via a simple in-page fake account; UI test never uses Google.
   await evaluate(String.raw`
@@ -155,8 +187,11 @@ try {
   await wait(`document.querySelector('.drive-status').textContent.includes('Uploaded')`);
   assert.deepEqual(await sync('return [window.__uiOpens,window.__uiPosts];'),[1,1]);
   await sync(`document.querySelector('#tab-bean-manager').click();document.querySelector('#tab-io').click();document.querySelector('.drive-sync').click();document.querySelector('.drive-sync').click();`);
+  await wait(`document.querySelector('.drive-status').textContent.includes('Already backed up') && document.querySelector('.io-drive').parentElement.getAttribute('aria-busy')==='false'`);
+  assert.equal(await sync('return window.__uiPosts;'),1);
+  await evaluate(`const db=await getDB();const bean=(await db.getBeans())[0];await db.updateBean(bean.id,{...bean,name:bean.name+' changed'});`);
+  await sync(`document.querySelector('.drive-sync').click();`);
   await wait(`window.__uiPosts===2 && document.querySelector('.io-drive').parentElement.getAttribute('aria-busy')==='false'`);
-  assert.equal(await sync('return window.__uiPosts;'),2);
   assert.equal(await sync(`return document.querySelector('#drive-snapshot').value`),'ui-file-1');
   await sync(`document.querySelector('.drive-review').click();`);
   await wait(`!document.querySelector('.drive-preview').hidden && document.querySelector('.io-drive').parentElement.getAttribute('aria-busy')==='false'`);
@@ -174,6 +209,9 @@ try {
   assert.equal(await sync(`return window.__uiPosts;`),2,'switch requires confirmation before upload');
   await sync(`document.querySelector('.drive-sync').click();`);
   await wait(`window.__uiPosts===3 && document.querySelector('.io-drive').parentElement.getAttribute('aria-busy')==='false'`);
+  assert.equal(await sync(`return window.__uiPosts;`),3,'restored older contents upload when latest differs');
+  const gap=await sync(`const drive=document.querySelector('.io-drive').getBoundingClientRect(),local=document.querySelector('.io-export').getBoundingClientRect();return local.top-drive.bottom;`);
+  assert.ok(gap>=24,'Drive and local cards have at least 24px separation: '+gap);
   console.log('PASS history preserves previous snapshot selection, pinned preview, stale replacement reconfirmation, recovery visibility, no restore upload and account-switch confirmation');
   await sync(`document.querySelector('.drive-disconnect').click();window.__uiDeny=true;document.querySelector('.drive-connect').click();`);
   await wait(`!document.querySelector('.drive-error').hidden`);

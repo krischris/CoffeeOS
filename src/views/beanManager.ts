@@ -123,12 +123,20 @@ function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onD
   surface.addEventListener('pointerup', event => {
     if (!gesture || gesture.id !== event.pointerId) return;
     const dx = event.clientX - gesture.x;
-    if (gesture.horizontal && Math.abs(dx) >= 40) reveal(dx < 0 ? 'delete' : 'edit');
+    if (gesture.horizontal && Math.abs(dx) >= 40) {
+      const action = dx < 0 ? 'delete' : 'edit';
+      reveal(revealed !== null && revealed !== action ? null : action);
+    }
     gesture = null;
   });
   surface.addEventListener('pointercancel', () => { gesture = null; suppressClick = false; });
   surface.addEventListener('click', event => {
-    if (suppressClick) { event.preventDefault(); event.stopPropagation(); suppressClick = false; }
+    if (suppressClick) { event.preventDefault(); event.stopPropagation(); suppressClick = false; return; }
+    if (revealed !== null && !(event.target as Element).closest('button')) {
+      event.preventDefault();
+      event.stopPropagation();
+      reveal(null);
+    }
   }, true);
   let listScrollTop = 0;
   function setExpanded(open: boolean): void {

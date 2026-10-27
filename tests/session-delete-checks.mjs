@@ -15,6 +15,10 @@ export async function checkSessionDeletion({ sync, evaluate, waitFor, api, ready
     for (const [type,x,y] of [['pointerdown',0,0],['pointermove',${dx},${dy}],['${end}',${dx},${dy}]])
       summary.dispatchEvent(new PointerEvent(type,{pointerId:1,isPrimary:true,button:0,clientX:200+x,clientY:100+y,bubbles:true}));`);
   const hidden = () => sync(`return document.querySelector('${selector} .session-delete').hidden;`);
+  const tap = () => sync(`const summary=document.querySelector('${selector} .session-summary');
+    for(const type of ['pointerdown','pointerup'])
+      summary.dispatchEvent(new PointerEvent(type,{pointerId:1,isPrimary:true,button:0,bubbles:true}));
+    summary.click();`);
   await open();
   assert.equal(await hidden(), true);
   assert.equal(await sync(`return getComputedStyle(document.querySelector('${selector} .session-surface')).touchAction;`), 'pan-y pinch-zoom');
@@ -45,6 +49,14 @@ export async function checkSessionDeletion({ sync, evaluate, waitFor, api, ready
   assert.equal(await sync(`return document.querySelector('.session-form').hidden;`), true, 'Swipe click must not open editor');
   await swipe(100, 2);
   assert.equal(await hidden(), true);
+  await swipe(-100, 2);
+  await tap();
+  assert.equal(await hidden(), true, 'Fresh tap dismisses Delete');
+  assert.equal(await sync(`return document.querySelector('.session-form').hidden;`), true, 'Dismissal does not open editor');
+  await sync(`document.querySelector('${selector} .session-menu').click();`);
+  await tap();
+  assert.equal(await hidden(), true, 'Tap also dismisses menu-revealed Delete');
+  assert.equal(await sync(`return document.querySelector('.session-form').hidden;`), true);
   await swipe(-5, 100);
   assert.equal(await hidden(), true, 'Vertical scroll must not reveal Delete');
   await swipe(-25, 1);

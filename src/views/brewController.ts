@@ -84,7 +84,12 @@ function renderSession(session: BrewSession, onEdit: () => void, onDelete: () =>
   });
   surface.addEventListener('pointercancel', () => { gesture = null; suppressClick = false; });
   surface.addEventListener('click', event => {
-    if (suppressClick) { event.preventDefault(); event.stopPropagation(); suppressClick = false; }
+    if (suppressClick) { event.preventDefault(); event.stopPropagation(); suppressClick = false; return; }
+    if (!remove.hidden && !(event.target as Element).closest('.session-menu')) {
+      event.preventDefault();
+      event.stopPropagation();
+      reveal(false);
+    }
   }, true);
   remove.addEventListener('click', () => {
     if (deleting) return;

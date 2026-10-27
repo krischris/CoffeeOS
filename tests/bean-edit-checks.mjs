@@ -39,6 +39,12 @@ export async function checkBeanEditing({sync, evaluate, waitFor, api, ready}) {
   const swipe = (x,y=2) => sync(`const surface=document.querySelector('${selector} .bean-surface');
     for(const [type,dx,dy] of [['pointerdown',0,0],['pointermove',${x},${y}],['pointerup',${x},${y}]])
       surface.dispatchEvent(new PointerEvent(type,{pointerId:1,isPrimary:true,button:0,clientX:200+dx,clientY:100+dy,bubbles:true}));`);
+  const tap = (target = 'summary') => sync(`const target=document.querySelector('${selector} ${target}');
+    for(const type of ['pointerdown','pointerup'])
+      target.dispatchEvent(new PointerEvent(type,{pointerId:1,isPrimary:true,button:0,bubbles:true}));
+    target.click();`);
+  const actionsHidden = () => sync(`const card=document.querySelector('${selector}');return [
+    card.querySelector('.bean-edit').hidden,card.querySelector('.bean-delete').hidden];`);
   const original = await read();
   const originalCSV = await exported();
   assert.match(originalCSV[0],/000123/);
@@ -51,8 +57,27 @@ export async function checkBeanEditing({sync, evaluate, waitFor, api, ready}) {
   await sync(`document.querySelector('${selector} summary').click();`);
   assert.equal(await sync(`return document.querySelector('${selector} details').open;`),false,'Swipe suppresses accidental expand');
   await swipe(-100);
-  assert.equal(await sync(`return document.querySelector('${selector} .bean-edit').hidden;`),true);
-  assert.equal(await sync(`return document.querySelector('${selector} .bean-delete').hidden;`),false);
+  assert.deepEqual(await actionsHidden(),[true,true],'Reverse swipe closes Edit without revealing Delete');
+  await swipe(-100);
+  assert.deepEqual(await actionsHidden(),[true,false],'A second left swipe reveals Delete');
+  await swipe(100);
+  assert.deepEqual(await actionsHidden(),[true,true],'Reverse swipe closes Delete without revealing Edit');
+  await swipe(100);
+  assert.deepEqual(await actionsHidden(),[false,true],'A second right swipe reveals Edit');
+  for (const direction of [100,-100]) {
+    await swipe(direction);
+    await tap();
+    assert.deepEqual(await actionsHidden(),[true,true],'Fresh tap dismisses the visible action');
+    assert.equal(await sync(`return document.querySelector('${selector} details').open;`),false,'Dismissal does not expand bean');
+  }
+  await tap();
+  assert.equal(await sync(`return document.querySelector('${selector} details').open;`),true,'Next tap expands normally');
+  await swipe(-100);
+  await tap('.bean-history');
+  assert.deepEqual(await actionsHidden(),[true,true]);
+  assert.equal(await sync(`return document.querySelector('${selector} details').open;`),true,'History tap dismisses actions without collapsing bean');
+  await tap();
+  assert.equal(await sync(`return document.querySelector('${selector} details').open;`),false,'Next tap collapses normally');
   await sync(`document.querySelector('${selector}').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));`);
   await swipe(2,100);
   assert.equal(await sync(`return document.querySelector('${selector} .bean-edit').hidden;`),true,'Vertical scrolling does not reveal Edit');
@@ -60,6 +85,11 @@ export async function checkBeanEditing({sync, evaluate, waitFor, api, ready}) {
   assert.deepEqual(await sync(`const card=document.querySelector('${selector}');return [
     card.querySelector('.bean-edit').hidden,card.querySelector('.bean-delete').hidden,
     card.querySelector('.bean-actions').getAttribute('aria-expanded')];`),[false,false,'true']);
+  await tap();
+  assert.deepEqual(await actionsHidden(),[true,true],'Surface tap also dismisses menu actions');
+  assert.equal(await sync(`return document.querySelector('${selector} details').open;`),false);
+  assert.deepEqual(await read(),original,'Swipe and dismissal gestures preserve every record');
+  await menu();
   await sync(`document.querySelector('${selector} .bean-edit').click();`);
   assert.deepEqual(await sync(`return [...document.querySelectorAll('.bean-form input')].map(input=>input.value);`),
     [seeded.bean.name,'2025-01-02','','']);

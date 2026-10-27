@@ -20,7 +20,6 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
       <button class="secondary-button drive-cancel" type="button" hidden>Cancel transfer</button>
     </div>
     <p class="drive-status form-message" role="status" aria-live="polite"></p>
-    <p class="drive-last field-hint"></p>
     <p class="drive-error form-error" role="alert" hidden></p>
     <div class="drive-history" hidden>
       <h3>Restore from Drive</h3>
@@ -73,7 +72,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     select.replaceChildren();
     for (const [index, file] of history.entries()) {
       const option = document.createElement('option'); option.value = file.id;
-      option.textContent = `${index === 0 ? 'Most recently uploaded · ' : ''}${file.createdTime} · ${file.size} bytes · ${file.id}`;
+      option.textContent = `${index === 0 ? 'Most recently uploaded · ' : ''}${file.createdTime} · ${file.size} bytes`;
       select.append(option);
     }
     if (history.some(f => f.id === preferred)) select.value = preferred;
@@ -130,7 +129,6 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     showHistory(previous);
     const result = await syncDrive(client, signal);
     signal.throwIfAborted(); status.textContent = result.message;
-    if (!result.imported) find('.drive-last').textContent = result.message;
     if (result.imported) await driveStep('Refresh app views', onImported);
     history = await driveStep('Read cloud history', () => client.history()); signal.throwIfAborted(); showHistory(previous); status.textContent = result.message;
   }
@@ -180,7 +178,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
   find('.drive-dismiss').addEventListener('click', () => { clearPreview(); status.textContent = 'Restore cancelled. Your collection is unchanged.'; });
   function clear(): void {
     generation++; operation?.abort(); operation = null; renew = null; account = null; history = []; clearPreview(); showHistory();
-    find('.drive-last').textContent = ''; render();
+    render();
   }
   cancel.addEventListener('click', () => {
     generation++; operation?.abort(); operation = null; renew = null; clearPreview(); render();

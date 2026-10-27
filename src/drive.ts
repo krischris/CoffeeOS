@@ -231,6 +231,13 @@ export class DriveClient {
   }
 }
 
+function formatBackupSize(bytes: number): string {
+  const units = ['bytes', 'KB', 'MB', 'GB'];
+  let size = bytes, unit = 0;
+  while (size >= 1000 && unit < units.length - 1) { size /= 1000; unit++; }
+  return `${size.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unit]}`;
+}
+
 export async function syncDrive(client: DriveClient, signal: AbortSignal): Promise<{ message: string; imported: boolean }> {
   const { snapshot, revision } = await driveStep('Capture local snapshot', captureDriveSnapshot);
   signal.throwIfAborted();
@@ -239,7 +246,7 @@ export async function syncDrive(client: DriveClient, signal: AbortSignal): Promi
     const { manifest } = await driveStep('Validate packaged snapshot', () => unpackBackup(file.data));
     const folder = await driveStep('Discover backup folder', () => client.folder(true));
     await driveStep('Upload snapshot', () => client.upload(folder!, file.data, manifest.backup_id, file.name));
-    return { imported: false, message: `Uploaded backup captured ${snapshot.exported_at}: ${snapshot.counts.beans} beans and ${snapshot.counts.brew_sessions} brew sessions (${file.data.length} bytes). Later edits wait for Sync now.` };
+    return { imported: false, message: `Uploaded backup captured ${snapshot.exported_at}: ${snapshot.counts.beans} beans and ${snapshot.counts.brew_sessions} brew sessions (${formatBackupSize(file.data.length)}). Later edits wait for Sync now.` };
   }
   const latest = await driveStep('Read cloud history', () => client.latest());
   if (!latest) return { imported: false, message: 'No Drive backup yet. No empty backup was uploaded.' };

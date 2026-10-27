@@ -1201,3 +1201,59 @@ acceptance criteria prevent repeating the bugs while preserving dated evidence.
   `git diff --check` passed; Node resolves inside this project's `.venv`. Only
   `PLAN.md` changed. No new Safari/Firefox/Chrome, physical iOS, live Google,
   populated-upgrade or deployment pass is claimed by this documentation update.
+
+## Stage 39: Simplify Backup Details & Prioritize Google Drive
+
+- [x] **Status:** Complete locally; Safari checks passed, physical iOS pending.
+
+### Goal
+
+Keep Drive backup selection and upload feedback concise and readable, with cloud
+backup first and clearly named local backup options below.
+
+### Tasks
+
+1. Remove the full Drive file ID from dropdown labels while retaining upload date,
+   exact byte count and the most-recent marker. Keep IDs as option values.
+2. Format the Uploaded message size in bytes, KB, MB or GB as appropriate.
+3. Show the upload result once in the existing live status; remove its duplicate
+   grey hint. Preserve backup transfers, verification, selection and stored data.
+4. Place Google Drive backup before all local options. Rename the local sections
+   to “Save local backup” and “Import local backup”, including the save button and
+   recovery guidance that references the import section.
+
+### Acceptance Criteria (Stage 39 Gate)
+
+- Dropdown labels contain the existing date, byte count and most-recent marker
+  without file IDs; selecting and restoring the previous snapshot still works.
+- Completed uploads show one status message with a human-readable size and the
+  existing capture date, record counts and manual-sync guidance.
+- DOM/visual order places Google Drive first, followed by the existing local
+  options. Local section titles/save button use the explicit local labels;
+  navigation, local file workflows and Drive controls still work.
+- Build, Safari app/Drive regression checks, isolation headers and production
+  subpath assets pass. Record any environment limitations explicitly.
+- No storage identifiers, backup formats, dependencies or deployment change.
+
+### Verification — 2026-10-27
+
+- `uv run npm run build`, `git diff --check`, full `test:safari` and `test:drive`
+  passed in desktop Safari 27.2 using isolated localhost automation sessions
+  (IndexedDB). Drive checks used simulated Google authorization/transport and
+  covered snapshot selection, restore, exact records/photos/precision, failed
+  writes, recovery backups and reload persistence.
+- Focused Safari display probe passed: dropdown retained date/exact bytes/marker
+  and ID value; one live Uploaded status showed `5 KB` for 4,956 bytes; a second
+  upload kept the previous snapshot selected. Size checks passed for bytes, KB,
+  MB, GB and decimal rounding. Dev/preview isolation headers, relative production
+  assets and Safari `/CoffeeOS/` production startup/navigation passed.
+- UI text/presentation only; no storage, format, startup, dependency, service-worker
+  or deployment change, so no new populated-build upgrade run was required.
+  Physical iOS/Home Screen, live Google and deployed-host checks were not run;
+  no new Firefox/OPFS or populated-build upgrade pass is claimed.
+- Ordering/label follow-up passed build, diff checks and full `test:safari`
+  again, including local backup imports/exports and persistence. Focused desktop
+  Safari checks confirmed cloud-first DOM/visual order, exact local titles/save
+  button, Drive connect/sync and previous snapshot selection on localhost; the
+  production `/CoffeeOS/` preview also passed ordering/labels/navigation, relative
+  assets and isolation headers. Physical iOS and live Google remain unverified.

@@ -7,9 +7,9 @@ import { createDriveView } from './driveView';
 export function createIOView(container: HTMLElement, onImported: () => Promise<void>): void {
   container.innerHTML = `
     <section class="card io-export" aria-labelledby="export-heading">
-      <h2 id="export-heading">Save backup</h2>
+      <h2 id="export-heading">Save local backup</h2>
       <p>Keep your beans, brew sessions and photos together in one CoffeeOS file.</p>
-      <fieldset><button class="primary-button save-backup" type="button">Save backup</button></fieldset>
+      <fieldset><button class="primary-button save-backup" type="button">Save local backup</button></fieldset>
       <p class="export-status form-message" role="status" aria-live="polite"></p>
       <p class="export-error form-error" role="alert" hidden></p>
       <div class="export-files" hidden>
@@ -19,7 +19,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
       </div>
     </section>
     <form class="card io-import" aria-labelledby="import-heading">
-      <h2 id="import-heading">Import backup</h2>
+      <h2 id="import-heading">Import local backup</h2>
       <p class="field-hint" id="import-help">Adds new records and overwrites differing matching IDs, even from an older backup. Records absent from the backup stay in your collection. A recovery backup is kept before overwriting records.</p>
       <fieldset aria-describedby="import-help">
         <label for="import-backup">CoffeeOS backup</label>
@@ -35,7 +35,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
     </form>
     <section class="card io-recovery" aria-labelledby="recovery-heading" hidden>
       <h2 id="recovery-heading">Recovery backups</h2>
-      <p class="field-hint">Collections saved before imports overwrote or replaced records. Download a copy, then review it with Import backup to merge it back.</p>
+      <p class="field-hint">Collections saved before imports overwrote or replaced records. Download a copy, then review it with Import local backup to merge it back.</p>
       <fieldset class="recovery-list"></fieldset>
     </section>
     <details class="card io-legacy">
@@ -54,7 +54,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
       </form>
     </details>`;
   const driveContainer = document.createElement('div');
-  container.append(driveContainer);
+  container.prepend(driveContainer);
   createDriveView(driveContainer, async () => { await onImported(); await recoveries(); });
   const find = <T extends HTMLElement>(selector: string) => container.querySelector<T>(selector)!;
   const form = find<HTMLFormElement>('.io-import');

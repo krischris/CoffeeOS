@@ -1,3245 +1,1203 @@
-# Project Specification & Staged Execution Plan: `coffeos`
+# CoffeeOS: Specification & Staged Execution Plan
 
 ## 0. Global Rules for All Agent Sessions (READ FIRST)
-1. **Strict Stage Scoping:** You will be asked to execute ONE numbered stage at a time. Complete ONLY the requested stage, verify the Acceptance Criteria, update the status checkbox in this file, and STOP.
-2. **Scoped Toolchain via `uv`:** Do NOT assume global `node` or `npm` exist on the host machine. Node.js is installed inside `./.venv` via `nodeenv`. **Every single `node`, `npm`, or `npx` command MUST be prefixed with `uv run`** (e.g., `uv run npm install`, `uv run npx tsc --noEmit`, `uv run npm run build`).
-3. **Tech Stack:**
-   - Vanilla TypeScript + Vite (no heavy UI frameworks; clean modular DOM rendering).
-   - `@duckdb/duckdb-wasm` for in-browser SQL storage, backed by OPFS (`opfs://coffeos.db`) or the existing IndexedDB snapshot backend. Preserve the selected durable backend; lock/open/restore failures must preserve saved data and show a recoverable error. Initial fallback is permitted only when it cannot hide or overwrite existing data.
-   - Mobile-first iOS Web App (PWA) design: all `<input>` and `<select>` elements MUST have `font-size: 16px` (prevents iOS Safari auto-zoom) and touch targets `min-height: 44px`.
-4. **Domain Formula:**
-   $$\text{Extraction (\%)} = \frac{\text{Yield (g)} \times \text{TDS (\%)}}{\text{Dose (g)}}$$
-5. **Mandatory Upgrade Compatibility:** Every future update must preserve existing bean/session records and readable historical backups. Keep storage identity stable; use explicit, versioned, data-preserving migrations for format/storage changes. Startup, deployment, service-worker updates, and refactors must never silently replace inaccessible data with an empty database. Follow `AGENTS.md` and the Stage 6 upgrade acceptance criteria for every relevant future stage. This rule supersedes historical fallback instructions below.
 
----
+1. **Scope:** Execute only the requested stage, verify its gate, update its
+   status and stop. Completed stages below describe the consolidated feature;
+   their dated notes distinguish original work, later fixes and remaining gaps.
+2. **Plan maintenance:** Put a bug's cause, corrected implementation requirements
+   and regression acceptance criteria in the stage that introduced the feature.
+   Add dated verification there. Record each future update with the next unused
+   stage number as required by `AGENTS.md`; a repair entry can refer to its owning
+   stage rather than repeat its specification. Never renumber or reuse stages.
+   Stages absorbed by this compaction remain in the history map below.
+3. **Toolchain:** Vanilla TypeScript + Vite, no application framework. Use the
+   existing `.venv`, managed by `uv` + `nodeenv`; prefix every direct Node/npm/npx
+   command with `uv run`. `process.execPath` must be inside this project's `.venv`.
+   Run `uv run npm run build` after changes; it checks application/config types.
+4. **Runtime and hosting:** Pin local DuckDB-Wasm/assets together. Preserve Vite
+   `base: './'`, dev/preview COOP `same-origin` and COEP `require-corp`.
+   Check relative assets at `/CoffeeOS/`; dev headers do not prove host isolation.
+   The isolation service worker is not an offline cache. Keep the deployment
+   origin stable; an origin change needs an explicit tested transfer/recovery plan.
+5. **Data preservation:** Preserve IDs, bean/session relationships, units, dates,
+   timestamp precision, null/empty distinctions, comments, photos and numeric
+   precision. Historical CSV/Parquet backups remain readable. Use additive optional
+   fields or explicit versioned migrations with immutable recovery copies.
+   Never reset storage, replace unreadable data with empty tables, switch datasets
+   on failure or overwrite snapshots during startup/deployment. Empty initialization
+   requires confirmed first use. Stage 6 is mandatory for affected future updates.
+6. **Mobile/browser checks:** Inputs/selects use 16px CSS text and controls have
+   44px minimum targets, with the existing Stage 14 proportional-scale exception
+   documented there. Safari is primary; isolated Firefox supplies additional OPFS
+   coverage. Do not launch Chrome without explicit user authorization. Desktop
+   geometry/synthetic pointers do not establish physical iOS, keyboard, Home Screen
+   or storage-lifecycle behavior. Record tested environments and gaps explicitly.
+7. **Extraction:** `extraction_pct = (yield_g * tds_pct) / dose_g`, where both TDS
+   and extraction use percentage points. Round display only, never stored values.
+
+### Consolidated stage history
+
+This map preserves completed session numbers and outcomes. Requirements and dated
+evidence now live with the owning stages, including fixes discovered after initial
+acceptance. Earlier “pending” notes are superseded only by explicit later results;
+completion/user acceptance does not imply every device or live-service path passed.
+
+| Historical stage (all completed unless noted) | Owning stage(s) | Retained outcome |
+| --- | --- | --- |
+| Cross-stage bug review, 2026-10-25 | 2, 4, 5, 6 | Ownership/backend guards, committed-write warnings, date/number validation; memory-only fallback subsequently removed. |
+| 8: Complete Upgrade Resilience Guards & Regression Coverage | 6 | 2026-10-26: safe startup and previous-build Safari/IndexedDB + Firefox/OPFS gates passed. |
+| 10: Home Screen Bottom Navigation Layout | 1 | 2026-10-26: standalone layout corrected; physical iOS confirmation pending. |
+| 12: Safari Automation Retry for Compact Brew Cards | 11 | 2026-10-26: Safari dev/production passed; intermittent fixture failure retained. |
+| 13: Contain Bean Date Fields on Narrow iPhone Layouts | 3 | 2026-10-26: native date sizing constrained; desktop Safari geometry passed. |
+| 17: Compact Brew Editor Header and Larger Chart | 14, 15 | 2026-10-26: header/date access, larger chart, aligned actions; disclosure later replaced. |
+| 18: Direct Header Date Picker and Aligned Tasting Notes | 14, 15 | 2026-10-26: native header picker and aligned Grind/notes passed Safari. |
+| 19: Larger Brew Graph with Tighter Measurement Spacing | 14 | 2026-10-27: 20% chart increase verified; fixed heights later superseded. |
+| 20: Proportional Session Editor Fit | 14 | 2026-10-27: shared 80–100% scale and scrolling fallback passed Safari. |
+| 23: Raise Portable Backup Size Limit to 1 GB | 22 | 2026-10-27: configuration/build passed; no 1 GB memory test. Later caps removed. |
+| 26: Temporary In-App Drive Diagnostics for Personal Device Testing | 24 | 2026-10-27: simulated tests/rollback-only round trip passed; panel retired in 28. |
+| 27: Recoverable Database Worker Startup and Loading Diagnostics | 2, 6 | 2026-10-27: worker-hang recovery/upgrade tests passed; user confirmed deployed fix. |
+| 28: Registered Google Drive Connection and Remove Temporary Test UI | 24 | 2026-10-27: public client integrated, temporary panel removed, upgrade checks passed. |
+| 29: Stable Session Editor While the Keyboard Is Open | 14, 22, 25 | 2026-10-27: simulated keyboard geometry passed; archive/Drive collection caps removed. |
+| 31: Crawler-Readable Homepage | 30 | 2026-10-27: script-independent homepage/policy and populated upgrades passed. |
+| 33: Implement Stage 25 Drive History, Transfers and Recovery | 25 | 2026-10-27: full workflow implemented; later live failure fixed in 35. |
+| 34: Opt-In Live Drive Failure Diagnostics | 24, 25 | 2026-10-27: sanitized diagnostics passed; root cause subsequently fixed in 35. |
+| 35: Correct Native Fetch Receiver in Drive Requests | 24, 25 | 2026-10-27: native transport fix, three-browser adapter checks and real Google upload/download passed. |
+| 36: Record Acceptance of Drive Backup Stages | 24, 25 | 2026-10-27: user accepted 24/25/33; no additional test coverage implied. |
+| 37: Dismiss Swipe Actions Before Opening Cards | 7, 16, 32 | 2026-10-27: tap/reverse-swipe dismissal and Safari populated upgrade passed. |
 
 ## Stage 1: Toolchain, Vite Scaffold & PWA 3-Tab Shell
-- [x] **Status:** Completed
+
+- [x] **Status:** Complete; desktop checks passed, physical Home Screen checks pending.
 
 ### Goal
-Bootstrap the local `uv` + `nodeenv` environment, scaffold the TypeScript + Vite app, configure PWA manifests/headers for GitHub Pages + iOS Home Screen, and build the 3-tab navigation shell.
+
+Provide the project-local toolchain and a mobile dark shell with Brew Controller,
+Bean Manager and IO, deployed with relative PWA assets and database isolation.
 
 ### Tasks
-1. **Environment Setup:**
-   - If `.venv` does not exist: run `uv venv`, `uv pip install nodeenv`, and `uv run nodeenv -p --node=lts`.
-   - Initialize `package.json`, install `typescript` and `vite` as devDependencies via `uv run npm install -D typescript vite`.
-2. **Vite & GitHub Pages Config:**
-   - Create `tsconfig.json` (strict mode, `ES2022` target, bundler module resolution).
-   - Create `vite.config.ts` with `base: './'` and `server.headers`:
-     - `'Cross-Origin-Opener-Policy': 'same-origin'`
-     - `'Cross-Origin-Embedder-Policy': 'require-corp'`
-   - Add `coi-serviceworker.js` to `public/` and load it in `index.html` so GitHub Pages serves COOP/COEP headers in production.
-3. **iOS PWA Configuration:**
-   - Create `public/manifest.json` (`"name": "coffeos"`, `"short_name": "coffeos"`, `"display": "standalone"`, `"start_url": "./"`).
-   - Add iOS standalone meta tags to `index.html` (`apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, `viewport` with `viewport-fit=cover`).
-4. **UI Shell (`src/main.ts`, `src/style.css`):**
-   - Build a clean mobile layout with a top header (`coffeos`), a scrollable main content container, and a fixed bottom tab bar with 3 tabs:
-     1. **Brew Controller** (Default active view on load)
-     2. **Bean Manager**
-     3. **IO**
-   - Clicking tabs switches the active view container cleanly.
-5. **Shared Dark Theme (`src/style.css`, `index.html`, `public/manifest.json`):**
-   - Match the Stage 4 extraction graph across all three tabs using shared color variables: deep navy backgrounds, layered dark cards, light text, and warm peach accents.
-   - Theme forms, buttons, navigation, empty/loading/error states, and storage warnings, with readable text, visible input boundaries, and keyboard focus indicators.
-   - Set the native control color scheme to dark and align browser theme color, PWA background/theme colors, and iOS standalone status-bar styling with the dark shell.
+
+1. Bootstrap only when `.venv` is absent: `uv venv`, `uv pip install nodeenv`,
+   `uv run nodeenv -p --node=lts`, then `uv run npm ci` for a locked checkout.
+   Keep TypeScript/Vite in devDependencies and caches/generated files untracked.
+2. Configure strict TypeScript, Vite relative base and both dev/preview isolation
+   headers. Load the local `coi-serviceworker.js`; retain its license and Safari
+   compatibility retry for bodyless conditional 304 responses without validators.
+3. Supply relative manifest/start URL, icons, standalone iOS metadata and
+   `viewport-fit=cover`. Default to Brew Controller; tabs switch cleanly.
+4. Share navy surfaces, light text, peach accents, visible borders/focus and
+   dark native controls across every view and feedback state. Align theme/PWA
+   background with `#0e1222` and use dark-compatible iOS status-bar metadata.
+5. In standalone mode use the existing `100vh` workaround for WebKit viewport
+   under-sizing, navigation as the last non-shrinking flex row and scrollable
+   content above it. Retain home-indicator padding without duplicate overlay space.
 
 ### Acceptance Criteria (Stage 1 Gate)
-- `uv run npx tsc --noEmit` passes with zero errors.
-- `uv run npm run build` succeeds and outputs `./dist`.
-- Opening the app renders the 3-tab shell defaulting to **Brew Controller**.
-- Brew Controller, Bean Manager, and IO consistently use the extraction graph's dark palette, including cards, inputs/selects, buttons, navigation, and feedback states; text, control boundaries, and keyboard focus remain visible.
-- Native controls use a dark color scheme. Browser/PWA theme and background colors match the navy app background (`#0e1222`), with dark-compatible iOS standalone status-bar styling.
-- Desktop Safari confirms the dark theme and navigation at a 390px window width without horizontal overflow, including the production build under a repository subpath; physical iPhone/iPad and Home Screen checks are tracked separately until verified.
-- **STOP HERE.** Do not install or write DuckDB logic yet.
 
-### Verification — 2026-10-25
-- `uv run npx tsc --noEmit` and `uv run npm run build` both passed.
-- Headless Chrome confirmed Brew Controller is the default, all three tabs switch
-  correctly, keyboard navigation works, and the main content scrolls above the
-  fixed tab bar at mobile and desktop widths.
-- Final Safari IndexedDB and Firefox OPFS upgrade runs also confirmed that an
-  unchanged edit preserves sub-millisecond timestamps byte-for-byte in CSV
-  exports, including native date-input normalization.
-- Dev and preview responses include COOP `same-origin` and COEP `require-corp`.
-- Served `dist/` under `/coffeeos/` without server isolation headers: all relative
-  assets, manifest, and icons loaded, and the service worker enabled
-  `window.crossOriginIsolated` with the expected headers in two fresh browser
-  profiles. No unhandled browser exceptions or missing resources were observed.
-- Actual GitHub Pages deployment and physical iOS checks remain deployment
-  validation; no database initialization or persistence logic was added.
+- Type checks/build pass; default view, all tabs, keyboard navigation and scrolling
+  work at phone/desktop widths without overflow or content hidden beneath tabs.
+- Dark palette, native color scheme, focus and readable loading/error states are
+  consistent. Controls retain mobile sizing except the documented editor scale.
+- Test standalone geometry at 390×844 and 844×500 with 0/34px bottom padding:
+  navigation ends at the shell bottom and content ends above navigation.
+- Dev/preview headers pass. On a plain static repository-subpath host, relative
+  assets load, worker isolation activates and cached-worker reload does not stall.
+- Record actual host and physical iOS/Home Screen results independently; CSS
+  simulation cannot close the native toolbar/safe-area acceptance gap.
 
-### Dark theme follow-up — 2026-10-26
+### Verification — 2026-10-25–26
 
-- Completed the shared dark theme across the shell and all three tabs, matching
-  the extraction graph's navy surfaces and peach accents. Updated native control
-  styling, browser/PWA colors, and iOS standalone status-bar metadata.
-- Verification performed on 2026-10-25: `uv run npm run build` and Safari 27.0
-  on macOS checks passed on Vite dev and the production build under `/CoffeeOS/`.
-  Checks covered computed theme colors, native dark color scheme, navigation,
-  narrow layout, chart behavior, form writes, and reload persistence. Dev and
-  preview isolation response headers were confirmed; the chart/form screenshot
-  was visually reviewed.
-- Physical iPhone/iPad, Home Screen appearance, and actual deployed-host checks
-  remain unverified.
-
----
+- Builds/type checks and initial shell/navigation checks passed (historical Chrome
+  run); later Safari 27/macOS dev/production `/CoffeeOS/` suites verified theme,
+  navigation, narrow layout, forms and reloads. Plain static subpath tests verified
+  service-worker isolation/local assets; Safari cached-worker 304 retry passed.
+- Dark-theme follow-up recorded 2026-10-26, with checks performed 2026-10-25.
+  Stage 10's 2026-10-26 desktop Safari simulation passed both standalone sizes and
+  padding variants without overflow. Dev/preview isolation headers passed.
+- Physical iPhone/iPad installation, toolbar-gap resolution, rotation, safe-area
+  reporting and deployed-host behavior were not established by these local checks.
 
 ## Stage 2: Database Layer & Schema (`src/db.ts`)
-- [x] **Status:** Completed
+
+- [x] **Status:** Complete; local persistence/startup recovery passed, user confirmed deployed startup fix.
 
 ### Goal
-Create a standalone, strongly-typed database module using `@duckdb/duckdb-wasm` that persists data locally and exposes clean async CRUD methods.
+
+Expose typed, serialized DuckDB CRUD with durable storage, bounded runtime loading
+and recoverable failures that preserve the original collection.
 
 ### Tasks
-1. **Install Dependency:**
-   - Run `uv run npm install @duckdb/duckdb-wasm`.
-2. **Create `src/types.ts`:**
-   ```ts
-   export interface Bean {
-     id: string;
-     name: string;
-     roast_date: string | null;  // YYYY-MM-DD
-     freeze_date: string | null; // YYYY-MM-DD
-     created_at: string;
-   }
 
-   export interface BrewSession {
-     id: string;
-     bean_id: string;
-     bean_name?: string;         // Joined from beans table
-     brewed_at: string;          // ISO timestamp
-     dose_g: number | null;
-     water_g: number | null;
-     time_str: string | null;    // e.g. "02:30" or seconds
-     temp_c: number | null;
-     grind_um: number | null;
-     comment: string | null;
-     yield_g: number | null;
-     tds_pct: number | null;
-     extraction_pct: number | null;
-   }
-
-```
-
-3. **Implement `src/db.ts`:**
-* Request persistent storage via `navigator.storage?.persist?.()`.
-* Initialize `@duckdb/duckdb-wasm` using the local Vite worker/wasm bundle imports.
-* Open persistent storage at `opfs://coffeos.db`. Implement a clean fallback: if OPFS registration fails (e.g., restricted browser tab context), fall back to an in-memory DuckDB instance that automatically snapshots tables as Parquet buffers into IndexedDB on every write and restores on boot.
-* Run idempotent schema setup (`CREATE TABLE IF NOT EXISTS beans ...`, `CREATE TABLE IF NOT EXISTS brew_sessions ...`).
-* Implement and export async functions:
-* `initDB(): Promise<void>`
-* `getBeans(): Promise<Bean[]>` (ordered by `created_at DESC`)
-* `addBean(input: { name: string; roast_date?: string | null; freeze_date?: string | null }): Promise<Bean>`
-* `getBrewSessions(beanId?: string): Promise<BrewSession[]>` (joins `beans` to include `bean_name`, ordered by `brewed_at DESC`; filters by `bean_id` if provided)
-* `addBrewSession(input: Omit<BrewSession, 'id' | 'brewed_at' | 'bean_name'>): Promise<BrewSession>`
-
-
-* Ensure writes flush to persistent storage immediately (`CHECKPOINT`).
-
-
-4. **Boot Wire-Up:**
-* Call `await initDB()` in `src/main.ts` during startup and show a minimal loading indicator until ready.
-
-
+1. Use pinned `@duckdb/duckdb-wasm`, local Vite-managed worker/Wasm/signed Parquet
+   extension assets; disable automatic external extension downloads. Check the
+   installed API, request persistent storage and close connections/workers on exit.
+2. Preserve `Bean`/`BrewSession` fields in `src/types.ts`: string IDs/relationships,
+   nullable date-only roast/freeze fields, creation/brew timestamps, nullable
+   dose/water/yield grams, temperature °C, grind µm, TDS/EY percentage points,
+   duration text and comment. Stage 9 adds optional nullable JPEG photos.
+3. Register the physical `opfs://coffeos.db` handle with DuckDB alias `coffeos.db`.
+   Use durable IndexedDB Parquet snapshots for the compatible runtime/backend.
+   Selection/open/restore must obey Stage 6: no competing engine, dataset switch
+   or memory-only fallback when access fails. Schema setup is idempotent.
+4. Serialize `initDB`, bean/session reads and writes; parameter-bind values,
+   join bean names, order descending by creation/brew date and filter sessions
+   by bean when requested. Validate dates in years 0001–9999 and finite numbers.
+5. Coordinate SQL transactions with atomic snapshots/CHECKPOINT. Pre-commit
+   failures roll back; after-commit flush failures report that the change exists,
+   refresh views and offer backup guidance rather than invite duplicate retries.
+   Cleanup must not mask a committed result or the original error.
+6. Reject worker `error`/`messageerror` during instantiation; the pinned worker
+   otherwise clears pending requests without rejecting them. Use a 120-second
+   inactivity deadline reset by real loading progress, terminating failed workers
+   before persistent-file registration/open. Do not time out an active restore.
+7. Show loading phase and read-only/copyable environment/resource details after
+   ten seconds or failure, with Reload and a recoverable error. Never include
+   collection contents. Release database ownership on initialization failure.
 
 ### Acceptance Criteria (Stage 2 Gate)
 
-* `uv run npx tsc --noEmit` and `uv run npm run build` pass.
-* Database initializes cleanly in the browser console with zero unhandled promise rejections.
-* **STOP HERE.** Do not build the forms yet.
+- Build and CRUD checks pass: binding, joins/filter/order, concurrent init/writes,
+  nulls/zeroes, UTC timestamps, invalid dates/nonfinite numbers and reload.
+- Only one engine owns the origin. Competing tabs fail recoverably and can open
+  the original collection after ownership releases; they never open a fallback DB.
+- Inject failed snapshot writes, corrupt Parquet and post-commit flush errors;
+  check exact durable data/drafts, rollback versus committed warnings and retry.
+- Missing worker, decode error and silent instantiation exit loading recoverably;
+  slow progress resets the deadline. Compare durable bytes/backend before and
+  after failure; Reload recovers exact records without a reset or backend change.
+- Apply Stage 6's populated previous-build checks on both backends. Verify local
+  assets/isolation/subpath and distinguish physical/deployed results from localhost.
 
 ### Verification — 2026-10-25
 
-- `uv run npx tsc --noEmit` and `uv run npm run build` passed.
-- Firefox verified typed CRUD, parameter binding, nullable dates/metrics, UTC
-  timestamps, bean-name joins, filtering, ordering, constraints, and concurrent
-  initialization/writes, with zero unhandled browser exceptions or rejections.
-- OPFS writes survived reload. A second tab holding an exclusive OPFS lock
-  triggered IndexedDB fallback; both tables restored from atomic Parquet buffers
-  on reload. Failed snapshot writes rolled back, corrupt snapshots were preserved
-  behind a recoverable initialization error, and memory-only fallback worked.
-- The pinned runtime needs explicit file-handle registration and a plain
-  `coffeos.db` DuckDB alias for the physical `opfs://coffeos.db` file. Its MVP
-  compatibility bundle uses IndexedDB to avoid an OPFS reopen bug; the complete
-  persistence/recovery suite also passed with that bundle forced.
-- Workers, Wasm, and signed Parquet extensions are local Vite assets. Automatic
-  external extension downloads are disabled; the runtime and extension versions
-  are pinned together, and the extension license is included in `dist/`.
-- Dev/preview COOP `same-origin` and COEP `require-corp` headers were confirmed.
-  Firefox loaded `dist/` under `/coffeeos/` on a plain static server, with the
-  service worker establishing isolation; both Wasm bundles initialized, including
-  local Parquet loading in IndexedDB mode. Actual hosting and physical iOS
-  verification remain deployment checks.
-- Startup loading/error states are wired up. No forms or later-stage views were
-  implemented. Firefox was used for this verification; Safari is now the primary
-  browser for iOS acceptance checks, as specified in `AGENTS.md`.
+- Type checks/build, Firefox EH/OPFS and forced MVP/IndexedDB CRUD/persistence,
+  corrupt-snapshot/write rollback and lifecycle suites passed. Safari 27/macOS
+  startup, writes, joins, nulls, reload and static-subpath isolation passed.
+- Cross-stage review added lifetime Web Lock, sticky backend, finite/date validation
+  and committed-write warnings; Safari/Firefox regressions passed. Earlier accepted
+  independent second-tab writes, lock-triggered fallback and memory-only storage
+  are superseded by these guards and Stage 6; they are not supported behavior.
 
-### Safari follow-up — 2026-10-25
+### Verification — 2026-10-27 (absorbed Stage 27)
 
-- Safari 27.0 on macOS passed an isolated WebDriver smoke check after the user
-  enabled remote automation: database startup, cross-origin isolation, default
-  Brew Controller view, and all three tabs.
-- Bean/brew writes, bean-name joins, dates/nulls, reload persistence, and
-  second-tab database writes/reloads passed. No unhandled errors were observed
-  during the instrumented write operations.
-- Safari also loaded `dist/` from `/coffeeos/` on a plain static server; the
-  service worker established isolation, local database assets initialized, and
-  tab navigation worked.
-- `uv run npm run test:safari` is the reusable primary-browser smoke test.
-  Physical iPhone/iPad touch, viewport, Home Screen, and storage lifecycle checks
-  remain unverified; desktop Safari results do not replace them.
-
----
+- Eight Vite reloads and twelve production-mirror starts passed before the fix;
+  they did not reproduce the user's precise Home Screen trigger. A missing-worker
+  fixture reproduced the pinned runtime's indefinite loading path. Worker error,
+  messageerror and inactivity handling fixed that path without storage mutation.
+- Full Safari 27.2 suite/build/diff passed. Populated upgrades from `f5babb8`
+  passed Safari/IndexedDB and Firefox/OPFS: all three worker failures preserved
+  durable hashes and exact data, then Reload recovered; old backups still imported.
+  Only fixtures shorten the timeout. Firefox verified simulated slow-start details;
+  that final clock-based assertion was not rerun on Safari. Twelve corrected
+  production-mirror starts passed. A transient Parquet NetworkError did not recur.
+- Public deployed runtime assets were reachable with correct types; Pages had
+  no native isolation headers and a ten-minute HTTP cache. User confirmed the
+  deployed fix worked, without device/version details. Precise original device
+  trigger and a full physical iOS/Home Screen lifecycle matrix remain unverified.
 
 ## Stage 3: Bean Manager Tab (`src/views/beanManager.ts`)
 
-* [x] **Status:** Completed
+- [x] **Status:** Complete; desktop Safari passed, physical iOS date-control checks pending.
 
 ### Goal
 
-Implement the **Bean Manager** tab so beans can be added and inspected along with all brew sessions logged for each bean.
+Create beans and display each bean's complete, correctly associated brew history.
 
 ### Tasks
 
-1. **Add Bean Form:**
-* At the top of the **Bean Manager** view, render a clean card/form to add a Bean:
-* `Name` (text input, **required**)
-* `Roast Date` (`<input type="date">`, optional)
-* `Freeze Date` (`<input type="date">`, optional)
-* `Add Bean` submit button.
-
-
-* Submitting calls `addBean()`, resets the form, and refreshes the bean list.
-
-
-2. **Bean List & Per-Bean Brew Sessions:**
-* Render all beans below the form showing `name`, `roast_date` (if present), and `freeze_date` (if present).
-* Under each Bean entry (or when tapped to expand), query/filter and display **all Brew Sessions registered for this Bean**, sorted by date descending (`brewed_at DESC`).
-* For each session under a bean, display a compact summary row/card showing: Date/Time, `Dose (g)`, `Water (g)`, `Grind (um)`, `Temp (°C)`, `Time`, `Yield (g)`, `TDS%`, `Extraction%`, and `Comment`.
-
-
+1. Provide required nonblank Name and optional native Roast/Freeze date inputs.
+   Save through `addBean`, reset after success, refresh the list and prevent double
+   submits. Rollback retains the draft/list; committed warnings follow Stage 2.
+2. Render names/dates and all sessions descending by brew date: full timestamp,
+   every input/result metric and comment. Use safe text rendering, preserving
+   multiline text, zero/null distinctions and empty-history feedback.
+3. Constrain native date appearance, border-box width, internal value minimum
+   height and alignment so padded iOS date inputs cannot exceed their grid cell.
+   Keep native date semantics; later compact/edit workflows are in Stages 21/32.
 
 ### Acceptance Criteria (Stage 3 Gate)
 
-* User can create a Bean with only `Name`, or with optional `Roast Date` / `Freeze Date`.
-* Reloading the page retains added Beans.
-* Each Bean displays its associated Brew Sessions (or an empty state message like `"No brew sessions yet"`).
-* `uv run npm run build` succeeds.
-* **STOP HERE.**
+- Name-only/dated beans save once, reset and persist after reload; blank/whitespace
+  names fail. Inject a storage failure, retain the entered values and retry once.
+- Histories contain only the selected bean's sessions in correct order, render
+  markup-like text safely, refresh on tab entry and retain all fields after reload.
+- Measure actual field bounds with empty/populated dates at 320, 375, 390, 393,
+  420, 430 and 852px: dates match Name in a single column and fit both desktop
+  grid cells. No horizontal overflow; native type/date values, 16px text/44px height
+  remain. macOS success does not rule out the iOS-specific sizing defect.
+- Build/Safari regressions and production-subpath/isolation checks pass; record
+  physical iPhone/iPad date picker, keyboard and Home Screen checks separately.
 
-### Verification — 2026-10-25
+### Verification — 2026-10-25–26 (includes Stage 13)
 
-- `uv run npm run build` passed, including the application and Vite configuration
-  type checks.
-- Safari 27.0 on macOS passed `uv run npm run test:safari` in an isolated
-  automation session: required/whitespace name validation, name-only and dated
-  bean creation, form reset, duplicate submission prevention, list refresh, and
-  reload persistence.
-- Each bean displays its complete brew history in descending date order, with
-  all requested metrics, timestamps, and comments. Safari verified bean filtering,
-  empty histories, zero/null values, safe rendering of text containing markup,
-  multiline comments, tab-entry refresh, and persisted histories after reload.
-- A simulated IndexedDB storage failure preserved the entered form and existing
-  list; retry succeeded with exactly one new bean.
-- Safari at a 390px window width confirmed no horizontal overflow, 16px input
-  fonts, and 44px input/button heights. Dev and preview responses include COOP
-  `same-origin` and COEP `require-corp`.
-- Safari also passed form creation and reload persistence on the production build
-  served under `/coffeeos/` without host isolation headers. The service worker
-  established isolation and local database assets loaded. A local compatibility
-  patch retries bodyless conditional `304` responses without cache validators,
-  fixing Safari's cached-worker startup stall on this static host after reload.
-- Physical iPhone/iPad touch, keyboard/viewport, Home Screen, and storage lifecycle
-  checks, plus actual deployed-host verification, remain unverified. Stages 4 and
-  5 remain pending.
+- Safari 27/macOS passed creation/validation/reset/double-submit, safe complete
+  histories, storage-failure retry, reload and production static-subpath workflows.
+- Date sizing issue was not reproduced on macOS; WebKit issue 301648 identified
+  the iOS padded-width risk. Scoped constraints added; dev/production exact-width
+  checks passed all seven widths, empty/populated, including two-column layouts.
+  At 393px, fields measured 327px within a 361px card; native semantics retained.
+- Build, full Safari regression suite and dev/preview headers passed. Physical
+  iOS/date-picker and deployed-host checks remain unverified by these runs.
 
----
+## Stage 4: Brew Controller & Live Extraction Chart
 
-## Stage 4: Brew Controller Tab (`src/views/brewController.ts`)
-
-* [x] **Status:** Completed
+- [x] **Status:** Complete; desktop Safari workflows passed, physical iOS pending.
 
 ### Goal
 
-Implement the default **Brew Controller** tab featuring the global chronological list of Brew Sessions and the `"New Session"` workflow with the two specification tables (`Input` and `Result`) and live Extraction calculation.
+Show the chronological brew feed and create sessions with live extraction and a
+responsive brewing-control chart. Stages 14–16 own the later editor/edit/delete UI.
 
 ### Tasks
 
-1. **Brew Sessions List View:**
-* Display a prominent **`+ New Session`** button at the top of the **Brew Controller** tab.
-* Below it, render all Brew Sessions sorted by date (`brewed_at DESC`).
-* Each session card MUST prominently show the **Date/Time** and **Bean Name**, followed by the session's Input and Result metrics and any comment.
-
-
-2. **"New Session" Creation Workflow:**
-* Tapping **`+ New Session`** opens the New Session form (either inline panel or modal view) with a `Cancel` and `Save Session` button.
-* **Bean Selector:** Dropdown (`<select required>`) populated with existing Beans from `getBeans()`. (If no beans exist yet, show a helpful prompt to add a bean in Bean Manager first).
-* **Table 1 — Input Table:** Render a clean 2-column HTML `<table>` (Field | Value) containing inputs:
-* `Dose (g)` — `<input type="number" step="0.1" inputmode="decimal">`
-* `Water (g)` — `<input type="number" step="0.1" inputmode="decimal">`
-* `Time` — `<input type="text" placeholder="e.g. 02:30">`
-* `Temp (°C)` — `<input type="number" step="0.1" inputmode="decimal">`
-* `Grind size (um)` — `<input type="number" step="1" inputmode="decimal">`
-* `Comment` — `<input type="text">`
-
-
-* **Table 2 — Result Table:** Render a clean 2-column HTML `<table>` (Field | Value) containing:
-* `Yield (g)` — `<input type="number" step="0.1" inputmode="decimal">`
-* `TDS%` — `<input type="number" step="0.01" inputmode="decimal">`
-* `Extraction (%)` — **Read-only calculated field** (`<output>` or disabled input).
-
-
-
-
-3. **Live Extraction Calculation:**
-* On every `input` event on `Dose (g)`, `Yield (g)`, or `TDS%`, recompute:
-`extraction_pct = (yield_g * tds_pct) / dose_g`
-* If `dose_g > 0`, `yield_g > 0`, and `tds_pct > 0`, format to 2 decimal places (e.g., `20.45%`); otherwise display `—`.
-
-
-4. **Save & Refresh:**
-* Submitting calls `addBrewSession()`, returns to the Brew Controller list, and refreshes both the Brew Controller feed and Bean Manager session counts.
-
-
+1. Default to a feed ordered by `brewed_at DESC`, showing bean name, timestamp,
+   input/result values and comment. New Session opens a cancellable labeled form.
+2. Require an existing bean; if none exist, link to the bean form. Preserve drafts
+   while refreshing bean choices across tabs. Accept optional dose, water, time,
+   temperature, grind, comment, yield and TDS with appropriate decimal input modes.
+3. Recompute EY on dose/yield/TDS input: valid positive operands display two
+   decimals; missing/zero/negative operands display `—`. Store full precision.
+4. Draw extraction X=14–26%, TDS Y=0.95–1.75%, grid, shaded nine-region quality
+   labels, live result marker and dashed guides. Provide readable accessible
+   region/result text, invalid/empty state and explicit off-scale feedback.
+5. Save once through the serialized DB path, refresh both feed and bean histories,
+   reset/cancel cleanly and restore focus. On rollback keep the draft/chart;
+   on a committed warning exit the draft and show the saved result/backup guidance.
 
 ### Acceptance Criteria (Stage 4 Gate)
 
-* Opening the app lands on **Brew Controller** showing sessions sorted by date with Bean names.
-* Tapping **New Session** lets the user select a Bean, fill the Input Table and Result Table, see `Extraction (%)` calculate live, and save.
-* Saved sessions immediately appear in both **Brew Controller** and under the corresponding bean in **Bean Manager**.
-* `uv run npm run build` succeeds.
-* **STOP HERE.**
-
-### Additional requirement: Brewing control chart
-
-- [x] Add a live chart below the Brew Session Result table, matching the supplied
-  photo's extraction X axis (14–26%) and TDS Y axis (0.95–1.75%), grid, shaded
-  regions, and quality labels: Strong Under-Developed, Strong, Strong Bitter,
-  Under-Developed, Ideal / Optimum Balance, Bitter, Weak Under-Developed, Weak,
-  and Weak Bitter.
-- [x] Plot the current calculated EY and measured TDS with a result marker and
-  dashed axis guides; update on dose, yield, and TDS edits and clear on cancel.
-- [x] Provide readable result/region text, an empty state for invalid operands,
-  and explicit feedback when the result is outside the photo's chart scales.
-- [x] Keep the chart responsive within the mobile session form.
-
-Chart verification — 2026-10-25: `uv run npm run build` passed. Safari 27.0 on
-macOS passed the chart checks and existing session/save/persistence/IO suite on
-both Vite dev and the production build at `/coffeeos/`. Chart checks cover live
-coordinates and guides, all nine quality regions, invalid inputs, scale endpoints,
-out-of-range feedback, accessible result text, cancel/reset, and no overflow at a
-390px window width. Dev and preview isolation headers were confirmed. Physical
-iPhone/iPad and actual deployed-host checks remain unverified.
+- Required bean, no-beans navigation, optional/zero/null fields, ordering, safe
+  text rendering, cancel/focus and cross-tab draft retention pass in Safari.
+- Test formula/display versus exact saved numbers, every chart region, endpoints,
+  off-scale values, invalid inputs, live guides and cancel/reset clearing.
+- Save updates both views immediately and persists. Repeated submits insert once;
+  inject rollback and committed-flush failures and verify distinct retry behavior.
+- Build, phone layout/control sizes, production `/CoffeeOS/` workflows and
+  isolation headers pass; physical keyboard/touch/Home Screen gaps are explicit.
 
 ### Verification — 2026-10-25
 
-- `uv run npm run build` passed, including application and Vite configuration
-  type checks. Both browser test scripts also passed Node's syntax check.
-- Safari 27.0 on macOS passed `uv run npm run test:safari` in an isolated
-  automation session: default Brew Controller feed, chronological ordering,
-  bean names, both specification tables, required bean selection, optional
-  measurements, and safe rendering of bean names and comments.
-- Dose, yield, and TDS edits calculate extraction live; missing, zero, or
-  negative operands display `—`. Two-decimal display and full-precision saved
-  values were verified, along with zero/null metrics and reload persistence.
-- Saving refreshes the feed and the hidden Bean Manager's histories/counts
-  immediately. Repeated submissions save once; a simulated IndexedDB failure
-  preserves the draft and both histories, and retry creates exactly one session.
-- No-beans navigation, cancel/reset and focus return, and refreshing bean choices
-  after tab navigation while preserving a draft all passed. At a 390px window
-  width, the form has no horizontal overflow, 16px inputs/selects, and controls
-  at least 44px high. Safari's native select sizing required custom appearance
-  styling to honor the minimum height.
-- Dev and preview COOP `same-origin` and COEP `require-corp` headers were
-  confirmed. Safari also passed the form workflow, immediate history updates,
-  and reload persistence on the production build served under `/coffeeos/`
-  without host isolation headers; the service worker established isolation and
-  local database assets loaded. No unhandled browser errors were observed.
-- Physical iPhone/iPad touch, keyboard/viewport, Home Screen, and storage
-  lifecycle checks, plus actual deployed-host verification, remain unverified.
-  Stage 5 remains pending.
+- Build and Safari 27/macOS dev/plain-static production suites passed all creation,
+  formula, chart-region/range/accessibility, duplicate-submit, rollback/retry,
+  safe-text, draft/cancel and immediate-history/reload checks. Safari select
+  appearance was adjusted to honor 44px height. No overflow at 390px.
+- Service-worker isolation, local assets and dev/preview headers passed. Physical
+  iPhone/iPad, native keyboard, Home Screen and actual host checks remain open.
 
----
+## Stage 5: Historical CSV/Parquet IO & Deployment
 
-## Stage 5: IO Tab (Parquet & CSV Import/Export) + Deployment Polish
-
-* [x] **Status:** Completed
+- [x] **Status:** Complete; legacy compatibility retained, normal UI superseded by Stage 22.
 
 ### Goal
 
-Build the **IO** tab so the user can export and import the entire database state as `.parquet` or `.csv` files (compatible with the iOS Files app / Share sheet) and add the GitHub Pages deployment workflow.
+Preserve interoperable legacy backups and a reproducible GitHub Pages deployment.
 
 ### Tasks
 
-1. **Export Functionality (`src/db.ts` & `src/views/ioView.ts`):**
-* Add buttons in the **IO** tab to **Export Parquet** and **Export CSV** (for `beans` and `brew_sessions`, or a combined/zipped export, plus a single-file denormalized export option).
-* Use DuckDB's native `COPY beans TO 'beans.parquet' (FORMAT PARQUET)` and `COPY brew_sessions TO 'brew_sessions.parquet' (FORMAT PARQUET)` (and `(FORMAT CSV, HEADER)` for CSV).
-* Extract file buffers via `db.copyFileToBuffer()` and trigger download/share (`navigator.share` with `File` on iOS if supported, falling back to `<a download>`).
-
-
-2. **Import Functionality (`src/db.ts` & `src/views/ioView.ts`):**
-* Provide file inputs accepting `.parquet` and `.csv` for restoring/merging `beans` and `brew_sessions`.
-* Register the uploaded `Uint8Array` buffer into DuckDB via `db.registerFileBuffer()` and upsert rows (`INSERT OR REPLACE INTO ... SELECT * FROM read_parquet(...)` or `read_csv_auto(...)`), then flush to storage.
-* Display a clear status toast showing how many Beans and Brew Sessions were imported.
-
-
-3. **GitHub Actions Deployment (`.github/workflows/deploy.yml`):**
-* Add a standard GitHub Pages workflow that installs Node LTS, runs `npm ci && npm run build`, and deploys `./dist` to GitHub Pages on push to `main`.
-
-
+1. Maintain combined/separate CSV and Parquet readers/export fidelity in the data
+   layer. Keep beans without sessions and empty tables. Normal file UI now uses
+   Stage 22's `.coffeeos` archive; expose historical imports through its legacy path.
+2. Stage imports with fixed SQL identifiers; validate complete input before atomic
+   upsert by ID. Do not rely on automatic CSV inference or blind replacement to
+   preserve relationships, null markers, dates, precision and optional fields.
+3. Retain selections on rollback and make cleanup unable to mask success/errors.
+   Report applied counts, refresh both histories and distinguish committed warnings.
+4. Prepare downloads and use a separate user-activated Share action, with download
+   fallback. Deploy `dist/` via Pages Actions on main/manual runs with Node LTS,
+   locked dependencies and separate build/deploy jobs; preserve origin/storage.
 
 ### Acceptance Criteria (Stage 5 Gate)
 
-* User can export data to `.parquet` and `.csv` and re-import it cleanly without duplicating existing primary keys.
-* `uv run npx tsc --noEmit` and `uv run npm run build` pass with zero errors.
-* All 5 status checkboxes in `PLAN.md` are marked `[x]`.
+- All four combined/separate CSV/Parquet variants round-trip exact logical data,
+  including empty collections, beans without sessions, reordered columns, IDs,
+  joins, timestamps, precision, null/empty/literal-null-marker values and Unicode.
+- Repeated imports are idempotent; referenced-bean updates/session moves work.
+  Invalid schemas/duplicate IDs/orphans/nonfinite numbers/invalid dates or corrupt
+  Parquet fail atomically. Date range is 0001–9999. Failure retains files for retry.
+- Test second-table/snapshot rollback and committed-warning cleanup semantics;
+  Share success/cancel/error fallback must not lose prepared downloads.
+- Build/workflow validation and Safari subpath/isolation checks pass. Hosting,
+  physical Files/Share and Stage 6 deployment upgrades require separate evidence.
 
 ### Verification — 2026-10-25
 
-- `uv run npx tsc --noEmit` and `uv run npm run build` passed. Both existing
-  browser scripts and the new IO checks passed Node's syntax check; the Pages
-  workflow parsed as valid YAML with the expected build/deploy dependency.
-- Safari 27.0 on macOS passed `uv run npm run test:safari`, including the
-  existing bean/session workflows and two-file and combined CSV/Parquet exports.
-  Both layouts preserve beans without sessions. All four backup variants also
-  restored into an empty memory-only database, including empty backup round trips.
-- File-input imports insert and update by primary key without duplicates,
-  accept reordered columns, refresh both history views immediately, and persist
-  after reload. Exact round trips preserved dates, timestamps, nulls, zeroes,
-  full numeric precision, Unicode, quoted/multiline text, empty strings, and
-  literal CSV null markers. Updating a referenced bean and moving a session to
-  another bean both passed.
-- Invalid schemas, duplicate IDs, invalid/nonfinite measurements and dates,
-  corrupt Parquet, missing beans, and combined rows missing a session ID were
-  rejected. Invalid batches and simulated IndexedDB snapshot failures left
-  both tables unchanged; selected files remained available and retry succeeded.
-- Prepared files have download links and a separate Share action to preserve
-  user activation. Mocked sharing success, cancellation, and unsupported/error
-  fallback passed. The IO view has no horizontal overflow at a 390px Safari
-  window width, with 16px fields and controls at least 44px high.
-- Dev and preview COOP `same-origin` and COEP `require-corp` headers were
-  confirmed. The final production build passed Safari form/IO workflows and
-  reload persistence under `/coffeeos/` on a plain static server without host
-  isolation headers; the service worker established isolation and local
-  database assets loaded. No unhandled browser errors were observed.
-- `.github/workflows/deploy.yml` builds and deploys `dist/` on pushes to `main`
-  or manual runs, using Node LTS and separate build/deploy jobs. Repository Pages
-  must use the GitHub Actions source. The workflow has not run on GitHub and no
-  deployment was published during this stage.
-- Physical iPhone/iPad Files/Share sheet, touch, keyboard/viewport, Home Screen,
-  and storage lifecycle checks, plus actual deployed-host verification, remain
-  unverified. Desktop Safari and mocked sharing do not replace these checks.
-
-
----
-
-## Cross-stage bug review — 2026-10-25
-
-Reviewed the completed stages together, including database lifecycle, forms,
-backup handling, the service worker, and deployment configuration. This review
-supersedes the earlier acceptance of independent writable second-tab databases.
-
-### Fixed
-
-- **High — competing databases and lost snapshot updates:** a lifetime Web Lock
-  now permits one database engine per origin. A competing tab shows a recoverable
-  startup message rather than opening a separate dataset or overwriting another
-  tab's snapshot. Closing the engine releases ownership.
-- **High — backend changes hiding saved records:** startup remembers its durable
-  backend. Existing fallback snapshots stay on IndexedDB when OPFS becomes
-  available; an unavailable remembered OPFS database produces an error instead
-  of an empty collection. Existing OPFS files are not silently bypassed after an
-  open failure. Historical split datasets remain intact and are not auto-merged.
-- **Medium — misleading retry after commit:** checkpoint/flush failures after a
-  successful commit now tell the user the change already exists and to export a
-  backup. Forms clear committed drafts and refresh histories; rolled-back writes
-  still preserve drafts for retry. Import-buffer cleanup cannot mask a successful
-  commit or the original import error.
-- **Medium — invalid display values:** imports reject dates/timestamps outside
-  years 0001–9999; direct CRUD rejects unsupported date strings and nonfinite
-  measurements. This prevents accepted data from breaking date rendering.
-- **Medium — invisible memory-only storage:** startup displays a warning and
-  backup instructions when records will only last for the current tab.
-
-### Verification
-
-- Production build and TypeScript checks passed with the project-local toolchain.
-- Safari 27.0 on macOS passed forms, navigation, chart, storage/reload, CSV/Parquet,
-  rollback, second-tab exclusion, sticky fallback, and simulated post-commit
-  flush-failure regressions in an isolated automation session.
-- Safari also passed the production workflows under `/coffeeos/` on a plain
-  static server without isolation headers. The service worker established
-  isolation, and relative assets, forms, backup imports, and reload persistence
-  worked. Dev and preview response headers were verified separately.
-- Isolated Firefox passed both the EH/OPFS and forced MVP/IndexedDB suites,
-  including backend capability loss, ownership release, corrupt snapshots,
-  failed writes, invalid CRUD values, memory fallback, and teardown, with no
-  unhandled browser exceptions/rejections.
-- Physical iPhone/iPad touch, keyboard, Home Screen/storage lifecycle and native
-  Files/Share interactions remain unverified. Actual GitHub Pages deployment
-  remains unverified. The isolation service worker does not provide offline
-  caching; that remains outside the implemented plan.
-
----
+- Type checks/build, workflow YAML and Safari 27/macOS full IO suite passed:
+  four variants including empty fixtures, exact values, idempotence, invalid-batch
+  rejection, storage rollback, retry and mocked Share. Date/number validation and
+  cleanup/committed-warning fixes passed the cross-stage Safari/Firefox review.
+- Production plain-static subpath/service-worker isolation and reload passed;
+  dev/preview headers checked. Historical memory-only test fixtures predate Stage
+  6's durable-only startup policy and do not authorize application memory fallback.
+- No GitHub Actions deployment, physical Files/Share or host acceptance was
+  established by this stage. Stage 22 replaces ordinary CSV/Parquet export controls.
 
 ## Stage 6: Upgrade Compatibility & Persistent Data Protection
 
-- [x] **Status:** Implemented and automated upgrade checks passed; platform/deployment limitations recorded in Stage 8
+- [x] **Status:** Complete for implemented local gates; platform/deployment limits remain.
 
 ### Goal
 
-Ensure future releases and refactors preserve existing beans, brew sessions, and
-backups, and never make an existing user's database appear empty because storage
-could not be opened or its identity changed.
+Make upgrades, startup and failures preserve the same exact recoverable collection.
 
 ### Tasks
 
-1. **Preserve the data contract:**
-   - Maintain existing IDs, bean/session relationships, field meanings and units,
-     dates/timestamps, null/empty values, comments, and full numeric precision.
-   - Keep prior stored formats and CSV/Parquet backups readable. Prefer additive,
-     optional fields with defaults; introduce explicit schema/format versions and
-     migrations when a change requires them.
-2. **Preserve storage identity and safe startup:**
-   - Keep `coffeos.db` / `coffeos.db.wal`, IndexedDB `coffeos-snapshots`, its
-     `snapshots` store, `tables-v1`, `backend-v1`, and the `coffeos-database` lock
-     stable. Any rename/backend move must locate and migrate existing records.
-   - Preserve the deployment origin and storage access across releases. Document
-     a transfer/recovery path before changing origin or deployment settings that
-     could make saved data inaccessible.
-   - Preserve existing lock, remembered-backend, and corrupt-snapshot guards.
-     Open/restore/migration failures must retain original storage and show a
-     recoverable error. New empty storage is for confirmed first use only.
-   - Ensure startup, build/deploy, and service-worker/cache update paths never
-     clear user databases, overwrite snapshots with empty tables, or silently
-     switch to a different dataset. Destructive reset requires an explicit,
-     separate user action.
-3. **Make necessary migrations recoverable:**
-   - Preserve a recoverable pre-migration copy, apply changes atomically where
-     supported, and make retries idempotent. Interrupted/failed migrations must
-     preserve existing records and prevent partially migrated data being used.
-   - Detect unsupported/newer formats and preserve them behind a recoverable
-     error; document rollback compatibility before changing the storage format.
-4. **Add upgrade regression checks:**
-   - Seed a previous build with representative beans and linked sessions, then
-     replace it with the candidate build using the same isolated browser profile,
-     origin, and repository subpath. Retain fixtures from supported prior formats.
-   - Exercise OPFS and IndexedDB separately, repeated startup/reload, old backup
-     imports, backend capability loss, lock contention, corrupt snapshots, and
-     migration interruption/failure. Never use the user's normal browser profile.
-   - Run Safari first and record results for affected future releases, including
-     DuckDB upgrades, startup refactors, and service-worker/deployment changes.
+1. Keep `coffeos.db` / `coffeos.db.wal`, IndexedDB `coffeos-snapshots`, store
+   `snapshots`, keys `tables-v1` / `backend-v1` and lock `coffeos-database` stable.
+   Never derive identities from build/version/URLs. Preserve all data contracts
+   in the global rules; schema/format changes need explicit versioned migrations.
+2. Acquire a lifetime ownership lock and read required backend metadata before
+   opening data. Preserve the selected durable backend. Reject denied metadata,
+   unknown markers/schemas, invalid snapshot envelopes, corrupt Parquet, missing
+   remembered files/snapshots and ambiguous/inaccessible legacy OPFS.
+3. Inspect existing files before creation. Confirm first use before initializing;
+   new IndexedDB storage saves the empty snapshot before its backend marker.
+   A marker with a missing snapshot is a recovery error, even if it might be an
+   older unused install. Never silently switch backends, auto-merge historical
+   split datasets or offer an empty memory-only replacement.
+4. Preserve originals and immutable pre-migration copies; make migration/retry
+   atomic/idempotent. Unsupported/newer formats fail without mutation. Include
+   interruption, rollback and original-build reopening in migration coverage.
+5. Follow `tests/UPGRADES.md`: seed an immutable previous build, export old backups,
+   replace with candidate at the same isolated profile/origin and `/CoffeeOS/`,
+   update worker bytes, reload repeatedly, compare every field and add new records.
+   Exercise IndexedDB and OPFS separately; run shared-port suites sequentially.
+6. If lockfile packages differ, install/build old and candidate fixtures separately;
+   never bypass dependency guards. Keep test hooks in `.cache`, outside `dist`.
+   Extend failure injections for each new dependency/schema/startup/worker change.
 
 ### Acceptance Criteria (Stage 6 Gate)
 
-- Replacing a previous build with the candidate build preserves every seeded bean
-  and session, their IDs/relationships, and exact field values after startup and
-  repeated reloads on both OPFS and IndexedDB. Verify values as well as counts.
-- Existing records still render correctly; users can add a bean/session after
-  upgrading and see both old and new records after reload.
-- Historical CSV and Parquet fixtures import without data loss or duplicate IDs.
-- Any required migration succeeds once, is safe to retry, and preserves the
-  original data on interruption/failure; unsupported formats fail without mutation.
-- Lock conflicts, lost storage access/isolation, restore failures, and corrupt
-  snapshots preserve saved data and display a recoverable error. Restoring access
-  exposes the original records; no empty replacement dataset is presented or saved.
-- Build hashes, code refactors, and service-worker/cache updates leave storage
-  identity and records intact. Any intentional identity/origin change has a tested
-  migration or transfer path before release.
-- `uv run npm run build` passes. Safari upgrade checks pass on the production
-  repository subpath; physical iPhone/iPad Home Screen and storage lifecycle checks
-  and actual deployed-host checks are recorded separately until verified.
-- Every future stage affecting these paths includes the applicable upgrade checks
-  in its acceptance criteria and verification notes.
+- `test:upgrade` (Safari/IndexedDB) and `test:upgrade:firefox` (isolated Firefox/OPFS)
+  retain every exact field/relationship after previous-build replacement/startup/
+  reload. Historical CSV/Parquet imports stay idempotent; new writes survive too.
+- Inject metadata denial/unknown backend/schema, missing remembered data, corrupt
+  snapshots/Parquet, interrupted restore, lost isolation/OPFS permission and lock
+  contention. Compare durable byte hashes; fail recoverably with no active empty
+  database and recover original records after access returns.
+- Apply Stage 2 worker error/decode/timeout failures before persistent open; release
+  ownership and verify Reload, with no dataset switch or empty snapshot overwrite.
+- For each migration test recovery-copy failure, interruption after schema DDL,
+  rollback, old-build reopening and successful retry without replacing recovery.
+- Build and relative assets/isolation pass. Record prior commit, browser/backend,
+  fixture contents, failure results and unverified paths in each affected update.
+  Same-build reload/fresh DB tests alone never establish upgrade safety.
+- No deployment/worker/cache path clears storage; any planned identity/origin move
+  has a verified migration/transfer and access to the original until recovery passes.
 
-### Verification — 2026-10-26
+### Verification — 2026-10-26 (includes Stage 8)
 
-- Added mandatory compatibility/persistence rules to `AGENTS.md` and the global
-  plan rules; corrected the conflicting global instruction allowing fallback on
-  OPFS locks. Existing database guards and regression checks were inspected.
-- `uv run npm run build` and `git diff --check` passed for this documentation
-  update; no runtime behavior was changed.
-- This update documents requirements only. Previous same-build persistence checks
-  do not prove compatibility across releases. Previous-build upgrade fixtures,
-  migration failure coverage, and physical iPhone/iPad/deployed-host upgrade checks
-  remain pending; Stage 6 is not marked complete.
+- Initial Stage 6 was requirements-only; Stage 8 completed the guards and harness.
+  Added `test:upgrade` / `test:upgrade:firefox`, immutable default fixture `2ccf66c`
+  and instructions in `tests/UPGRADES.md`. No storage/format identity changed.
+- Both populated suites passed same-profile/origin build replacement, changed
+  worker, exact comparisons, old backups, new writes/reloads and the failure
+  matrix above. Metadata/backend/schema failures preserved durable byte hashes;
+  IndexedDB additionally covered corrupt/missing/invalid/interrupted snapshots;
+  OPFS covered isolation/directory/file access. Locks rejected competing startup.
+- Full Safari and Firefox DB regressions, build/script syntax/diff and local
+  headers passed. Automatic memory-only fallback removed. No migration introduced
+  here; Stage 9 supplies actual schema-migration rollback evidence.
 
----
+### Verification — 2026-10-27 (later upgrade evidence)
+
+- Stage 27 upgrades from `f5babb8` passed worker-failure preservation on both
+  backends (see Stage 2). Subsequent feature notes record recent-build fixtures,
+  including `abcddcd`, `a0a427d`, `27e039b`, `4d31002` and `0fb9a4d`.
+- Safari OPFS, DuckDB-version upgrade fixtures, physical iOS/Home Screen
+  lifecycle and actual hosted build replacement/headers remain unverified.
+  Local worker replacement uses host isolation headers; it is not live Pages
+  upgrade proof. Future migrations/dependency/origin changes need their own tests.
 
 ## Stage 7: Collapsible Bean Entries & Swipe-to-Delete
 
-- [x] **Status:** Implemented; automated checks passed; physical-device checks pending
+- [x] **Status:** Complete; local gestures/deletion/upgrades passed, physical touch pending.
 
 ### Goal
 
-Keep the mobile Bean Manager compact and let users explicitly delete a bean and
-its attached brew sessions through a swipe-revealed action.
+Keep bean histories compact and provide deliberate, recoverable bean deletion.
 
 ### Tasks
 
-1. Show bean name, defined dates, and session count by default; toggle history on tap.
-2. Reveal Delete on a left swipe, support closing it, and provide keyboard and
-   assistive-technology access without interfering with vertical scrolling.
-3. Add a transactional database deletion operation to remove the selected bean
-   and all its sessions; surface failures and prevent duplicate submissions.
-4. Build and verify collapse, gestures, deletion scope, persistence, and responsive
-   layout in Safari; record unavailable device and upgrade checks explicitly.
+1. Use accessible details/summary: name, defined dates and session count initially;
+   summary tap/keyboard toggles history. Stage 21 adds pinned inspection.
+2. Left swipe reveals Delete; reserve vertical/short/cancelled gestures for normal
+   interaction, suppress the swipe-generated click, provide actions menu/Escape.
+3. While actions are visible, consume a deliberate surface tap only to close them;
+   do not expand/collapse history. Reverse swipe closes the current action first.
+   Stage 32 adds Edit on the opposite side; crossing requires a subsequent swipe.
+4. Delete the bean and linked sessions atomically, preserving unrelated records.
+   The pinned DuckDB's eager FK index requires the existing retained-session-table
+   swap with identical constraints inside the transaction, not naive child/parent
+   DELETE. Guard duplicate submits and preserve rollback/committed warnings.
 
 ### Acceptance Criteria (Stage 7 Gate)
 
-- All entries initially hide history, including the empty-history message; summary
-  tap and keyboard activation toggle only that entry and expose expanded state.
-- Left swipe reveals a touch-sized Delete action without expanding history;
-  right swipe closes it, and vertical gestures remain usable for scrolling.
-- Explicit Delete removes the bean and every linked session, preserves unrelated
-  records, and remains deleted after reload. Failures are visible and retryable.
-- Storage identities, schema, backup formats, and startup behavior remain stable.
-  Any storage implementation changes require populated previous-build OPFS and
-  IndexedDB upgrade checks, old backup imports, and failed-upgrade preservation.
-- Build and applicable Safari checks pass; production subpath/isolation checks
-  and physical iOS/Android verification are recorded with their limitations.
+- Initially hidden history/empty message, independent summary toggles, expanded
+  state and keyboard actions pass. Swipes never activate a card or delete data.
+- Test fresh pointer-down/up taps separately from swipe-generated clicks: a tap
+  closes Delete/Edit without toggling even inside expanded history; next tap works.
+- Test Edit→closed→Delete and Delete→closed→Edit. One reverse swipe reveals neither
+  action; the next may reveal the other. Menu dismissal and buttons still work.
+- Explicit deletion affects exactly one bean/all its sessions, refreshes both
+  views and survives reload. Inject table-swap and snapshot failures; exact original
+  records survive rollback/reopen, retry deletes once, unrelated data stays exact.
+- Build/Safari/subpath/isolation and Stage 6 upgrades pass; non-writing gestures
+  preserve exact records/reload. Report synthetic versus physical coverage.
 
-### Verification — 2026-10-26
+### Verification — 2026-10-26–27 (includes Stage 37)
 
-- Plan recorded before implementation. Cards now use native details/summary for
-  collapsed history and keyboard activation. Left/right pointer gestures reveal/
-  close Delete; vertical gestures are reserved for scrolling. An accessible actions
-  button also reveals Delete, with focus support and Escape to close it.
-- Added transactional cascade deletion with existing snapshot/flush semantics and
-  duplicate-submission protection. DuckDB's eager foreign-key index prevents a
-  simple child-then-parent DELETE in one transaction, so explicit deletion builds
-  a retained-session table with identical constraints and swaps it transactionally.
-  Failures roll back the original tables. No storage identity, field, backup format,
-  dependency, deployment origin, or startup recovery policy changed.
-- `uv run npm run build` and `git diff --check` passed. Node resolves inside the
-  project `.venv`. Local Vite response headers include COOP `same-origin` and COEP
-  `require-corp`; production assets loaded successfully at `/CoffeeOS/` in upgrade
-  checks using the same headers.
-- Added repeatable `uv run node tests/bean-upgrade.mjs` (Safari) and
-  `TEST_FIREFOX=1 uv run node tests/bean-upgrade.mjs` (isolated Firefox) checks.
-  The harness builds revision `2ccf66c` and current source with test-only DB access
-  hooks, then replaces the served build within the same browser session and origin.
-  Hooks are confined to `.cache` fixtures and are not shipped in the app build.
-- Safari 27/macOS IndexedDB and isolated Firefox OPFS upgrade checks passed:
-  exact records after replacement and reload, previous-build CSV/Parquet imports,
-  failed-open preservation, collapse/toggle, synthetic left/right/vertical pointer
-  gestures, duplicate-delete protection, deletion scope, reload durability, and
-  subsequent session creation. Safari selects the IndexedDB runtime on this machine;
-  Firefox OPFS results are not Safari OPFS verification.
-- Injected failure during the table swap and IndexedDB snapshot-write failure
-  preserve original beans/sessions after retry/reload; failures remain visible.
-- `uv run npm run test:safari` passed the complete existing suite, including
-  navigation, narrow layout, writes/reload, failure recovery, and all IO round trips.
-  An earlier run lost its automation window during the final IO check; the full
-  rerun completed successfully.
-- Physical iPhone/iPad/Android swipe and scroll behavior, screen-reader operation,
-  Home Screen lifecycle, Safari OPFS, and actual deployed-host headers remain
-  unverified. Synthetic pointer checks do not establish native touch behavior.
-  No deployment was performed; Stage 6's broader upgrade matrix remains pending.
-
----
-
-## Stage 8: Complete Upgrade Resilience Guards & Regression Coverage
-
-- [x] **Status:** Completed; automated gates passed, physical/deployed checks pending
-
-### Goal
-
-Finish Stage 6's startup protections and previous-build upgrade regression checks.
-
-### Tasks
-
-1. Reject inaccessible metadata, unknown backend markers, missing remembered data,
-   and ambiguous legacy OPFS access instead of selecting an empty dataset.
-2. Extend production-subpath previous-build checks with failure/recovery cases,
-   exact data comparisons, historical backups, and post-upgrade writes.
-3. Run Safari first, then isolated Firefox OPFS; document remaining platform gaps.
-
-### Acceptance Criteria (Stage 8 Gate)
-
-- Previous-build beans and sessions retain exact values across replacement/reloads
-  on IndexedDB and OPFS; historical CSV/Parquet imports remain idempotent.
-- Metadata/open/restore failures and unsupported markers preserve durable bytes,
-  reject startup, and allow recovery after access is restored.
-- No storage identifier, schema, backup format, or deployment origin changes.
-- Build and applicable browser checks pass; unavailable migration, physical-device,
-  and deployed-host checks are recorded explicitly.
-
-### Verification — 2026-10-26
-
-- Initial review: Stage 6 remains incomplete; Stage 7 supplies partial upgrade
-  coverage. Existing uncommitted Stage 7 work is retained.
-
-- Closed startup gaps in `src/db.ts`: metadata-open failures, unknown backend
-  markers, missing remembered OPFS/snapshots, inaccessible legacy OPFS, unsupported
-  stored column schemas, and invalid snapshot envelopes now reject startup.
-  Existing files are inspected before creation; restore failures preserve original
-  snapshots. New IndexedDB installs persist an empty snapshot before the marker.
-- No storage identifiers, schema, dependency versions, units, backup formats,
-  origin, or deployment settings changed. No migration is needed. Existing empty
-  IndexedDB installs with a marker but no snapshot conservatively show a recovery
-  error because missing records cannot safely be distinguished from first use.
-  Automatic memory-only fallback is intentionally removed; older test assumptions
-  were updated to use explicitly isolated test storage for empty backup imports.
-- Added `test:upgrade` and `test:upgrade:firefox` npm commands. The fixture builder
-  retains immutable prior revision `2ccf66c` as its source, includes each build's
-  public assets/config, and refuses shared dependencies when lockfiles differ.
-  Instructions and future migration/dependency/origin requirements are documented
-  in `tests/UPGRADES.md`. No test hook is included in `dist/`.
-- `uv run npm run test:upgrade` passed in Safari 27/macOS using IndexedDB, and
-  `uv run npm run test:upgrade:firefox` passed in isolated Firefox using OPFS.
-  Both replace the previous production build in the same profile/origin under
-  `/CoffeeOS/`, update a service worker with changed bytes, compare every field
-  after repeated reloads, import old CSV/Parquet without duplicates, and add new
-  beans/sessions that survive reload. Existing collapse/delete regressions pass.
-- Injected metadata-open and unsupported-backend/schema failures preserve exact
-  durable byte digests and recover original records. IndexedDB additionally covers
-  missing snapshots, invalid snapshot envelopes, corrupt Parquet, and interrupted
-  restore. OPFS covers lost isolation, denied directory access, and missing-file
-  access. Lock contention rejects opening; page-level metadata failure shows the
-  startup recovery alert with no active database, then recovers on reload.
-- `uv run npm run test:safari` passed all existing navigation, forms, narrow-layout,
-  chart, writes/reloads, rollback, and CSV/Parquet tests. `uv run npm run test:db`
-  passed Firefox database regressions, including corrupt snapshots and metadata
-  denial. `uv run npm run build`, changed-script syntax checks, and
-  `git diff --check` passed; Node resolves inside this project's `.venv`.
-- Dev and preview responses both have COOP `same-origin` and COEP `require-corp`.
-  Production subpath assets loaded in both upgrade suites. Worker replacement
-  was checked with host isolation headers, not on a live GitHub Pages host.
-- Safari OPFS, physical iPhone/iPad Home Screen/storage lifecycle, actual hosted
-  upgrades/headers, and dependency-version upgrade fixtures remain unverified.
-  No schema migration was introduced: restore interruption is covered, but future
-  migrations still require their own versioned recovery-copy, interruption, retry,
-  and rollback tests. No deployment was performed. Stage 6's current implementation
-  and applicable automated gates are complete with these explicit limitations.
-
----
+- Initial build/full Safari and populated `2ccf66c` Safari/IndexedDB + Firefox/OPFS
+  suites passed collapse, synthetic gestures, scoped deletion, table-swap/snapshot
+  rollback, retry and reload, with unchanged identities/formats.
+- 2026-10-27 Safari 27.2 full suite and populated `TEST_PREVIOUS_REF=HEAD`
+  upgrade passed fresh-tap dismissal, both close-before-opposite transitions,
+  expanded-history/menu dismissal, next-tap activation and exact non-writing data.
+  Build/diff, local headers and all eight production resources passed.
+- Stage 37 did not rerun Firefox/OPFS. Physical touch/scroll arbitration, screen
+  reader operation, Home Screen lifecycle, Safari OPFS and deployed host remain open.
 
 ## Stage 9: Optional Compressed Bean Photos
 
-- [x] **Status:** Completed; automated gates passed, physical-device checks pending
+- [x] **Status:** Complete; local photo/migration gates passed, physical device pending.
 
 ### Goal
 
-Attach an optional photo when adding a bean and display it in the expanded bean
-view, while preserving all existing records and historical backups.
+Add optional bean photos with a recoverable additive migration and old-backup fidelity.
 
 ### Tasks
 
-1. Add a native image picker, compressed JPEG preview, and remove action.
-2. Resize to a maximum 1600-pixel edge, encode at 80% JPEG quality (65%/50%
-   fallback), and bound stored data URLs to 2 MB; reject unreadable images.
-3. Add nullable `photo_jpeg` via schema v2, preserving the v1 Parquet recovery
-   copy at `schema-v1-before-photos` before migration/first subsequent writes.
-4. Preserve existing storage identities; include photos in CSV/Parquet exports,
-   accept historical headers, and retain existing photos when merging old backups.
-5. Verify Safari IndexedDB and Firefox OPFS upgrade paths and photo workflows.
+1. Offer native image picker, preview/remove; resize longest edge to 1600px,
+   JPEG quality 80% (65%/50% fallback), data URL ≤2 MB. Reject unreadable images,
+   block submission during preparation and keep failed drafts for retry.
+2. Add nullable `photo_jpeg` through schema v2. Save immutable original Parquet at
+   `schema-v1-before-photos` before OPFS ALTER or first later IndexedDB writes.
+   Transfer copies into the worker so recovery buffers cannot become detached.
+3. Keep storage identities and legacy headers readable. Missing historical photo
+   columns retain existing photos; explicit nulls in new backups mean removal.
 
 ### Acceptance Criteria (Stage 9 Gate)
 
-- Beans may be saved with or without photos; preparation blocks submission,
-  preview/removal work, failed saves retain entries, successful saves reset them.
-- Expanded beans show their compressed JPEG; reload and all four CSV/Parquet
-  export/import combinations preserve photos and all bean/session values.
-- Previous populated builds upgrade at the same origin/profile without record
-  loss; older CSV/Parquet imports work. Migration recovery copies are retained,
-  and failed upgrades reject startup without presenting an empty collection.
-- Build and targeted browser checks pass; physical-device and deployed-host gaps
-  are explicitly recorded.
+- Save with/without photo, preview/remove/reset/error and expanded rendering pass;
+  a 2400×1800 PNG becomes a 1600×1200 JPEG. Invalid decode never changes records.
+- All four historical CSV/Parquet variants and `.coffeeos` preserve photos/exact
+  records; legacy merges without the column retain saved photos.
+- Populated v1→v2 OPFS/IndexedDB upgrades retain exact data. Inject recovery-copy
+  failure and failure after ALTER before commit; old build reopens original data,
+  retry/reload succeeds, immutable recovery stays intact with non-detached bytes.
+- Build/Safari/subpath/isolation checks pass; record device image-format/lifecycle gaps.
 
 ### Verification — 2026-10-26
 
-- Preserved the pre-existing uncommitted Stage 7/8 work. No dependency, deployment
-  origin, existing storage identifier, date/unit, or numeric field changed.
-- Initial build passed. Safari upgrade testing found transferred snapshot buffers
-  were detached before writing the recovery copy; restore now transfers a copy,
-  retaining the original bytes. Verification continues below.
-- `uv run npm run build` and `git diff --check` passed. Safari 27/macOS
-  `test:safari` passed navigation, narrow layout, optional forms, write failures,
-  reload persistence, and all existing CSV/Parquet regressions. Updated expected
-  records and input counts for the new optional field/control.
-- Safari IndexedDB and isolated headless Firefox OPFS previous-build suites
-  passed at `/CoffeeOS/`: exact old bean/session values after replacement and
-  reload, historical CSV/Parquet imports, and storage failure recovery. The
-  original build reopened exact records after injected recovery-copy failures;
-  candidate startup showed a recovery error rather than an empty collection.
-- Photo checks passed: synthetic 2400×1800 PNG becomes 1600×1200 JPEG, form
-  save/reset, expanded image, all four CSV/Parquet round trips, and reload.
-  Firefox additionally verified removal and that legacy imports retain photos.
-  Invalid-image decoding leaves stored records untouched.
-- Local Vite response headers include COOP `same-origin` and COEP `require-corp`;
-  production repository-subpath assets load in both upgrade suites. No dependency
-  or hosting change was made, and no deployment was performed.
-- Physical iPhone/iPad camera/library selection, HEIC decoding/orientation,
-  Home Screen storage lifecycle, Safari OPFS, and actual deployed-host checks
-  remain unverified. The native `accept="image/*"` picker allows the platform to
-  offer camera/library choices; unsupported formats report a recoverable error.
-- Final Firefox OPFS check passed with failure injected after `ALTER TABLE` but
-  before commit: rollback allowed the original build to reopen every old record,
-  and retry/reload succeeded. The retained recovery copy was not overwritten.
+- Safari caught detached snapshot buffers before recovery-save; restore now
+  transfers a copy. Full Safari/build/diff and Safari/IndexedDB + Firefox/OPFS
+  populated upgrade suites passed, including post-ALTER rollback/old-build reopen.
+- Resize/save/reset/display, four backup variants/reload and invalid decode passed;
+  Firefox also checked removal and legacy photo retention. Local headers/subpath
+  assets passed; runtime/dependencies/storage names remained stable.
+- Physical camera/library, HEIC/orientation, Home Screen lifecycle, Safari OPFS
+  and deployed-host checks remain unverified; unsupported images fail recoverably.
 
----
+## Stage 11: Compact Mobile Brew Cards & Saved Charts
 
-## Stage 10: Home Screen Bottom Navigation Layout
-
-- [x] **Status:** Implemented; desktop Safari checks passed, physical iOS confirmation pending
+- [x] **Status:** Complete; Safari retry passed. Feed disclosure later superseded by Stage 15 direct editing.
 
 ### Goal
 
-Remove the apparent unused browser-toolbar space beneath navigation in installed
-Home Screen mode while retaining clearance for the iOS home indicator.
+Provide a compact date/bean/EY feed and saved-brew chart access on phone widths.
 
 ### Tasks
 
-1. Use `100vh` in standalone display mode to avoid installed WebKit dynamic
-   viewport under-sizing (https://bugs.webkit.org/show_bug.cgi?id=254868).
-2. Place navigation in the shell's final flex row in that mode, prevent header
-   and navigation shrinking, and remove the content's redundant overlay padding.
-3. Preserve navigation safe-area padding and normal browser layout; verify the
-   build, Safari regressions, and production repository-subpath layout.
-
-### Acceptance Criteria (Stage 10 Gate)
-
-- Standalone layout puts navigation at the shell bottom, with scrollable content
-  ending above it and home-indicator padding retained.
-- Desktop Safari startup, navigation, writes/reloads, and existing regressions pass.
-- Production assets load under `/CoffeeOS/`; local dev/preview retain both isolation
-  headers. Physical-device limitations are explicitly recorded.
-
-### Verification — 2026-10-26
-
-- `uv run npm run build` passed; Node resolves inside this project's `.venv`.
-- `uv run npm run test:safari` passed on Safari 27/macOS, including navigation,
-  narrow layout, bean/session writes and reloads, failure recovery, and CSV/Parquet
-  round trips. This is desktop Safari verification, not iOS verification.
-- A temporary Safari WebDriver check loaded the production `/CoffeeOS/` preview
-  and explicitly applied the standalone media rule's CSS. At 390×844 and 844×500
-  window sizes, with 0px and simulated 34px bottom padding, navigation ended at
-  the viewport bottom, content ended at navigation's top, and no horizontal
-  overflow occurred. This exercises layout geometry, not native standalone mode
-  or actual device safe-area reporting.
-- Dev and production preview returned COOP `same-origin` and COEP `require-corp`.
-  `git diff --check` passed.
-- Only CSS and this stage were changed for this refinement. Existing uncommitted
-  work was preserved. Storage, startup, backups, dependencies, service workers,
-  and deployment configuration were untouched; no migration or deployment occurred.
-- Physical iPhone/iPad Home Screen gap resolution, rotation, keyboard dismissal,
-  and actual hosted behavior remain unverified. Safe-area padding is intentionally
-  retained so controls do not overlap the home indicator.
-
----
-
-## Stage 11: Compact Mobile Brew Cards and Expandable EY Charts
-
-- [x] **Status:** Implemented; Firefox and desktop Safari checks passed (Stage 12), physical iOS verification pending
-
-### Goal
-
-Make the Brew Controller easier to scan on an iPhone 15 Pro, with compact
-summaries and full brew details available on tap.
-
-### Tasks
-
-1. Show date, bean name, and EY percentage in collapsed native disclosure cards.
-2. Reveal the complete timestamp, measurements, comment, and existing brewing
-   chart on expansion; create charts only when a card is first opened.
-3. Reduce phone layout spacing, headings, card padding, and navigation height
-   while preserving safe areas, 44px controls, and 16px form inputs.
-4. Verify build, disclosure behavior, chart values, narrow layout, and regressions.
+1. Keep collapsed summaries readable, wrap long bean names, show missing EY as a
+   dash and full details/chart on access. Original lazy disclosure charts are
+   historical; direct editor opening in Stage 15 is the current feed interaction.
+2. Preserve null/missing/out-of-range chart feedback, safe areas and compact spacing.
+3. Verify installed Safari dev/production; investigate automation failures and
+   report partial runs without equating a Firefox pass to Safari acceptance.
 
 ### Acceptance Criteria (Stage 11 Gate)
 
-- Sessions start collapsed; tapping toggles full details and the saved EY/TDS chart.
-- Missing EY displays a dash; missing chart measurements explain why no point is
-  plotted; existing chart range feedback remains available.
-- Long bean names wrap without horizontal overflow at 393px viewport width.
-- Existing records and precision remain unchanged; local headers and production
-  subpath assets remain valid. Browser/platform limitations are documented.
+- Compact summaries, dates/bean names/EY and long-name wrapping fit 393px; saved
+  charts retain exact coordinates, invalid/empty text and range feedback.
+- Original disclosure toggle/lazy chart checks are historical evidence; current
+  card activation must satisfy Stage 15, never reintroduce disclosure accidentally.
+- Full Safari dev/production, build and local headers pass; distinguish transient
+  fixture failures from diagnosed application bugs and retain unresolved limits.
 
-### Verification — 2026-10-26
+### Verification — 2026-10-26 (includes Stage 12)
 
-- `uv run npm run build` passed; Node resolves inside the project's `.venv`.
-- Dev and production preview return COOP `same-origin` and COEP `require-corp`.
-- Safari was attempted first with `safaridriver`; session creation timed out
-  connecting to Safari before any assertions ran. Safari verification is pending.
-- Storage, startup, formats, dependencies, service workers, and deployment settings
-  are unchanged. This presentation-only update requires no data migration.
-- Physical iPhone/iPad touch, keyboard, Home Screen layout/storage lifecycle,
-  hosted behavior, and previous-build upgrade paths were not tested for this stage.
-- Isolated headless Firefox 158/macOS passed the production UI suite under
-  `/CoffeeOS/` using a temporary adapter for the existing Safari assertions:
-  startup/navigation, forms, chart coordinates/range feedback, compact summary,
-  tap expansion/collapse, saved EY/TDS chart, long-name wrapping without overflow
-  at 393×852, writes/reloads, and CSV/Parquet export/import regressions.
-- Dev Firefox additionally passed summary fields, dates/nulls, bean filtering,
-  safe comments, and history persistence before the temporary adapter stopped at
-  an unsupported multi-window command. The full dev suite did not complete;
-  production checks completed successfully. Temporary adapter files were removed.
-- `git diff --check` passed. Touch targets remain at least 44px and form input
-  text remains 16px in the narrow-window checks. Firefox results do not establish
-  Safari or physical iPhone verification. No deployment was performed.
-
----
-
-## Stage 12: Safari Automation Retry for Compact Brew Cards
-
-- [x] **Status:** Completed; desktop Safari dev/production checks passed, intermittent fixture failure recorded
-
-### Goal
-
-Retry desktop Safari automation for Stage 11 and establish the current build's
-navigation, compact-card, chart, and persistence regression results.
-
-### Tasks
-
-1. Reuse the project-local environment and available localhost Safari/Vite servers.
-2. Build and run Safari checks against development and production `/CoffeeOS/`.
-3. Investigate failures, preserve application storage behavior, and record results.
-
-### Acceptance Criteria (Stage 12 Gate)
-
-- Safari starts an isolated automation session and exercises startup/navigation,
-  compact disclosure cards, charts, narrow layout, and bean/session writes/reloads.
-- The production suite passes under `/CoffeeOS/`; development checks either pass
-  or have a concrete failure and remaining verification gap documented.
-- Build and local isolation-header checks pass; existing application data/storage
-  behavior remains unchanged, with physical-device and upgrade limitations stated.
-
-### Verification — 2026-10-26
-
-- Node resolves inside this project's `.venv`; `uv run npm run build` passed.
-- Safari 27.0/macOS automation connected successfully through the existing driver.
-  Existing dev/preview servers were reused; localhost requests required sandbox
-  escalation. Both responses include COOP `same-origin` and COEP `require-corp`.
-- `TEST_PRODUCTION=1 TEST_BASE_URL=http://127.0.0.1:4173/CoffeeOS/ uv run npm run
-  test:safari` passed: startup/navigation, validation, writes/reloads, live and saved
-  charts, collapsed-card expansion/collapse, narrow layouts, CSV/Parquet UI exports
-  and imports, atomic invalid-import rejection, and import reload persistence.
-- Initial development run passed UI/chart/disclosure checks, database writes/joins,
-  dates/nulls, histories, tab ownership, save rollback/retry, post-commit warnings,
-  and exact CSV/Parquet round trips. It failed in the empty-engine backup fixture
-  with an OPFS/cross-origin-isolation recovery error. A temporary diagnostic
-  run passed, and a final unchanged `uv run npm run test:safari` rerun passed
-  completely, including all four empty-engine backup restores. The initial
-  failure did not reproduce; its cause remains unconfirmed. No fix is claimed.
-- Physical iPhone/iPad touch, keyboard/viewport, Home Screen/storage lifecycle,
-  Safari OPFS upgrades, previous-build upgrades, and hosted behavior are not
-  established by this rerun. No application, dependency, or deployment change.
-- `git diff --check` passed. Temporary diagnostic scripts were removed; only
-  this plan was edited during the retry. Pre-existing application/test edits were
-  preserved. No normal browsing profile was used or server process stopped.
-
----
-
-## Stage 13: Contain Bean Date Fields on Narrow iPhone Layouts
-
-- [x] **Status:** Implemented; desktop Safari checks passed, physical iOS confirmation pending
-
-### Goal
-
-Keep the Bean Manager's roast and freeze date inputs within their form card and
-aligned with the name input on narrow screens, including iPhone 15 Pro width.
-
-### Tasks
-
-1. Check actual date-field bounds at exact phone widths, with empty and filled dates.
-2. Remove native date-control appearance that can override iOS sizing; retain
-   native date inputs, existing border-box sizing, padding, and minimum touch size.
-3. Build, verify Safari layout and application regressions, and check production
-   repository-subpath assets and local isolation headers.
-
-### Acceptance Criteria (Stage 13 Gate)
-
-- At 320–420px viewport widths, both date fields match the name field's width
-  and remain within the card, empty or populated, without horizontal overflow.
-- Above the existing mobile breakpoint, dates fit their two grid columns.
-- Date values retain their meaning and native input type; inputs remain at least
-  44px high with 16px text. Bean/session writes and reload persistence still pass.
-- Build, desktop Safari checks, production `/CoffeeOS/` assets, and local isolation
-  headers pass; physical iOS and other unverified paths are explicitly recorded.
-
-### Verification — 2026-10-26
-
-- Before the change, Safari 27/macOS passed exact-width layout checks at 320,
-  375, 390, 393, 420, 430, and 852px, with empty and populated dates. This does
-  not reproduce or rule out the iOS-specific issue: WebKit bug 301648 documents
-  date/time inputs calculating padded 100% widths incorrectly on iOS while
-  macOS works (https://bugs.webkit.org/show_bug.cgi?id=301648).
-- Added scoped date appearance/width constraints and an internal value minimum
-  height/alignment rule. No storage, schema, startup, backup, dependency,
-  service-worker, or deployment changes; no data migration is needed.
-- `uv run npm run build` passed; Node resolves inside this project's `.venv`.
-- Post-change exact-width checks passed on Safari 27/macOS against development
-  and production `/CoffeeOS/`, using same-origin iframe fixtures with the actual
-  form markup and stylesheet to control the CSS viewport precisely. At 393×852,
-  the name and both date fields were each 327px wide, within the 361px card.
-  All seven widths above passed empty/populated date checks without overflow;
-  two-column dates fitted their grid cells at 430 and 852px. Production computed
-  styles confirmed `appearance: none` and `border-box`; native `type="date"`,
-  values, 16px text, and at least 44px input height were preserved.
-- `uv run npm run test:safari` passed fully: startup/navigation, bean/session
-  saves and reloads, chart/disclosure regressions, failure recovery, exact
-  CSV/Parquet round trips, and all empty-engine backup fixtures.
-- `TEST_PRODUCTION=1 TEST_BASE_URL=http://127.0.0.1:4173/CoffeeOS/ uv run npm run
-  test:safari` passed, including production UI imports and reload persistence.
-  The preview served the newly built stylesheet under `/CoffeeOS/assets/`.
-- Dev and production preview returned COOP `same-origin` and COEP `require-corp`.
-  `git diff --check` passed. Isolated Safari automation sessions were used;
-  temporary layout-check files were removed and existing servers left running.
-- Physical iPhone/iPad date-picker interaction, keyboard/viewport behavior, Home
-  Screen mode, hosted behavior, and previous-build storage upgrades remain
-  unverified. Existing uncommitted project changes were preserved.
-
----
+- Initial Safari session creation timed out; Firefox production UI passed, while
+  dev stopped at an unsupported multi-window command. No Safari pass then claimed.
+- Retry connected Safari 27/macOS: full dev and production `/CoffeeOS/` suites
+  passed UI, cards/charts, writes/reloads and historical IO. Initial dev empty-engine
+  fixture failed with an OPFS/isolation recovery error; diagnostic and unchanged
+  reruns passed. Cause unconfirmed; no application fix claimed.
+- Build/diff and headers passed. Physical iOS/Home Screen, hosted behavior and
+  previous-build upgrade paths were not established by this presentation rerun.
 
 ## Stage 14: Single-Page iPhone Brew Editor
 
-- [x] **Status:** Implemented; Firefox layout/production checks passed, Safari automation unavailable, physical iOS pending
+- [x] **Status:** Complete; later Safari layout/keyboard simulations passed, physical iOS pending.
 
 ### Goal
 
-Fit brew entry into an iPhone 15 Pro portrait viewport, with the live extraction
-chart above compact input/output columns and field labels that focus their inputs.
+Fit the graph and labeled measurements into a stable mobile editor with reachable
+actions, including small screens, safe areas and software-keyboard viewport changes.
 
 ### Tasks
 
-1. Hide shell branding, Brew Controller introduction, and bottom navigation while
-   the brew editor is visible; restore them on cancel, save, or another view.
-2. Move the existing live chart above the bean selector and two measurement
-   groups, with inputs on the left, outputs and comment on the right.
-3. Retain native labeled inputs, decimal precision, optional fields, safe-area
-   padding, 16px input text, 44px controls, and recoverable save failures.
-4. Build, verify Safari regressions and exact 393×852 CSS-pixel layout, capture
-   a screenshot, and check local isolation headers and production subpath assets.
+1. Hide shell branding/intro/tabs only while editing; restore on exit. Place chart
+   above bean selection and two input/output columns; labels focus native inputs.
+2. Put the native datetime control over the visible edit-header timestamp, with
+   accessible name/focus indication. No extra Brewed row or layout shift. Align
+   Grind and Tasting notes in matching rows; keep accessible chart descriptions
+   while visually hiding the redundant caption. Stage 15 owns edit semantics.
+3. Use shared proportional scale from width/height and safe areas, reference
+   393×759 usable viewport and minimum 80%. Give spare height to the chart;
+   scrolling body and persistent action row prevent gaps or covered final fields.
+   This supersedes historical fixed 160/220/240/264/288px chart heights.
+4. Preserve 16px computed input font and 44px unscaled controls. Existing shared
+   scaling can reduce visual targets to 35.2px; retain this explicit limitation
+   rather than claim universal 44px visual sizing or physical no-zoom verification.
+5. Before native input UI opens, capture height/scale/chart/safe-area geometry.
+   Hold it through keyboard shrink and focus transfer; add covered-area scroll
+   space instead of compressing the editor. Release stale sizing on exit, recovered
+   blur/viewport, width/orientation change and cancel/reopen, without losing drafts.
+6. Keep recoverable save errors visible and scroll-reachable; retain chart/draft
+   on rollback. Do not add persistence or format changes for layout refinements.
 
 ### Acceptance Criteria (Stage 14 Gate)
 
-- The normal populated editor fits at 393×852 without scrolling or horizontal
-  overflow; all fields and Save/Cancel are visible with the keyboard closed.
-- The chart precedes the fields, input/output groups sit side by side, and
-  tapping an editable field label focuses its associated input.
-- Navigation and introductory headings are hidden only during visible brew
-  editing, then return on exit; the chart, save/cancel, and persistence still work.
-- Build and browser regressions pass, with Safari attempted first and a documented
-  Firefox fallback when unavailable. An exact-viewport screenshot is available;
-  physical-device and other unverified checks are stated.
+- Actual DOM/CSS frames at 320×568, 320×852, 375×667, 375×812, 393×680,
+  393×852, 430×932 and 852×393 fit horizontally with/without simulated 59/34px
+  safe areas. Normal 393×852 and 375×667 editors fit without scroll, keyboard closed.
+- Chart fills spare height; only intentional padding remains above actions. At
+  minimum scale/short heights, scroll reaches Comment above the pinned actions.
+  Header/labels/fields/actions scale together; Grind/notes align within 1px.
+- Timestamp hit testing targets the native control; no extra date row appears.
+  Labels focus inputs and date changes update the header without shifting content.
+- Focus then reduce frame/visual viewport by 300px: exact editor/graph/control
+  dimensions and draft values stay stable. Covered fields scroll into view;
+  field transfer, blur/dismissal, height/width resize and cancel/reopen clear stale
+  captures appropriately. Also test native keyboard on physical iOS when available.
+- Save/cancel/shell restoration, error/retry, reloads and existing IO regressions
+  pass; build/local headers/production subpath remain valid. Record browser fallback
+  and scaling/accessibility limitations rather than treating simulations as devices.
 
-### Verification — 2026-10-26
+### Verification — 2026-10-26 (original editor; Stages 17–18)
 
-- Final `uv run npm run build` passed; Node resolves inside this project's
-  `.venv`. `git diff --check` passed.
-- Safari was attempted first, then retried with `uv run npm run test:safari`.
-  Both attempts failed to create an automation session: safaridriver timed out
-  connecting to Safari before any assertions ran. No Safari pass is claimed.
-- An initial isolated headless Firefox 158.0.1/macOS run passed the production UI suite under
-  `/CoffeeOS/`, using a temporary BiDi adapter for the Safari assertions:
-  startup/navigation, bean/session saves and reloads, live and saved charts,
-  cancel/reset and shell restoration, disclosure cards, CSV/Parquet UI exports
-  and re-imports, atomic invalid-import rejection, and import reload persistence.
-- After the final touch-target/number-input refinements, a production repeat
-  passed the editor, chart, save/reload, and IO export/import assertions but
-  Firefox exited during the final IO reload; adapter cleanup then timed out on
-  `browsingContext.close`. That repeat did not complete. The final-build targeted
-  editor capture/save-failure/retry/reload check passed separately. No browser
-  crash fix is claimed; the full final-build production rerun remains incomplete.
-- Added exact-width frame checks using the app's actual DOM and stylesheet.
-  At 320, 375, 393, and 430px, fields stayed in their columns without horizontal
-  overflow. At 393×852 the populated editor fitted without vertical scrolling,
-  both with no safe areas and simulated 59px top/34px bottom safe areas. All
-  nine editable labels focused their native controls; inputs retained 16px text
-  and at least 44px height. These are desktop layout checks, not native iOS tests.
-- Captured `.cache/brew-editor-iphone-15-pro.png` at 393×852 CSS pixels and 3×
-  device scale; its PNG dimensions are exactly 1179×2556, verified with `sips`.
-  The Firefox-rendered preview reserves simulated safe areas, contains sample
-  data, and excludes native system/browser chrome. It is not a device screenshot.
-- A targeted injected brew-insert failure passed: the draft and live extraction
-  remained visible, buttons re-enabled, navigation stayed hidden, retry saved
-  exactly once, shell navigation returned, and the saved session survived reload.
-- The development Firefox suite passed UI/chart checks, OPFS writes/reloads,
-  dates/nulls, histories, and tab ownership, then stopped in the pre-existing
-  capability-loss/fallback fixture with `Cannot inspect saved OPFS storage`.
-  A temporary assertion adaptation accepted that recovery error instead of the
-  expected `needs OPFS` wording, but fallback initialization still failed with
-  access deliberately removed. The full development storage suite did not pass;
-  no application storage change or fix is claimed. The targeted save-error check
-  above was run separately. Temporary Firefox adapters were not committed.
-- Dev and production preview returned COOP `same-origin` and COEP `require-corp`.
-  Production was served using `vite preview --base /CoffeeOS/` on port 4174;
-  compiled stylesheet and application assets resolved under the repository path.
-- Presentation and save-button disabled-state changes only. Storage identity,
-  database schema, startup, import/export formats, dependencies, service workers,
-  deployment origin, and hosting configuration are unchanged; no migration.
-- Physical iPhone/iPad touch, software keyboard, Home Screen safe-area/storage
-  lifecycle, previous-build storage upgrades, and actual host remain unverified.
+- Initial Safari automation timed out. Firefox initial production suite and final
+  targeted editor/failure/retry capture passed; final full repeat exited during
+  IO reload, and dev stopped in a capability-loss fixture. No crash/storage fix
+  or complete final Firefox rerun claimed. Exact-width frames fit; synthetic
+  1179×2556 preview saved at `.cache/brew-editor-iphone-15-pro.png`, not a device image.
+- Later Safari 27.2 dev/production suites passed header/date targeting, native
+  picker overlay, Grind/notes alignment, fixed actions and safe-area geometry.
+  Stage 17's timestamp disclosure was superseded by Stage 18's direct overlay.
 
----
+### Verification — 2026-10-27 (Stages 19–20 and 29)
 
-## Stage 15: Direct Brew Session Editing and Fixed Save/Cancel
+- Safari dev/production suites passed final proportional layout at all eight
+  frame sizes. At 393×852 chart grew to 314px; measurement/action gap was the
+  intended 12px. Short/landscape layouts stopped at 80% and scrolled to final fields.
+- Keyboard simulation at 393×852 and 375×667 retained exact geometry/drafts under
+  300px shrink; covered-field scrolling, focus/dismissal, recovery, width change
+  and reset/reopen passed. Production `/CoffeeOS/`, build/diff/headers passed.
+- These UI-only refinements did not rerun populated upgrades. Physical keyboard
+  animation, zoom/touch precision with scaled targets, enlarged text, browser
+  chrome, native picker, Home Screen and deployed-host behavior remain unverified.
+  Older browsers' unscaled scrolling CSS fallback was not tested.
 
-- [x] **Status:** Implemented; Safari UI/layout and both storage upgrade checks passed; physical iOS pending
+## Stage 15: Direct Brew Session Editing & Persistent Save/Cancel
+
+- [x] **Status:** Complete; Safari UI and both-backend populated upgrades passed, physical iOS pending.
 
 ### Goal
 
-Open existing brew sessions directly in the full editor and keep Save/Cancel
-attached to the bottom of the viewport for a fast iPhone workflow.
+Edit the original brew record directly without losing imported values or precision.
 
 ### Tasks
 
-1. Replace session disclosures with accessible edit buttons and populate the
-   editor with the selected brew, including an editable local brew date/time.
-2. Save changes through a transactional update of the original record; preserve
-   IDs, unchanged dates, precision, nulls, whitespace, and imported EY values.
-   Recalculate EY when dose, yield, or TDS changes; keep cancel non-mutating.
-3. Fix the action bar to the viewport bottom, account for safe areas and reserve
-   content space; retain scroll access on shorter screens and with larger text.
-4. Verify Safari behavior, 393×852 geometry, failures/retry, reload persistence,
-   previous-build OPFS/IndexedDB upgrades, old backups, and production subpaths.
+1. Feed card activation opens the complete prefilled editor; retain the original
+   ID, bean relationship, date and all nullable fields. Cancel never writes.
+2. Update through the serialized transaction path. A no-op edit preserves exact
+   dates/numbers/nulls/empty or whitespace/multiline comments and imported EY.
+   Recalculate EY only when dose/yield/TDS changes. Compare normalized native
+   datetime input against its initial value so unchanged saves preserve the
+   original sub-millisecond timestamp rather than reserialize it via JS Date.
+3. Keep Save/Cancel in a persistent action row with safe-area/scroll clearance;
+   follow Stage 14's current layout and keyboard rules. Prevent double submits;
+   rollback retains drafts, committed warnings exit the draft and refresh data.
 
 ### Acceptance Criteria (Stage 15 Gate)
 
-- Each brew-feed session opens a populated editor directly; all user-entered
-  values and bean association/date can be updated and saved without duplication.
-- Cancel discards changes; opening again restores saved values. Unchanged saves
-  retain exact data, including imported values and multiline/empty comments.
-- Save/Cancel stay at the screen bottom independently of scroll, with safe-area
-  padding. Normal 393×852 editing fits with the keyboard closed.
-- Failed edits retain the draft and existing stored record; retry and reload
-  preserve the edited record with its original ID.
-- Build and Safari checks pass; populated prior-build data and old CSV/Parquet
-  remain readable. Physical-device and other unverified paths are documented.
+- Edit each field/bean/date in place, with original ID and no duplicate record.
+  Cancel/reopen restores saved data. Save unchanged then compare full CSV values
+  byte-for-byte, especially microsecond timestamps after native-input normalization.
+- Imported EY survives unrelated edits; operands changed by the user recalculate
+  it. Preserve null versus empty, whitespace comments and binary64 values.
+- Inject update/snapshot/commit errors: exact rollback and reopen, retained draft,
+  retry once and committed-warning behavior. Pinned actions remain reachable.
+- Build/Safari and Stage 6 upgrades on both backends, old backup imports and
+  production-subpath/isolation pass; physical native picker/keyboard gaps recorded.
 
 ### Verification — 2026-10-26
 
-- `uv run npm run build` and `git diff --check` passed. Node resolves to
-  `/Users/kkrol/Projects/CoffeeOS/.venv/bin/node`.
-- Desktop Safari 27.2 production UI suite passed at
-  `http://127.0.0.1:4176/CoffeeOS/`: startup/navigation, new-session saves,
-  direct edit opening, populated charts, cancel/reset, reloads, CSV/Parquet
-  exports/imports, duplicate prevention, and invalid-import rollback.
-- Safari exact-width frame checks passed at 320, 375, 393, and 430px without
-  horizontal overflow. New and existing editors fit 393×852 without scrolling,
-  including simulated 59px top/34px bottom safe areas. Controls retain 16px text
-  and 44px minimum height. Forced content scrolling leaves the action bar fixed
-  at the viewport bottom; field labels focus their inputs.
-- Populated upgrades from `2ccf66cbf840e9455d54f8b31d57b4df944e3bf6` passed in
-  isolated Safari (IndexedDB) and Firefox (OPFS), each replacing builds at the
-  same origin and profile. Exact records, old CSV/Parquet imports, reloads,
-  failed startup/migration recovery, and existing photo/deletion checks passed.
-  Safari selected IndexedDB when OPFS was requested; Firefox supplies the OPFS
-  verification, not a Safari OPFS pass.
-- Targeted edit checks passed on both backends: unchanged numeric precision,
-  dates, nulls, empty strings, multiline/whitespace comments and imported EY;
-  cancel/reopen; editing every field and bean relationship; original ID retained;
-  failure rollback and database reopen; retry, double-submit prevention and reload.
-- Final Safari IndexedDB and Firefox OPFS upgrade runs also confirmed that an
-  unchanged edit preserves sub-millisecond timestamps byte-for-byte in CSV
-  exports, including native date-input normalization.
-- Dev and preview responses include COOP `same-origin` and COEP `require-corp`;
-  production assets load under `/CoffeeOS/`.
-- No schema, storage identifiers, import/export formats, dependencies, service
-  worker, deployment origin, or hosting settings changed.
-- Physical iPhone/iPad touch, native date picker, software keyboard, browser
-  chrome, enlarged text, Home Screen safe areas/storage lifecycle, and deployed
-  host remain unverified. Desktop frame geometry is not a physical-device test.
-- Existing uncommitted Stage 14 changes were preserved and extended.
-
----
+- Safari 27.2 production UI/layout suite and populated upgrades from `2ccf66c`
+  passed on Safari/IndexedDB and Firefox/OPFS. Tests covered every field, no-op
+  precision/null/text/imported EY, cancel, rollback/reopen/retry/double-submit/reload.
+- Final upgrades explicitly preserved unchanged sub-millisecond dates byte-for-byte
+  in CSV after native input normalization. Original Stage 1 misplaced edit result
+  belongs here. Build/diff/headers and `/CoffeeOS/` assets passed.
+- Physical iOS picker, keyboard, larger text, Home Screen and actual host remain
+  unverified; current proportional layout supersedes original fixed-size assertions.
 
 ## Stage 16: Swipe to Delete Brew Sessions
 
-- [x] **Status:** Implemented; Safari UI/IndexedDB and Firefox OPFS checks passed; physical iOS pending
+- [x] **Status:** Complete; Safari/IndexedDB + Firefox/OPFS checks passed, physical iOS pending.
 
 ### Goal
 
-Match Bean Manager's swipe-left delete interaction in the all-sessions feed,
-while retaining normal tap access to the full brew editor.
+Delete exactly one brew through deliberate swipe/actions without accidental editing.
 
 ### Tasks
 
-1. Reveal a separate Delete button on a deliberate left swipe; dismiss with a
-   right swipe or Escape, preserve vertical scrolling, and suppress swipe clicks.
-2. Provide the analogous keyboard-accessible actions button and delete only the
-   selected session through the existing transactional persistence path.
-3. Refresh session counts and bean histories, prevent repeated submissions, and
-   keep failed deletions recoverable with accurate post-commit warnings.
-4. Build and check Safari interactions, production subpath assets/isolation,
-   populated previous-build upgrades on both storage backends, and old backups.
+1. Left swipe reveals a separate Delete button; right swipe/Escape/menu dismiss.
+   Keep keyboard-accessible actions, mobile targets, vertical scrolling and swipe
+   click suppression; short/cancelled gestures never reveal deletion.
+2. A fresh surface tap while Delete is visible closes it without opening the
+   editor; next tap opens normally. Reverse swipe closes the revealed action.
+3. Delete transactionally, refresh counts/histories and prevent repeated submits.
+   Retain drafts/data on rollback and show backup guidance after committed flush errors.
 
 ### Acceptance Criteria (Stage 16 Gate)
 
-- Left swipe reveals Delete without opening the editor or deleting anything;
-  normal tap opens the full editor. Right swipe/Escape dismiss; vertical scroll,
-  short gestures and cancelled gestures do not reveal deletion.
-- Actions/Delete are accessible buttons with at least 44px touch targets;
-  session cards fit phone widths without horizontal overflow.
-- Explicit Delete removes exactly the selected session, preserves all beans and
-  sibling records exactly, updates counts/histories, and survives reload.
-- Failed deletion preserves original durable records and permits retry; a
-  post-commit failure refreshes the collection and requests a backup.
-- Build and Safari checks pass; populated previous-build OPFS/IndexedDB fixtures
-  and old CSV/Parquet remain readable. Unverified device/host checks are recorded.
+- Test intentional swipe versus fresh tap, opposite-swipe/Escape/menu dismissal,
+  ordinary editing and vertical/short/cancelled gestures. Dismissal cannot open
+  the editor; swipe completion cannot activate the card. Actions remain usable.
+- Explicit Delete removes exactly the selected session, preserving every bean/
+  sibling field, counts/history and reload. Failure rollback/retry deletes once.
+- On injected post-commit CHECKPOINT failure, export the committed collection;
+  do not promise reload durability until a later healthy flush succeeds.
+- Build/Safari, phone geometry, Stage 6 upgrades/old backups and subpath/headers
+  pass; non-writing gestures preserve exact records, device limits stay explicit.
 
-### Verification — 2026-10-26
+### Verification — 2026-10-26–27 (includes Stage 37)
 
-- `uv run npm run build` passed; Node resolves inside the project's `.venv`.
-  Existing uncommitted Stage 14/15 work is preserved.
-- Desktop Safari 27.2/macOS passed the production `/CoffeeOS/` workflow suite:
-  startup/navigation, bean/session writes and reloads, direct edit/cancel,
-  charts, fixed editor actions, and CSV/Parquet UI import/export regressions.
-- Safari IndexedDB populated upgrade checks from
-  `2ccf66cbf840e9455d54f8b31d57b4df944e3bf6` passed at the same origin/profile:
-  exact records, old CSV/Parquet, reloads, failed startup/migration preservation,
-  and existing photo/bean deletion regressions.
-- Safari targeted session checks passed: swipe-click suppression, normal tap
-  editing, right swipe/Escape dismissal, keyboard actions, vertical/short/cancelled
-  gestures, one-session deletion, unchanged beans/siblings, count/history refresh,
-  rollback and retry, duplicate-click protection, and successful-delete reload.
-  Actual app DOM/CSS in exact-width frames fitted 320, 375, 393 and 430px without
-  horizontal overflow; Edit/Actions/Delete targets were at least 44×44px.
-- Post-commit CHECKPOINT failure shows the backup warning and refreshes the live
-  collection. The check deliberately does not promise durability after a failed
-  checkpoint; the committed collection remains available for backup. An initial
-  test assumed reload durability despite that injected failure; its expectation
-  was corrected. A separate initial test hook was also corrected across reloads.
-- Isolated headless Firefox OPFS populated upgrade checks passed from the same
-  previous revision and origin/profile: exact records, old backups, failed
-  startup/migration recovery, edits, all targeted session gesture/deletion
-  checks above, backup export after post-commit failure, and photo regressions.
-  Safari supplies IndexedDB verification; no Safari OPFS pass is claimed.
-- Development and production preview responses returned COOP `same-origin` and
-  COEP `require-corp`. Newly built JS/CSS resolved with HTTP 200 beneath
-  `/CoffeeOS/assets/`. `git diff --check` passed.
-- No schema, storage identifiers, field meanings, import/export formats,
-  dependencies, service workers, origin, or hosting settings changed.
-- Browser checks use isolated automation sessions and synthetic pointer gestures.
-  Physical iPhone/iPad touch/scroll arbitration, native keyboard, Home Screen
-  storage lifecycle and deployed-host behavior remain unverified.
+- Initial Safari 27.2 full production/targeted gestures and both populated `2ccf66c`
+  upgrade suites passed deletion scope, exact siblings, rollback/retry/duplicate,
+  reload and committed-warning backup. Incorrect failed-CHECKPOINT durability
+  expectation was corrected; no durability guarantee after failed flush claimed.
+- Stage 37 Safari/full IndexedDB upgrade passed fresh-tap Delete dismissal,
+  opposite swipe/menu, normal editor opening, cancelled/vertical gestures and
+  exact non-writing data. Build/diff/headers/eight relative resources passed.
+- Firefox/OPFS not rerun for Stage 37. Physical touch/scroll, native keyboard,
+  Home Screen lifecycle, Safari OPFS and deployed host remain unverified.
 
----
+## Stage 21: Compact Bean Editor & Pinned Bean Histories
 
-## Stage 17: Compact Brew Editor Header and Larger Chart
-
-- [x] **Status:** Implemented; desktop Safari checks passed; physical iOS pending
+- [x] **Status:** Complete; desktop Safari/IndexedDB upgrades passed, physical iOS pending.
 
 ### Goal
 
-Give the brew chart more space on phones, with optional timestamp editing in
-the session header and consistently aligned Cancel/Save actions.
+Keep bean creation compact and inspect long histories without losing collection position.
 
 ### Tasks
 
-1. Show the existing brewed timestamp beside Edit Session as a tap target that
-   reveals and focuses the native date/time input; collapse it on each opening.
-2. Remove the visible Your brew caption while retaining accessible chart feedback,
-   and increase the phone chart from 160px to 240px (220px on shorter viewports).
-3. Normalize action-button margins and grid sizing to keep both buttons aligned.
-4. Build and verify Safari layout, timestamp disclosure, persistence regressions,
-   isolation headers, and production repository-subpath assets.
-
-### Acceptance Criteria (Stage 17 Gate)
-
-- Editing opens with the date input collapsed; tapping the header timestamp
-  reveals/focuses it, and toggling visibility preserves its value.
-- Existing timestamp precision is preserved when unchanged through the existing
-  save comparison; only an explicit timestamp change updates it.
-- The chart is larger at phone widths, with no visible Your brew caption;
-  screen-reader chart descriptions remain available.
-- Cancel and Save occupy the same row with matching vertical bounds. At 393×852
-  the collapsed editor fits with simulated 59px top/34px bottom safe areas;
-  320, 375, 393, and 430px layouts have no horizontal overflow.
-- Build and Safari checks pass; existing data formats and storage identity remain
-  unchanged, and physical-device limitations are documented.
-
-### Verification — 2026-10-26
-
-- `uv run npm run build` passed after correcting an input-helper declaration
-  ordering error caught by TypeScript. `git diff --check` passed.
-- Desktop Safari 27.2/macOS development and production `/CoffeeOS/` suites passed:
-  startup/navigation, bean/session writes and reload persistence, chart behavior,
-  editor cancel/reset, and CSV/Parquet import/export regressions.
-- Production checks confirmed collapsed timestamp editing, tap-to-focus,
-  expanded-state accessibility, and unchanged input value after toggling.
-  The existing unchanged-date save comparison remains intact; no database write
-  or timestamp conversion semantics were changed.
-- Exact-width Safari frame checks passed at 320, 375, 393, and 430px:
-  aligned Cancel/Save bounds, chart height at least 220px (240px at 393×852),
-  visually hidden caption, no horizontal overflow, and 44px/16px form controls.
-  The 393×852 editor fits with simulated 59/34px safe areas.
-- Development and production preview returned COOP `same-origin` and COEP
-  `require-corp`; generated JS/CSS returned HTTP 200 under `/CoffeeOS/assets/`.
-- UI-only changes: no schema, persistence/startup code, storage identifiers,
-  backup formats, dependencies, service workers, deployment origin, or hosting
-  settings changed. Previous-build OPFS/IndexedDB upgrade checks were not rerun;
-  this stage does not claim new upgrade-path verification.
-- Physical iPhone/iPad native picker, software keyboard, Safari browser chrome,
-  actual reported button gap, Home Screen behavior, and deployed-host checks
-  remain unverified. Desktop Safari geometry does not replace device testing.
-
----
-
-## Stage 18: Direct Header Date Picker and Aligned Tasting Notes
-
-- [x] **Status:** Implemented; desktop Safari development/production checks passed; physical iOS pending
-
-### Goal
-
-Open the native date/time picker directly from the Edit Session header without
-adding a Brewed field, and align Tasting notes with the Grind input beside it.
-
-### Tasks
-
-1. Place the native date/time input over its visible header timestamp, retaining
-   an accessible name, keyboard focus indicator, and existing save semantics.
-2. Remove the timestamp disclosure row and place Comment/Tasting notes in the
-   output table's matching rows so its input aligns with Grind.
-3. Build and verify Safari editing, phone-width geometry, persistence regressions,
-   isolation headers, and production repository-subpath assets.
-
-### Acceptance Criteria (Stage 18 Gate)
-
-- The header timestamp is the native date/time control's tap target; editing it
-  never reveals an additional Brewed row or shifts the chart/form layout.
-- Timestamp changes update the visible header; unchanged timestamps retain the
-  existing precision-preserving save comparison and cancel remains non-mutating.
-- Tasting notes and Grind have matching top/bottom bounds within 1px at 320, 375,
-  393, and 430px, including simulated safe areas, without horizontal overflow.
-- Build and Safari development/production checks pass; storage identity and
-  backup formats stay compatible. Physical-device limitations are documented.
-
-### Verification — 2026-10-26
-
-- `uv run npm run build` and `git diff --check` passed. Node resolves to
-  `/Users/kkrol/Projects/CoffeeOS/.venv/bin/node`.
-- Desktop Safari 27.2/macOS development suite passed: startup/navigation,
-  bean/session writes and reloads, editor opening/cancel, chart behavior, failed
-  save/retry, storage recovery guards, and CSV/Parquet import/export regressions.
-- Exact-width Safari checks passed at 320, 375, 393, and 430px with and without
-  simulated safe areas: Grind/Tasting notes bounds align within 1px, controls
-  retain 44px/16px sizing, and no horizontal overflow. The 393×852 editor fits
-  with simulated 59px top/34px bottom safe areas; actions remain fixed.
-- Safari confirmed the extra date row is absent, the header label focuses the
-  native date/time input, and hit testing over the timestamp targets that input.
-- Desktop Safari production suite passed at `http://127.0.0.1:4173/CoffeeOS/`:
-  startup/navigation, writes/reloads, both editor layouts, header date targeting,
-  chart checks, and CSV/Parquet UI import/export with reload persistence.
-- Dev and production preview responses returned COOP `same-origin` and COEP
-  `require-corp`; compiled application/style assets loaded under `/CoffeeOS/`.
-- UI-only changes: no schema, persistence/startup code, storage identifiers,
-  backup formats, dependencies, service workers, origin, or hosting changes.
-  The precision-preserving timestamp comparison is unchanged. Previous-build
-  OPFS/IndexedDB upgrades were not rerun; no new upgrade verification is claimed.
-- Physical iPhone/iPad native-picker interaction, software keyboard, Home Screen
-  behavior/storage lifecycle, and deployed-host checks remain unverified.
-
----
-
-## Stage 19: Larger Brew Graph with Tighter Measurement Spacing
-
-- [x] **Status:** Implemented; desktop Safari checks passed; physical iOS pending
-
-### Goal
-
-Enlarge the session editor's brew graph by 20% while keeping the measurements
-and fixed Cancel/Save actions usable on an iPhone 15 Pro sized screen.
-
-### Tasks
-
-1. Increase the editor chart height limit from 240px to 288px, and from 220px
-   to 264px on shorter viewports, preserving the graph's proportions.
-2. Tighten chart/bean gaps, table captions, and measurement-row padding while
-   retaining 16px input text, 44px touch targets, and aligned Grind/Tasting notes.
-3. Build and verify Safari phone geometry, editing and reload regressions,
-   isolation headers, and production repository-subpath assets.
-
-### Acceptance Criteria (Stage 19 Gate)
-
-- The chart renders at 288px high at 393×852, 20% taller than the previous
-  editor; the shorter-viewport limit increases by the same proportion.
-- At 393×852 with simulated 59px top/34px bottom safe areas, all measurements
-  fit without scrolling or overlap with the fixed actions. Grind/Tasting notes
-  remain aligned within 1px; controls retain 16px text and at least 44px height.
-- Phone layouts at 320, 375, 393, and 430px have no horizontal overflow;
-  smaller heights retain scroll access and fixed Cancel/Save buttons.
-- Build and Safari checks pass; storage identity and backup formats remain
-  unchanged. Physical-device and other unverified paths are recorded.
-
-### Verification — 2026-10-27
-
-- `uv run npm run build` passed; Node resolves inside the project's `.venv`.
-  `git diff --check` passed.
-- Desktop Safari 27.2/macOS measured the chart at 288px versus the previous
-  240px at 393×852. With simulated 59px top/34px bottom safe areas, content
-  fits without scrolling; the measurement tables end at 711px and the fixed
-  action bar starts at 749px. Grind/Tasting notes align within 1px.
-- Exact-width Safari checks passed at 320, 375, 393, and 430px without horizontal
-  overflow. Fields retain 16px text and at least 44px height; Cancel/Save remain
-  aligned and fixed during content scrolling. Shorter 393×759 and 393×680
-  frames use the 264px chart limit and retain vertical scrolling.
-- The development Safari suite passed startup/navigation, bean/session writes
-  and reloads, chart/editor behavior, failed-save retry, storage recovery guards,
-  and CSV/Parquet import/export regressions. The final spacing refinement also
-  passed the full production UI suite, including both new/existing editor frame
-  checks, at `http://127.0.0.1:4173/CoffeeOS/` with `TEST_PRODUCTION=1`.
-- The first production invocation omitted `TEST_PRODUCTION=1` and stopped at a
-  development-only database-module import; the correctly configured rerun passed.
-- Development and preview responses returned COOP `same-origin` and COEP
-  `require-corp`; compiled JS/CSS assets returned HTTP 200 under `/CoffeeOS/`.
-- CSS-only change: no persistence/startup code, schema, storage identifiers,
-  field meanings, backup formats, dependencies, service workers, origin, or
-  hosting changes. Previous-build OPFS/IndexedDB upgrade checks were not rerun;
-  no new upgrade-path verification is claimed.
-- Physical iPhone/iPad touch, software keyboard, Safari browser chrome, enlarged
-  text, Home Screen safe areas/storage lifecycle, and deployed-host behavior
-  remain unverified. Desktop Safari frame checks do not replace device testing.
-
----
-
-## Stage 20: Proportional Session Editor Fit
-
-- [x] **Status:** Implemented; desktop Safari development/production checks passed; physical iOS pending
-
-### Goal
-
-Scale the entire session editor together on smaller phones and use available
-height without leaving spare space beneath the measurements.
-
-### Tasks
-
-1. Use a shared CSS scale derived from available viewport width/height and safe
-   areas, with a 393×759 usable reference viewport and an 80% minimum scale.
-2. Give the editor a scrolling body and a separate persistent action row; let
-   the chart fill remaining height instead of assigning device-specific heights.
-3. Preserve native input font sizing before visual scaling, data semantics,
-   timestamp targeting, error recovery, navigation and save/cancel behavior.
-4. Verify Safari phone/landscape geometry, scroll fallback, writes/reloads,
-   backup regressions, production subpath assets, isolation headers and build.
-
-### Acceptance Criteria (Stage 20 Gate)
-
-- Header, graph, tables, inputs and actions share the same proportional scale;
-  smaller screens reduce the whole editor rather than only the graph.
-- At 393×852 and 375×667, including simulated 59/34px safe areas, the normal
-  editor fits without scrolling. Only intentional padding remains between the
-  measurements and actions; extra available height belongs to the graph.
-- At 320, 375, 393 and 430px widths and in landscape, fields remain reachable
-  without horizontal overflow; very short layouts scroll rather than shrinking
-  below 80%. Actions remain at the viewport bottom independently of scrolling.
-- Save/cancel, timestamp interaction, visible recoverable errors and persistence
-  regressions pass. Storage identifiers, schema and backup formats stay stable.
-- Build and Safari checks pass; physical-device and upgrade-path limits are
-  recorded explicitly.
-
-### Verification — 2026-10-27
-
-- `uv run npm run build` and `git diff --check` passed using the existing local
-  `.venv`/Node installation; no new runtime dependency or layout script added.
-- Desktop Safari 27.2/macOS development suite passed startup/navigation,
-  bean/session writes and reloads, date-input targeting, chart/editor behavior,
-  save/cancel, failed-save retry, storage recovery guards and CSV/Parquet
-  import/export regressions. Existing fixed-44px visual-size assertions were
-  updated to verify the intended shared scale and unchanged 16px CSS input font.
-- Production Safari UI suite passed at `http://127.0.0.1:4173/CoffeeOS/` with
-  `TEST_PRODUCTION=1`, including backup import/reload persistence.
-- Actual DOM/CSS frame checks passed at 320×568, 320×852, 375×667, 375×812,
-  393×680, 393×852, 430×932 and 852×393, both with and without simulated
-  59px top/34px bottom safe areas. The shared scale matches both viewport
-  dimensions, controls/labels remain aligned, and no horizontal overflow occurs.
-- Normal 393×852 and 375×667 editors fit without scrolling with simulated safe
-  areas. At 393×852, the chart grows to 314px, measurements end at 737px and
-  actions start at 749px: the remaining gap is the intentional 12px padding.
-- Very short/landscape layouts stop shrinking at 80%; scrolling reaches the
-  final Comment input above the actions. Added-content scrolling leaves actions
-  pinned to the viewport bottom. Label focus and header timestamp hit testing
-  passed, including the visually scaled control geometry.
-- This deliberately scales 44px controls down to at least 35.2px visually and
-  keeps their computed input font at 16px. Physical iOS focus/automatic zoom,
-  touch precision and software-keyboard behavior remain unverified.
-- Dev and preview returned COOP `same-origin` and COEP `require-corp`; compiled
-  JS/CSS assets returned HTTP 200 beneath `/CoffeeOS/assets/`.
-- Changes are limited to editor markup/CSS and browser checks. No persistence,
-  startup, schema, storage identifier, field-meaning, backup-format, dependency,
-  service-worker, deployment-origin or hosting changes. Previous-build OPFS and
-  IndexedDB upgrade suites were not rerun; no new upgrade-path pass is claimed.
-- Physical iPhone/iPad, enlarged text, Safari browser chrome, Home Screen
-  behavior/storage lifecycle and deployed-host checks remain unverified.
-  Browsers lacking the CSS scale calculation retain an unscaled scrolling
-  layout; that compatibility fallback was not tested in an older browser.
-
----
-
-## Stage 21: Compact Bean Editor and Pinned Bean Histories
-
-- [x] **Status:** Implemented; desktop Safari development/production and IndexedDB upgrade checks passed; physical iOS pending
-
-### Goal
-
-Open the bean form from a compact button and fit its fields and submit action
-on an iPhone 15 Pro screen. Inspect long bean histories beneath a pinned bean
-heading, then return to the same place in the collapsed collection with a tap.
-
-### Tasks
-
-1. Start with an accessible Add a bean toggle; preserve drafts when closing and
-   reopen the editor when navigating from the Brew Controller's no-beans prompt.
-2. Compact the name, optional dates and photo controls, including photo preview,
-   while preserving input sizes, validation, error recovery and save behavior.
-3. Anchor an inspected bean at the top of the content area, scroll only its
-   history, and support closing from the heading/history or Escape.
-4. Preserve swipe/actions/delete controls and restore the collection scroll
-   position when inspection closes; keep all existing records and formats intact.
-5. Run build, Safari interaction/phone geometry checks, existing save/reload and
-   backup regressions, isolation headers and production repository-subpath checks.
+1. Start with accessible Add a bean toggle; closing preserves drafts, no-beans
+   navigation opens/focuses the form. Fit name/dates/photo/submit above navigation.
+2. Pin inspected heading at content top, scroll only history and retain the final
+   session above navigation. Include native `::details-content` in flex sizing.
+3. Close via heading/history/photo/blank space or Escape, restoring collection
+   scroll/focus. Preserve text selection, vertical scrolling and actions/swipes.
+   If swipe actions are open, Stage 7's dismiss-first rule takes priority.
 
 ### Acceptance Criteria (Stage 21 Gate)
 
-- The bean form is initially hidden. Its button accurately announces expansion,
-  closing preserves unsaved fields, and the no-beans prompt opens/focuses it.
-- At 393×852, including simulated 59px top/34px bottom safe areas, the expanded
-  toggle, every input, optional photo preview and Add Bean button fit above tabs
-  without scrolling or horizontal overflow. Inputs retain 16px text/44px height.
-- Opening a bean pins its heading at the content top. Long histories scroll in
-  both directions without moving that heading or hiding the final session.
-- Tapping the heading, session content, photo or blank history space collapses
-  inspection and restores the previous collection position. Escape works;
-  action buttons, swipes and text selection retain their intended behavior.
-- Build and Safari checks pass. Storage identities, schema, record semantics,
-  backup formats, dependencies, startup and service workers remain unchanged.
-- Physical iOS and any unverified upgrade/deployment paths are recorded.
+- Hidden initial form/toggle state/draft preservation/no-beans focus pass. At
+  393×759 and 393×852, with/without 59/34px safe areas, photo-inclusive form fits;
+  320×568, 375×667 and 430×932 stay horizontally contained, controls 16px/44px.
+- Long history scrolls both ways at 320/375/393/430px without moving heading;
+  last session is reachable. Close restores prior collection position/focus.
+  Menu actions leave inspection open; visible swipe actions dismiss first.
+- Build, Safari dev/production, persistence/IO and Stage 6 affected-path checks pass.
+  Record physical touch/selection and backend/host paths not rerun.
 
 ### Verification — 2026-10-27
 
-- `uv run npm run build` passed using the existing project-local environment.
-  `git diff --check` passed; no dependency or toolchain changes were needed.
-- Desktop Safari 27.2/macOS development and production suites passed. Production
-  ran at `http://127.0.0.1:4173/CoffeeOS/` with `TEST_PRODUCTION=1`, including
-  startup/navigation, no-beans form opening/focus, bean/session saves, reloads,
-  chart/editor behavior and CSV/Parquet backup import/export regressions.
-- Exact-size Safari frame checks passed at 320×568, 375×667, 393×759, 393×852
-  and 430×932 without horizontal overflow. At both 393px sizes, the Add a bean
-  toggle, complete form, 72px photo preview, removal/status and submit controls
-  fit above navigation, with and without simulated 59px top/34px bottom safe
-  areas. Inputs retain 16px text and at least 44px height; submit remains 44px.
-- Long-history frame checks passed at 320, 375, 393 and 430px with simulated
-  safe areas: the heading stays pinned at the content top, scrolling reaches
-  the last session above navigation and returns to the start, without horizontal
-  overflow. Safari's native details content wrapper needed `::details-content`
-  to participate in the flex layout; the corrected scrolling behavior passed.
-- Interactive Safari checks passed draft-preserving form toggles, independent
-  history scrolling, heading/session/photo/blank-history taps to collapse,
-  Escape/focus return, action buttons that leave inspection open, and restoration
-  of the collection's previous scroll position. Existing swipe/delete regressions
-  passed in the upgrade suite. Native touch selection/scroll gestures on a
-  physical device remain unverified.
-- `uv run npm run test:upgrade` passed in Safari with the IndexedDB backend.
-  Populated revision `2ccf66cbf840e9455d54f8b31d57b4df944e3bf6` was replaced
-  by the candidate at the same profile/origin and `/CoffeeOS/` path. Exact IDs,
-  relationships, dates/nulls, comments and numeric precision survived reload;
-  historical CSV/Parquet backups imported, and injected startup/restore/migration
-  failures preserved the original records without showing an empty collection.
-  Photo save/reset, photo backup round trips, session editing/deletion, bean
-  swipe/delete, rollback/retry and reload regressions also passed.
-- Dev and preview returned COOP `same-origin` and COEP `require-corp`; compiled
-  JS/CSS assets returned HTTP 200 beneath `/CoffeeOS/assets/`.
-- No persistence/startup code, storage identifiers, schema, record semantics,
-  backup formats, dependencies, service workers, deployment origin or hosting
-  changed. OPFS previous-build upgrade checks were not rerun; no new OPFS
-  upgrade-path verification is claimed.
-- Physical iPhone/iPad touch, software keyboard, browser chrome, enlarged text,
-  Home Screen safe areas/storage lifecycle, older Safari versions and deployed
-  host behavior remain unverified. Desktop Safari frame checks do not replace
-  physical-device testing.
-
----
+- Safari 27.2 dev/production/full suite and exact frames passed form/history fit,
+  scroll/position/focus and action isolation after fixing details-content flex sizing.
+  Build/diff/headers/subpath passed. Populated `2ccf66c` Safari/IndexedDB upgrade
+  passed exact records, old backups, failure recovery and edit/photo/delete regressions.
+- OPFS upgrades not rerun in this feature session; older Safari, physical native
+  selection/touch/keyboard, Home Screen and deployed host remain unverified.
 
 ## Stage 22: Portable Single-File CoffeeOS Backups
 
-- [x] **Status:** Implemented; desktop Safari/Firefox and populated upgrade checks passed; physical iOS pending; signed-zero runtime boundary documented
+- [x] **Status:** Complete; Safari/Firefox/interoperability/upgrades passed, signed-zero and device limits retained.
 
 ### Goal
 
-Replace the normal CSV/Parquet and one-file/two-file choices with one portable
-`.coffeeos` backup containing a manifest and two independent Parquet tables.
-Make saving and importing a collection straightforward while preserving exact
-records, interoperability with standard tools, and access to historical backups.
+Use one standard, portable `.coffeeos` file for exact collection backup and explicit
+merge, retaining old backups and recoverable overwrites.
 
 ### Tasks
 
-1. **Freeze and document the version 1 archive contract.**
-   - Add `docs/backup-format.md` as the normative specification, with a small
-     generated example archive and instructions for reading it outside CoffeeOS.
-   - Use an ordinary, unencrypted ZIP archive with exactly these root entries:
-
-     ```text
-     CoffeeOS-2026-10-27T143000Z.coffeeos
-     ├── manifest.json
-     ├── beans.parquet
-     └── brew_sessions.parquet
-     ```
-
-   - Use UTF-8 JSON for the manifest and standard Parquet for both tables. Keep
-     photos in the existing `beans.photo_jpeg` column for this version; do not
-     introduce a separate assets directory or join beans onto every session.
-   - Export ZIP entries using STORE to avoid recompressing already compressed
-     Parquet. Accept STORE and DEFLATE on import so standard ZIP tools can repack
-     a valid archive. Select and pin a small browser-compatible ZIP dependency
-     after checking its installed API, license, archive limits and Safari support.
-   - Use `.coffeeos` as the user-facing extension and `application/zip` for the
-     download MIME type. Do not invent a registered media type. Identify imports
-     by ZIP contents and manifest as well as filename; tolerate empty/generic
-     MIME types from iOS Files. A standard `.zip` copy with the same valid
-     contents should also import.
-   - Include empty tables with their full schemas. A backup with zero beans and
-     zero sessions is valid and must not be interpreted as damaged storage.
-
-2. **Define a self-describing, versioned manifest.**
-   - Require the following fields; document their types and validation rules:
-
-     | Field | Contract |
-     | --- | --- |
-     | `format` | Exact string `coffeeos-backup`. |
-     | `format_version` | Integer `1`; versions the archive/manifest contract. |
-     | `data_schema_version` | Integer `1`; versions the logical backup schema described below, independently of the internal database schema. |
-     | `backup_id` | UUID identifying this exported snapshot; not a record or database identity. |
-     | `exported_at` | UTC ISO 8601 timestamp for the export, with a `Z` suffix. |
-     | `producer` | Object with `name: "CoffeeOS"` and informational `version`; never a storage identifier or compatibility gate. |
-     | `tables` | Exactly two descriptors, one named `beans` and one named `brew_sessions`. |
-   - Each table descriptor must contain `name`, its exact root `path`,
-     `row_count`, `byte_length`, and `sha256`. Counts and lengths must be
-     nonnegative safe integers. SHA-256 is 64 lowercase hexadecimal characters,
-     calculated over the complete uncompressed Parquet entry bytes.
-   - Include `primary_key: ["id"]` in both descriptors, and a foreign-key
-     descriptor for `brew_sessions.bean_id` referencing `beans.id`. Validate
-     these against the known schema; never execute identifiers or SQL supplied
-     by an archive.
-   - Include ordered column descriptors with `name`, documented `logical_type`,
-     `nullable`, and `unit` where applicable. Validate the descriptors against
-     the versioned contract and actual Parquet schema; the manifest must not
-     redefine field meanings or authorize arbitrary columns/types.
-   - Document exact required metadata, optional informational fields and
-     compatibility rules. Ignore unknown informational manifest properties;
-     reject unsupported format/data-schema versions before touching live data.
-     Future schema changes require an explicit reader/migration and fixtures.
-   - Explain that checksums detect corruption and mismatched entries, not
-     authenticity or encryption. The archive contains readable personal data
-     and photos; no account, password or network service is required to open it.
-
-3. **Specify the logical table schema and fidelity requirements.**
-   - `beans`: `id` and `name` are required strings; `roast_date` and
-     `freeze_date` are nullable dates; `created_at` is a required timestamp;
-     `photo_jpeg` is a nullable JPEG data-URL string.
-   - `brew_sessions`: `id` and `bean_id` are required strings; `brewed_at` is a
-     required timestamp; `time_str` and `comment` are nullable strings.
-     `dose_g`, `water_g`, `temp_c`, `grind_um`, `yield_g`, `tds_pct` and
-     `extraction_pct` are nullable binary64 numbers.
-   - Record units explicitly: grams for dose/water/yield, degrees Celsius for
-     temperature, micrometres for grind, and percentage points for TDS and
-     extraction. Preserve `time_str` exactly, including its existing duration
-     notation, rather than converting or assigning a new numeric unit.
-   - Preserve IDs, relationships, dates, timestamp precision and interpretation,
-     nulls, empty strings, multiline/Unicode comments, zeroes, photos and numeric
-     precision. Export stored values, not formatted UI values or recomputed EY.
-   - Document the actual Parquet physical/logical type annotations emitted by
-     the pinned DuckDB build, including timestamp precision and UTC convention.
-     Verify them with an independent Parquet reader before freezing the spec.
-     Do not route table records through JavaScript Date or JSON conversions.
-   - Exclude derived `bean_name` session display values and all device-specific
-     database paths, backend metadata, locks, credentials and browser settings.
-   - Every session in a new-format backup must reference a bean in that same
-     archive. Validate this independently of the destination collection so each
-     backup remains self-contained.
-
-4. **Implement consistent archive export.**
-   - Add an archive module such as `src/backups.ts` for manifest validation,
-     hashing and ZIP packaging. Keep database operations in `src/db.ts`.
-   - Reuse the existing two-table Parquet export and its serialized database
-     access. Capture both tables and their counts from the same consistent
-     snapshot; no application write may interleave between them. Release the
-     database operation before doing CPU-intensive ZIP/hash work when safe.
-   - Build the manifest from the exported bytes and verified snapshot metadata.
-     Do not count the live tables in a separate operation after export.
-   - Produce one dated file. Keep only necessary buffers, release temporary
-     DuckDB files and replaced object URLs, and guard against duplicate clicks.
-     A preparation failure leaves the live collection and any earlier prepared
-     download intact and available for retry.
-   - Make export and import resource limits consistent: never produce a backup
-     that this version's importer would refuse solely because of its size.
-
-5. **Implement validation, preview and atomic merge import.**
-   - Split import into preparation/validation and explicit confirmation. File
-     selection alone must not mutate the collection.
-   - Inspect the ZIP directory before extracting. Reject missing, duplicate or
-     unexpected entries, directories, encrypted entries, unsupported compression,
-     absolute/parent-traversal paths and conflicting entry metadata. Use only
-     the three fixed in-memory entry names; never extract to user storage.
-   - Enforce bounded manifest size, archive size and actual decompressed bytes,
-     including limits during decompression rather than trusting declared sizes.
-     Establish and document practical limits from Safari memory measurements
-     with photo-heavy fixtures; report oversize files before any live mutation.
-   - Validate UTF-8/JSON, manifest versions and structure, entry lengths and
-     hashes, actual Parquet schemas, row counts, unique/nonblank IDs, required
-     values, dates, finite numbers, photo encoding and internal relationships.
-     Do not use untrusted row counts as allocation sizes.
-   - Validate in temporary/staging tables and show the backup date, producer,
-     bean/session counts, and expected new/updated/unchanged record counts.
-     Retain the original uploaded bytes for retry; release replaced staging data.
-   - For this stage, support **merge only**: add new IDs, update differing
-     matching IDs, and retain records absent from the backup. Clearly explain
-     that matching records can be overwritten even by an older backup; do not
-     label this operation an exact restore or infer that imported values are newer.
-   - If the local collection changes between preview and confirmation,
-     recompute the comparison and require confirmation of the refreshed preview.
-     Never apply a stale overwrite summary silently.
-   - Before applying a merge that changes existing records, persist a recoverable
-     pre-import snapshot without replacing an earlier recovery copy. Define an
-     additive, versioned recovery entry in the existing snapshot store, with
-     a documented way to download it as a `.coffeeos` file. If creating that
-     recovery copy fails, abort before changing live records. Do not rotate or
-     silently discard recovery copies in this stage; storage-full is recoverable.
-   - Apply both tables together through the existing transaction and durable
-     snapshot path. Pre-commit errors roll back both tables; retain the upload
-     for retry. Post-commit durability errors must retain the existing committed
-     write warning behavior, refresh displayed data, and discourage duplicate
-     retries rather than falsely claiming that nothing was imported.
-   - Refresh bean histories and brew lists only after an applied import, keep
-     save/error statuses accessible, and make repeated import idempotent by ID.
-
-6. **Replace the normal IO flow with one-file controls.**
-   - Present **Save backup** and **Import backup** as the primary actions. Remove
-     the format/layout selector and CSV/Parquet export buttons from normal UI.
-   - Save prepares one archive, then exposes one download and, where supported,
-     one Share action. Keep a separate user click for the iOS share sheet.
-     Report “Backup ready” rather than claiming the user saved a prepared file.
-   - Import uses one picker accepting `.coffeeos` and `.zip`, a concise preview,
-     an **Import into collection** confirmation, and Cancel. Do not expose
-     manifest/schema/checksum details unless they explain an actionable failure.
-   - Show empty, preparing, validating, ready, importing, success and recoverable
-     failure states. Keep controls reachable above navigation at 393×852, with
-     16px input fonts, 44px touch targets and accessible status announcements.
-   - Provide a clearly labelled recovery-backup download when a pre-import copy
-     exists. Preserve retryable selections and avoid duplicate-submit races.
-
-7. **Retain historical backup compatibility without adding CSV export.**
-   - Do not include any CSV file inside `.coffeeos`, and do not implement an
-     optional spreadsheet/CSV export feature in this stage.
-   - Keep existing combined and separate CSV/Parquet backups readable through a
-     collapsed **Import an older backup** path. This is backward compatibility,
-     not a second normal backup format. Preserve mixed legacy table imports,
-     optional historical photo columns and the established missing-value rules.
-   - Keep the existing data-layer readers and their fidelity tests. Reuse the
-     shared validation/merge logic where possible without changing legacy
-     partial-import semantics or interpreting absent photo fields as deletion.
-   - Preserve current OPFS/IndexedDB storage identity, selected backend, database
-     ownership lock, WAL/database filenames and existing snapshot keys. Any new
-     recovery metadata is additive; no live storage is recreated or switched.
-
-8. **Verify interoperability, failure safety and real upgrades.**
-   - Add focused archive tests for empty and populated collections, multiple
-     sessions per bean, beans without sessions, photos, null/empty distinctions,
-     Unicode/multiline text, exact timestamps and binary64 precision.
-   - Cover malformed manifests, unsupported versions, corrupt/truncated ZIP or
-     Parquet, duplicate/path-conflicting entries, size-limit violations, checksum
-     or count mismatches, schema mismatches and orphan sessions. All must fail
-     before live data changes and leave the original file available for retry.
-   - Verify preview cancellation, refreshed conflict previews, duplicate-submit
-     prevention, unchanged/repeated imports, atomic rollback, failed recovery
-     snapshot creation, post-commit warnings, recovery download and reload.
-   - Independently unzip a generated `.coffeeos` file and read both tables with
-     a standard Parquet tool outside DuckDB-Wasm. Check manifest counts/hashes
-     and representative exact values. Repack the same entries with a standard
-     ZIP tool using DEFLATE and verify CoffeeOS accepts the result.
-   - Run previous-build-to-candidate upgrades with populated OPFS and IndexedDB
-     fixtures in the same isolated browser profile and origin. Check exact
-     records after replacement/startup/reload, import old backups, and inject
-     failed upgrades to prove the original collection stays recoverable.
-   - If a ZIP dependency changes the lockfile, install old and candidate fixture
-     dependencies separately; do not bypass the upgrade harness's dependency
-     equality guard or run the previous build against an unverified new lockfile.
-   - Use installed Safari first for startup, navigation, export/import and
-     persistence; use isolated Firefox for OPFS coverage where Safari selects
-     IndexedDB. Verify production `/CoffeeOS/` assets and isolation headers.
-   - Run `uv run npm run build` and `git diff --check`. Record physical iPhone
-     Files recognition, save/share/picker flow, large-photo memory behavior,
-     Home Screen imports and any unverified cases explicitly.
+1. Keep `docs/backup-format.md` normative and fixture
+   `docs/fixtures/example-v1.coffeeos` independently readable. Ordinary unencrypted
+   ZIP contains exactly root `manifest.json`, `beans.parquet`, `brew_sessions.parquet`;
+   export STORE, accept STORE/DEFLATE, MIME `application/zip`. Recognize contents
+   despite generic MIME or `.zip` extension; empty full-schema tables are valid.
+2. Manifest: `format=coffeeos-backup`, archive/data-schema versions both 1,
+   UUID backup ID, UTC exported time, informational producer/version and exactly
+   two fixed table descriptors: path, row count, byte length, SHA-256, ordered
+   typed/nullable/unit columns, primary keys and session→bean FK. Validate known
+   contracts/actual Parquet; informational properties cannot authorize new SQL.
+3. Preserve exact logical records, photos in `beans.photo_jpeg`, null/empty/text
+   distinctions, units and duration notation. Export stored EY, not recalculated
+   UI values; never round-trip table data through JS Date/JSON. Exclude derived
+   bean names, storage metadata, locks and credentials. Validate archive-internal
+   relationships even when missing parents happen to exist locally.
+4. Capture both Parquet tables/counts/time in one serialized DB operation, then
+   release the queue for hash/ZIP work. Use pinned `fflate` 0.8.3/license/lockfile.
+   Release temporary buffers/files/object URLs and preserve earlier prepared
+   downloads on failure. Export must not exceed its own reader's supported format.
+5. Audit ZIP directory/local metadata/ranges before extraction: exactly three
+   unique fixed root files, no traversal/directories/encryption/ZIP64/unsupported
+   compression, overlap or conflicting lengths. Verify actual decompressed length,
+   CRC32 and SHA-256, UTF-8/JSON, manifest/types/counts/versions, Parquet schemas,
+   IDs/required fields/finite numbers/dates/photos and internal relationships.
+6. **Current limits:** no application-imposed archive/expanded-collection byte cap.
+   Retain 64 KiB manifest and ZIP32 sizes/offsets (no ZIP64). Bound decompression
+   by each validated declared entry size and reject inconsistent output; never
+   size allocations from row counts. Resource failures are recoverable before
+   live mutation. Removed caps are not a guarantee of arbitrary device capacity.
+7. File selection only stages/previews date/producer/counts and new/updated/
+   unchanged rows. Explicit Import into collection merges by ID, retains local-only
+   records and warns that older matching records can overwrite newer local edits.
+   Recheck revision/exact comparison under the DB queue; stale preview requires
+   another confirmation, including add/delete races back to the same counts.
+8. Before overwriting records, persist immutable `import-recovery-v1:<UUID>` in
+   the existing snapshot store and expose `.coffeeos` download after reload.
+   No rotation/replacement of recoveries, `tables-v1` or backend metadata. Abort
+   before DML if recovery save fails. Coordinate IndexedDB snapshot/SQL COMMIT:
+   pre-commit failure rolls both tables back; post-commit abort preserves previous
+   durable snapshot, shows committed warning and offers recovery/export.
+9. Ordinary IO: Save backup → “Backup ready,” download/separate Share; one import
+   picker → preview/confirmation/Cancel, accessible status and retained retryable
+   files. Legacy collapsed path reads combined/separate/mixed CSV/Parquet with
+   old null/photo/partial-merge rules. No normal CSV export or format selector.
 
 ### Acceptance Criteria (Stage 22 Gate)
 
-- Normal export produces exactly one `.coffeeos` file, containing only the
-  specified UTF-8 manifest and two standard, independently readable Parquet
-  tables. No CSV file, joined table, login or remote service is required.
-- The manifest identifies the format/schema versions, snapshot, producer,
-  table paths/counts/lengths/checksums, columns, units, keys and relationship.
-  The published contract and generated fixture match the implementation.
-- One normal import picker previews a valid archive and requires an explicit
-  merge confirmation. Cancellation and all validation failures leave the
-  collection unchanged. Existing-record overwrites have a recoverable snapshot.
-- New-format archives are self-contained, including photos and beans with no
-  sessions. Empty archives round-trip. Exact records survive export/import and
-  reload without changes to IDs, relationships, values, units or precision.
-- Missing records in an imported snapshot do not delete local records; repeated
-  imports do not duplicate records. Stale previews cannot silently overwrite
-  intervening local changes. Both tables succeed together or roll back together.
-- Independent ZIP/Parquet tools read generated files, and supported standard
-  repacking remains importable. Corrupt, oversized and unsupported files fail
-  safely with an actionable error and no silent fallback to an empty collection.
-- Historical combined/separate CSV and Parquet backups remain readable through
-  legacy import. The ordinary screen has no format/layout choices or CSV export.
-- Build, Safari workflows, production-subpath checks, and populated previous-build
-  OPFS/IndexedDB upgrade/recovery checks pass; remaining platform gaps are stated.
-- Existing storage identity and deployment origin remain stable. The only new
-  persistence metadata is the explicitly documented additive import-recovery
-  storage; its failure cannot overwrite live data or previous recovery copies.
-- Cloud storage, authentication, automatic synchronization, exact replacement
-  restore, encryption and optional CSV export are outside this stage.
-
-### Verification — 2026-10-27 (planning record)
-
-- Planning only: reviewed the current `src/views/ioView.ts` controls and
-  `src/db.ts` two-table/combined export, schema and transactional merge paths.
-- No application, dependency, storage or backup-format changes have been made
-  for this stage. All implementation acceptance criteria and browser, archive,
-  interoperability and previous-build upgrade checks remain pending.
-- The plan retains historical CSV import solely to meet the mandatory existing
-  backup compatibility requirement; new backup creation is `.coffeeos` only.
-- Documentation checks: confirmed Stage 22 follows Stage 21 at the end of this
-  file; `git diff --check` and `uv run npm run build` passed. This checks the
-  existing application only and does not verify the proposed backup feature.
-
+- Empty/populated/photo/multiple-session/bean-without-session archives round-trip
+  exact IDs, relationships, dates/microseconds, finite binary64 values, nulls/empty
+  strings and Unicode/multiline text through import/reload; unchanged imports
+  duplicate neither records nor recoveries. Signed-zero limitation remains explicit.
+- Independently unzip/read generated files using Python zipfile/PyArrow, compare
+  schema annotations/counts/hashes/values/binary64 bits and import DEFLATE repack.
+  Current TIMESTAMP microseconds use `isAdjustedToUTC=false`, interpreted as UTC.
+- Corrupt/truncated ZIP/Parquet, unsupported versions/types, duplicate/path-conflict
+  entries, false lengths/DEFLATE output, hashes/count mismatches, orphan IDs and
+  invalid required/photo/date/number fields fail before live mutation. Keep files
+  retryable; do not silently choose an empty collection or bypass validation.
+- Selection/cancel/stale preview/double-submit, failed recovery creation, second
+  table insert, SQL COMMIT and post-commit IDB abort are covered. Recovery download
+  retains exact original records after reload; committed uncertainty refreshes UI
+  without encouraging duplicate import. Missing local-only IDs are not deleted.
+- Export/import/recovery/Drive use compatible format/limit rules. Check shared
+  configuration and ZIP32 boundary rejection without restoring former 8 MiB/1 GB
+  application caps; report untested large-file capacity and measured device memory
+  separately from structural format limits.
+- Build, `test:backups` on Safari/IndexedDB and Firefox/OPFS, historical IO, populated
+  Stage 6 upgrades with separate dependencies when needed, subpath and headers pass.
+  Physical Files/Share, photo-heavy memory and native Home Screen checks stay explicit.
 
 ### Verification — 2026-10-27 (implementation)
 
-- Implemented the normative v1 contract in `docs/backup-format.md`, generated
-  `docs/fixtures/example-v1.coffeeos`, and pinned MIT-licensed `fflate` 0.8.3
-  with its lockfile and distributed license. Normal export is one STORE ZIP
-  archive (`application/zip`); normal imports accept content-identified archives,
-  including `.zip` and empty/generic MIME types. Both full-schema empty tables
-  are included. Manifest/schema versions, ordered columns, units, keys, internal
-  relationships, table counts, lengths, SHA-256 and ZIP CRC32 are checked.
-- Export captures both COPY outputs, counts and capture time within the existing
-  database queue, then releases it before hashes/packaging. Import staging and
-  comparison use fixed SQL identifiers and original Parquet values. Confirmation
-  rechecks the collection revision and exact field comparisons; stale previews
-  refresh and require another click. Matching IDs merge, absent records stay,
-  and repeated unchanged imports produce no duplicate records or recovery copies.
-- Overwrites atomically add immutable `import-recovery-v1:<UUID>` records in the
-  existing snapshot store. They never replace `tables-v1`, backend metadata or
-  earlier recovery copies. IO lists them after reload and prepares downloadable
-  `.coffeeos` recovery archives. Recovery-write failures abort before live DML.
-  For archive imports on IndexedDB, the snapshot transaction remains open until
-  SQL COMMIT resolves: failed SQL commit aborts the candidate snapshot; an IDB
-  abort after SQL commit retains the prior durable snapshot and raises the
-  committed-write warning. Existing OPFS/IndexedDB identities, database/WAL
-  filenames, lock, deployment origin, service worker and startup behavior are
-  unchanged. No migration or storage reset is introduced.
-- Replaced ordinary format/layout controls with Save backup, one download and
-  separate Share, plus one picker, preview, Import into collection and Cancel.
-  Retryable files and earlier prepared downloads survive failures. Status/error
-  announcements are accessible; only applied imports refresh histories/lists.
-  The collapsed legacy path retains combined/separate/mixed CSV and Parquet,
-  optional historical photos, partial import behavior, and quoted/null semantics.
-- `uv run npm run build`, `uv run npm run typecheck`, and `git diff --check`
-  passed. Node resolves inside the project's `.venv`; no global installation or
-  application framework was introduced. Local dev and production-preview
-  responses have COOP `same-origin` and COEP `require-corp`. Generated asset
-  URLs remain relative, and production candidate fixtures loaded at `/CoffeeOS/`.
-- Installed desktop Safari 27.2 on macOS: `uv run npm run test:safari` passed
-  startup/navigation, bean/session writes, narrow layouts with 16px inputs and
-  44px controls, legacy IO fidelity/error/retry tests, persistence, ownership,
-  and committed-warning regressions. Isolated `uv run npm run test:backups`
-  passed empty/populated/photo archives, beans without sessions, multiple
-  sessions, full precision values, Unicode/multiline text, null/empty distinctions,
-  STORE/DEFLATE, unchanged imports, and restoration into a genuinely empty test
-  database while preserving the original test collection.
-- Focused archive tests rejected 27 malformed/archive/Parquet cases before live
-  mutation, plus ten independently generated PyArrow fixtures covering invalid
-  IDs/names, duplicates, required timestamps, NaN/infinity, photos, a wrong
-  actual column type and year 10000. Other checks covered lying DEFLATE output
-  sizes, orphan sessions despite locally present beans, stale previews, failed
-  recovery creation, second-table rollback, failed SQL COMMIT with reopen,
-  post-commit IDB abort, retained prior snapshots, recovery download and reload.
-  UI checks covered cancellation, duplicate submits, refreshed confirmations,
-  retained invalid selections/earlier downloads, mocked Share availability,
-  cancellation/failure, and post-commit warnings with refreshed data and reload.
-- Isolated Firefox: `TEST_FIREFOX=1 uv run npm run test:backups` passed the same
-  archive and normal UI workflows using OPFS. This does not count as Safari
-  coverage. No Chrome or normal browsing profile was used.
-- `uv run python tests/backup-interoperability.py` with independent PyArrow 21.0.0
-  and Python `zipfile` passed ZIP entry/count/hash checks, physical/logical Parquet
-  annotations, all restored field values, microsecond timestamps and binary64
-  bit patterns in the generated representative fixture. This confirms optional
-  Parquet fields, UTF8 strings, DATE/INT32, DOUBLE, and TIMESTAMP/INT64 microseconds
-  with `isAdjustedToUTC=false` and CoffeeOS's documented UTC interpretation.
-  Python's DEFLATE repack imported successfully in both browsers. Different
-  physical Parquet byte layouts after import are permitted; exact logical values
-  were checked independently rather than requiring byte-identical encodings.
-- Populated previous-build upgrades passed `uv run npm run test:upgrade` in
-  Safari/IndexedDB and `uv run npm run test:upgrade:firefox` in Firefox/OPFS,
-  from immutable `2ccf66cbf840e9455d54f8b31d57b4df944e3bf6` at the same isolated
-  origin and `/CoffeeOS/` path. Old dependencies were installed from their own
-  lockfile with `npm ci` and built separately from candidate dependencies; the
-  equality guard was not bypassed. Checks included exact records after build
-  replacement/startup/reload, old CSV/Parquet imports, failed migrations/startup,
-  durable-byte preservation/recovery, ownership, photos and bean/session
-  regressions. Production archive controls additionally passed preview-only
-  selection, explicit overwrite merge, recovery packaging and reload. The harness
-  now acquires its server port before rebuilding fixtures, preventing overlapping
-  runs from replacing another run's source files.
-- Resource measurements: a 30-distinct-photo Safari fixture produced a
-  30,821,909-byte archive and completed, but coarse peak RSS across newly started
-  Safari/WebKit processes was 2,197,168 KiB. The application therefore uses a
-  conservative **8 MiB** archive/expanded-data cap and **64 KiB** manifest cap;
-  exporter overhead reservation ensures it cannot produce an archive rejected
-  solely for size. A six-distinct-photo 6,169,395-byte STORE archive (4,732,905-byte
-  DEFLATE repack) exported in about 30 ms and validated in 125 ms; a ten-photo
-  oversize export failed without changing records. Coarse peak process RSS was
-  1,391,520 KiB, including shared/native runtime memory and fixture generation,
-  not just JS heap or archive buffers. The reproducible measurement command is
-  `uv run node tests/measure-backup-memory.mjs`. These desktop results do not
-  establish physical iPhone memory safety; Parquet decoding has working memory
-  beyond the ZIP byte limits.
-- Additional precision boundary: an independent Parquet probe found the pinned
-  DuckDB runtime can normalize IEEE negative zero to positive zero while
-  materializing tables through the existing import path. Disabling statistics
-  propagation/forcing uncompressed storage did not correct it in isolated
-  experiments; no such settings or runtime changes ship. Numerical zero and the
-  representative finite binary64 values round-trip, but zero sign-bit fidelity
-  is not claimed. This existing runtime boundary is documented in the format
-  specification; exact preservation of negative-zero sign remains unresolved.
-- Physical iPhone/iPad Files recognition, native download/share/picker behavior,
-  touch/keyboard/safe-area behavior, large-photo memory/storage lifecycle and Home
-  Screen imports remain unverified. Older Safari versions and deployed host
-  response headers/storage access remain unverified. No deployment was performed.
+- Normative format/fixture, fflate/license, queued snapshot, strict validation,
+  revision-aware merge and immutable recovery implemented. Build/typecheck/diff,
+  full Safari 27.2 and both backend archive suites passed. Tests included 27 bad
+  archive cases, ten independent malformed PyArrow fixtures, false DEFLATE sizes,
+  internal orphans, recovery/commit failures, stale previews, UI Share/retry/reload.
+- Independent PyArrow 21/zipfile verified standard entries, hashes, schema,
+  microseconds and representative binary64 bit patterns; DEFLATE repack imported
+  on both browsers. Populated `2ccf66c` upgrades passed exact data/old backups/
+  failed-upgrade preservation, separately installing old/current lockfiles.
+  Harness now acquires shared port before rebuilding fixtures.
+- Negative zero can normalize to positive zero in pinned DuckDB table import;
+  isolated setting/compression probes did not fix it. Numerical zero/representative
+  finite precision passed; exact negative-zero sign preservation remains unresolved.
 
+### Verification — 2026-10-27 (absorbed size changes in Stages 23/29)
 
----
+- Original desktop measurement: 30 distinct photos → 30,821,909-byte archive,
+  coarse new Safari/WebKit RSS 2,197,168 KiB. Six photos → 6,169,395-byte STORE /
+  4,732,905-byte DEFLATE, ~30ms export/~125ms validation, coarse RSS 1,391,520 KiB.
+  RSS includes native/shared memory and fixture generation, not just archive heap.
+- Initial 8 MiB cap was raised to 1,000,000,000 bytes in Stage 23 (configuration/
+  build checks only, no 1 GB capacity test); Stage 29 subsequently removed local/
+  Drive collection caps. Current format/source retain 64 KiB manifest and ZIP32
+  checks, not a 1 GB policy. Stage 33 explicitly retained that decision.
+- Physical photo-heavy capacity, Files recognition, native save/share/picker,
+  Home Screen storage, older Safari and deployed-host checks remain unverified.
+  Threshold-sized browser tests above 1 GB are not claimed; no deployment performed.
 
-## Stage 23: Raise Portable Backup Size Limit to 1 GB
+## Stage 24: Google Drive Login & Basic Snapshot Sync
 
-- [x] **Status:** Implemented; build and configuration checks passed
+- [x] **Status:** Complete; user accepted 2026-10-27, later native-fetch fix/live small round trip passed.
 
 ### Goal
 
-Allow photo-heavy collections to exceed the original 8 MiB backup limit.
+Provide optional real Google authorization and one explicit snapshot/recovery operation,
+with offline/local data independent of Google availability.
 
 ### Tasks
 
-1. Raise the shared archive and expanded-data limits to 1,000,000,000 bytes.
-2. Update size-limit messages, the format specification and the photo fixture's
-   former 8 MiB rejection expectation.
-3. Build and check the diff without changing storage identity or backup schemas.
-
-### Acceptance Criteria (Stage 23 Gate)
-
-- Export, import and recovery packaging share the 1 GB limit; the 64 KiB manifest
-  limit and export overhead reservation remain in place.
-- Current error messages and documentation describe the new limit, and the
-  ten-photo fixture no longer expects rejection at 8 MiB.
-- Build and diff checks pass; existing storage and backup formats are unchanged.
-
-### Verification — 2026-10-27
-
-- Confirmed both configured byte limits are 1,000,000,000, with all export/import
-  and recovery size checks still referencing the shared configuration.
-- Updated messages/specification and the existing photo fixture expectation.
-- `uv run npm run build` and `git diff --check` passed.
-- No storage, schema, startup, dependency or deployment changes. No populated
-  upgrade rerun or 1 GB browser/memory test was performed for this limit-only
-  update; physical iOS capacity remains unverified.
-
----
-
-## Stage 24: Google Drive Login and Basic Snapshot Sync MVP
-
-- [x] **Status:** Complete; accepted by the user after private testing on 2026-10-27
-
-### Goal
-
-Prove that a user can connect Google Drive, upload a real `.coffeeos` backup,
-and recover it into an empty collection on another isolated browser profile.
-Keep the first delivery small enough to test the actual login/API integration
-before adding restore options, large transfers and the finished workflow.
-
-### Tasks
-
-1. **Establish the minimum working authorization flow.**
-   - Configure a Google test project, enabled Drive API, web OAuth client,
-     authorized origins, consent branding and test users. Document the required
-     configuration in `docs/google-drive-backups.md`. Ship only the public client
-     ID; no client secret, service-account key or refresh token.
-   - Use Google Identity Services' browser token model and direct Drive REST
-     calls. Request `drive.file`, plus `openid` and `email` to identify/display
-     the selected account. Verify granted scopes and the authenticated identity.
-   - Connect from a user gesture, keep access tokens/expiry in memory, and load
-     Google's client only for this optional flow. Do not store tokens in URLs,
-     logs, archives or persistent browser storage.
-   - Prove Safari login callbacks and API calls with the existing COOP/COEP
-     settings before building more UI. Preserve isolation on the database page.
-     If needed, implement only the minimum same-origin authorization helper:
-     narrowly exclude that document from isolation rewriting and return results
-     over an ephemeral channel tied to a one-time request with a bounded lifetime.
-     Never weaken the main page's headers or switch its storage backend.
-   - Handle denied/closed/blocked authorization and expired tokens with a clear
-     retry/reconnect state. Use one active account per connection; disconnect
-     clears tokens, pending callbacks and account-specific folder/file state.
-     No remembered-login or automatic session-resume feature is required.
-
-2. **Implement one small, end-to-end Drive transfer path.**
-   - Create/find a visible **CoffeeOS Backups** folder using app-owned metadata,
-     not its name alone. Discover it through the authorized account on each new
-     connection so recovery works without a cached folder ID. If multiple marked
-     folders are found, report the ambiguity without writing; reconciliation is
-     deferred to Stage 25.
-   - Reuse the current snapshot/packaging APIs and exact `.coffeeos` format.
-     Upload a dated file containing the manifest backup ID; add app metadata
-     identifying its kind, backup ID and whole-archive hash. Retain old files.
-   - For this MVP, allow Drive transfers up to **4 MiB per archive** using a
-     single multipart upload with metadata. Enforce this clearly labelled MVP
-     limit on upload and download; keep the existing 1 GB local-file limit
-     unchanged. Larger/resumable Drive transfers belong to Stage 25.
-   - List app-marked, completed, non-trashed snapshots in the identified folder.
-     Select the most recently uploaded by Drive `createdTime`, with deterministic
-     tie handling; do not use filename or client timestamp as the ordering key.
-     Do not mistake a failed/incomplete listing for an empty history.
-   - Verify upload completion and remote size/checksum before reporting success.
-     Keep the same bytes/backup ID through an uncertain result. A lost response
-     must not trigger a blind second upload: reconcile by backup ID, or report
-     an unconfirmed result and stop. General retry/backoff is deferred.
-   - Bound downloads by the MVP limit before and during reading, then reuse
-     `prepareBackup` for all archive/schema/hash/relationship checks. Stop with
-     an actionable error if the latest snapshot is invalid or unsupported;
-     automatic fallback to older snapshots is not part of the MVP.
-
-3. **Implement exactly one sync operation on connect or explicit Sync now.**
-   - Explain beside Connect that it will save local data or recover an empty
-     collection. After successful authorization, apply this behavior once:
-
-     | Local collection opened successfully | Cloud state | MVP action |
-     | --- | --- | --- |
-     | Contains records | Empty or populated | Upload one new snapshot; preserve all previous snapshots. |
-     | Both tables empty | Latest completed snapshot exists | Download, validate and import into the still-empty collection. |
-     | Both tables empty | No snapshots | Show “No Drive backup yet”; create no empty upload. |
-     | Local storage cannot be opened/read | Any | Preserve the existing recoverable error; no transfer. |
-     | Any | Cloud lookup/authentication/network fails | Show failure; do not interpret it as empty history. |
-
-   - Sync now repeats the same behavior. Navigation, renders, saves and a completed
-     download/import must not automatically launch another operation.
-   - Determine emptiness from successful reads of both tables on the selected
-     backend. Missing storage, held locks, denied access and failed restores
-     never establish an empty collection.
-   - Recheck emptiness and collection revision inside serialized database access
-     immediately before applying a downloaded snapshot. If local data changed
-     during download, stop without modifying it. Do not automatically merge or
-     replace a now-populated collection; those choices arrive in Stage 25.
-   - Reuse the existing transactional import and coordinated persistence path.
-     Preserve rollback and committed-durability warning semantics. Refresh both
-     app views after a successful import and verify reload persistence.
-   - Capture the export snapshot before network transfer and release database
-     access while uploading. Report the captured date/counts; later local edits
-     wait for the next explicit Sync now.
-
-4. **Add only the controls needed to exercise the integration.**
-   - Add a small optional Drive section with Connect/Reconnect, selected account,
-     Sync now, Disconnect, busy state and last operation result.
-   - Serialize operations, disable repeated submissions and ignore late callbacks
-     from disconnected/cancelled connections. An expired-token reconnect must
-     resolve the pending operation before starting any new connection-time sync.
-   - Disconnect preserves both local records and Drive files. Keep file backups
-     and offline brewing available when Google resources or authorization fail.
-   - Provide readable errors and normal 16px inputs/44px touch targets. Do not
-     add history browsing, cloud merge/replace, persistent account preferences,
-     background sync or elaborate progress/transfer management in this stage.
-
-5. **Verify the actual MVP, including its essential safety boundaries.**
-   - With a dedicated Google test account, connect from installed Safari, upload
-     a small populated fixture containing a photo and linked sessions, inspect
-     the resulting Drive file, then recover it on a fresh isolated browser
-     profile. Compare exact records and verify them after reload.
-   - Verify a second sync creates a separate snapshot; existing backups survive;
-     an empty cloud history creates no upload; and offline/local file workflows
-     remain available after disconnect or denied authorization.
-   - Add targeted checks for double-clicks, expired/denied authorization, uncertain
-     upload completion, corrupt/oversize downloads, failed database access and a
-     local write racing empty recovery. None may discard existing records.
-   - Test database write/commit failure during empty recovery using existing
-     rollback/durability coverage. Keep all baseline archive validation enabled;
-     “MVP” must not bypass the existing data-safety rules.
-   - Run the mandatory populated previous-build OPFS/IndexedDB upgrade checks
-     for import/startup/service-worker/dependency changes, including old backup
-     imports and failed-upgrade preservation. Use isolated Safari first, with
-     Firefox for OPFS coverage where needed; no user browsing profile resets.
-   - Run `uv run npm run build`, `git diff --check`, relevant existing backup
-     regressions, isolation checks and production repository-subpath checks.
-     Record actual tested sizes and physical iPhone/Home Screen gaps. Mocked
-     OAuth tests alone cannot establish that the MVP works with Google.
+1. Follow `docs/google-drive-backups.md`: registered public web client from
+   `src/driveConfig.ts`, optional nonempty `VITE_GOOGLE_CLIENT_ID` override; no
+   secret/manual ID input. GIS browser token flow requests `drive.file`, `openid`,
+   `email`, verifies scopes/identity and keeps tokens/expiry only in memory.
+2. Load GIS only in `drive-auth.html`; preserve main database COOP/COEP. Narrowly
+   except only the helper, with a random one-time BroadcastChannel, three-minute
+   expiry/cancellation and late-result suppression. Test helper updating an old
+   isolation worker without opening a database; never relax main-page isolation.
+3. Call stored/injected HTTP transport with `globalThis` as receiver. Native
+   browser `fetch` can throw TypeError before networking when invoked as
+   `this.transport(...)`; arrow-function mocks alone cannot verify this contract.
+4. Discover marked folders/snapshots via app metadata, not names/cached IDs. Order
+   latest by server `createdTime` including sub-millisecond ties, deterministic ID
+   tie-break. Listing/auth/network errors are failures, never empty history.
+5. Connect/Sync now perform exactly one operation: successful nonempty local read
+   uploads a new immutable snapshot; confirmed empty both tables recovers latest
+   validated cloud backup; both empty/no cloud shows “No Drive backup yet” with no
+   empty upload. Unreadable local DB means no transfer. Stage 25 owns current
+   paginated history/resumable transfers; original 4 MiB multipart MVP is historical.
+6. Snapshot before network and release DB queue. Before empty recovery recheck
+   revision/counts under serialized access, including add/delete-to-empty races.
+   Abort if data changed; no automatic merge/replace. Reuse atomic import/warnings.
+7. Serialize controls, suppress duplicate Connect/Sync and disconnected callbacks;
+   reauth resolves one pending operation without new connect-time upload.
+   Disconnect clears tokens/account/cloud selections without deleting data/files.
+8. Keep normal account/connect/reconnect/sync/disconnect UI. Stage 26's temporary
+   test panel was retired in Stage 28; simulated helpers stay under `tests/`.
+   Preserve Stage 2 startup diagnostics and Stage 25 opt-in Drive diagnostics.
 
 ### Acceptance Criteria (Stage 24 Gate)
 
-- A real Google test account can authorize in installed Safari with the database
-  page still isolated; a real `.coffeeos` file uploads and is discoverable from
-  a second isolated profile without cached cloud identifiers.
-- Connect and Sync now each perform one operation according to the behavior
-  table. A nonempty collection uploads a new file; a confirmed-empty collection
-  recovers the latest file and retains exact records after reload.
-- Drive transfers within the documented 4 MiB MVP limit succeed; larger files
-  fail clearly without changing local data or existing Drive snapshots. The
-  local file-backup format and 1 GB limit are unchanged.
-- Storage/network/authentication failures never masquerade as empty data;
-  archive validation, guarded empty import, rollback and operation serialization
-  remain effective. No merge, replacement, storage reset or cloud deletion occurs.
-- Tokens stay ephemeral and account state is cleared on disconnect. Routine
-  offline usage and historical file imports remain functional.
-- Build, targeted safety tests, applicable populated upgrades and a real-service
-  round trip pass. Device/authentication gaps are explicit; do not mark the MVP
-  complete on mocked service results alone.
-- Stop after this MVP gate. Stage 25 supplies the remaining workflow and
-  reliability features; they are not prerequisites for proving this small path.
+- Native browser regression sends the client's actual transport receiver through
+  native fetch to a localhost fixture; no receiver TypeError. Run in Safari and
+  Firefox, and Chrome only when authorized. Mocks do not satisfy this regression.
+- Real-service login followed by authenticated history succeeds while database
+  isolation persists. Distinguish API/firewall/connectivity errors from JS failures;
+  verify mocked success cannot mask a broken native transport.
+- Connection behavior table, serialization, failed/expired/denied/blocked/cancelled
+  auth and late callbacks pass. Failed storage/cloud reads never infer emptiness.
+  Empty recovery rechecks revision; rollback and committed-warning paths stay intact.
+- Real fixture upload/download validates exact archive/schema/relationships. A
+  full cross-profile restore/reload is a separate required service path; record
+  acceptance versus actual coverage, never infer it from a same-profile preview.
+- No credentials/email/collection/file/session URLs in reports, logs or storage.
+  Routine offline brewing/file imports work after auth failure/disconnect.
+- Build, helper isolation/static-subpath tests, backup regressions and populated
+  Stage 6 upgrades pass. Public release approval/physical iOS remain separate gates.
 
-### Verification — 2026-10-27
+### Verification — 2026-10-27 (MVP, Stages 26/28)
 
-- Planning only: split the previously proposed full integration into this MVP
-  and Stage 25 at the user's request. No Google or application implementation
-  changes were made, and all MVP runtime/service checks remain pending.
-- Retained the existing browser authorization, limited Drive permissions,
-  portable archive and data-preservation design. The temporary Drive-only
-  transfer cap keeps the initial proof small without reducing local backups.
-- Planning checks: stage structure and scope reviewed; `git diff --check` and
-  `uv run npm run build` passed for the existing application. No MVP integration
-  pass is claimed by this documentation-only verification.
+- Safari 27.2/IndexedDB and Firefox/OPFS passed 16 simulated adapter checks, actual
+  DuckDB photo/session precision round trips (~8.3 KiB archives), empty-recovery
+  races/rollback/reload, denial/duplicates/layout. GIS/helper simulation and
+  previous-worker/static-host helper exception passed. `abcddcd` populated upgrades,
+  backups, build/diff/headers/subpath passed; mocks did not establish Google success.
+- Temporary diagnostics tested rollback-only pinned round trip with unchanged
+  revision/recoveries; removed from normal UI in Stage 28. Registered public client
+  shipped; `a0a427d` populated upgrades and bundle checks confirmed no manual ID,
+  test buttons/fake-token fixtures. Live localhost attempt was cancelled by user;
+  rejected restart/production-origin override did not run, no account settings changed.
+- User privately tested/accepted Stage 24; device/account details unspecified.
 
+### Verification — 2026-10-27 (Stages 34–36 native-fetch fix/live evidence)
 
-### Implementation and Verification — 2026-10-27
+- Later full-workflow login failed before history requests. Native Chrome probe:
+  ordinary-object receiver threw TypeError, global receiver reached Drive (401
+  using an invalid placeholder); CORS OPTIONS returned 200. Firewall reachability
+  confirmed separately. Earlier HTTP 308 suspicion was not reproduced, no redirect
+  change made. Fixed stored transport to invoke with `globalThis`.
+- All 30 adapter checks, including localhost native receiver regression, passed
+  in authorized isolated Chrome 156, Safari and Firefox; Safari/Firefox full Drive
+  and populated `0fb9a4d` upgrades passed exact data/backups/recoverable failures.
+- User reconnected and reported no Drive backup/no empty upload, confirming live
+  authenticated history. Auto-review rejected an earlier tool-driven Sync retry
+  lacking explicit payload/destination authorization; no upload executed then.
+- With later explicit approval, prepared one synthetic bean/session/generated 16px
+  JPEG archive (8,856 bytes, null/zero/binary64/microsecond fields). User reconnected
+  and reported upload success; remote size/hash passed. Pinned HTTP 200 download
+  validated, SQL comparison showed exact unchanged tables/photos/revision/recoveries.
+  Preview did not apply restore; authorized test file retained in dev-account Drive.
+- An initial development Chrome RuntimeError cleared on ordinary reload preserving
+  original empty data; no reset/storage deletion used. Final Chrome OPFS reload
+  retained exact synthetic CSV/photo/dates; tokens appropriately cleared. Build/diff,
+  main/helper headers and eight relative production resources passed. No deployment.
+- User accepted 24/25/33 (Stage 36). Live Safari OAuth, cross-profile recovery,
+  live merge/replace, large/interrupted/expired-token transfers, physical iOS/Home
+  Screen, Safari OPFS and deployed-build behavior remain unverified by this evidence.
 
-- Implemented optional Connect/Reconnect, selected account, Sync now, Disconnect,
-  serialization, errors/results and the 4 MiB cap. Public client ID entry is in
-  IO, with optional `VITE_GOOGLE_CLIENT_ID` build/Pages configuration. Setup and
-  personal-device acceptance steps are in `docs/google-drive-backups.md`.
-- GIS runs only in `drive-auth.html`, with a random one-time BroadcastChannel,
-  three-minute expiry, cancellation/late-callback suppression, granted-scope
-  checks and Google userinfo identity verification. Only the helper receives
-  popup-compatible headers. Main-page isolation and storage identity are intact;
-  no tokens, secrets or remembered account state are persisted. The helper can
-  update an older isolation worker before authorization without opening a DB.
-- Versioned app markers identify folders/snapshots. Discovery rejects ambiguous
-  folders and incomplete/paginated listings. Latest ordering uses server
-  `createdTime`, including sub-millisecond precision, with deterministic ID ties.
-  Single multipart uploads verify remote size/SHA-256 and reconcile uncertain
-  completion with the same backup ID without a second POST. Downloads are
-  bounded before/during reading and retain all existing archive validation.
-- Connect/Sync implement the behavior table. Capture includes both tables and
-  revision before networking; empty recovery rechecks revision and both counts
-  under serialized DB access, including add/delete races back to empty. The
-  existing transaction, coordinated IndexedDB/SQL commit, rollback and committed
-  warning paths are reused. Schema, storage identifiers, local 1 GB cap, archive
-  format and origin are unchanged. No cloud deletion, merge or replacement.
-- Installed **Safari 27.2/macOS (IndexedDB)** and isolated **Firefox (OPFS)**
-  passed `test:drive` with `TEST_BASE_URL=http://127.0.0.1:5174/` and
-  `TEST_FIREFOX=1` for Firefox. Checks covered 16 simulated adapter tests,
-  populated upload, photo/linked-session/precision/null/comment round trip,
-  empty recovery/reload, failed reads before transfer, populated/stale/add-delete
-  guards, a write during download, insert/commit failure rollback and Safari
-  snapshot failure rollback. UI duplicate Connect/Sync, navigation, denial,
-  sanitized reports and 393px layout passed. Mock archive sizes were **8,357
-  bytes on Safari** and **8,262 bytes on Firefox**; no real Google size claim.
-- Existing `test:backups` passed on both backends, including old CSV/Parquet,
-  Python DEFLATE, 10 malformed PyArrow fixtures, 27 invalid archives, recovery,
-  atomic rollback, failed commit/post-commit IDB abort, Share/cancel and reload.
-  Photo fixtures measured **1,035,650 bytes (Safari)** and **617,358 bytes
-  (Firefox)**. Generated example files were restored to their prior version.
-- Populated upgrades from previous build
-  `abcddcde6206eefc9b9d28656cb234eac9bf4b00` passed with
-  `TEST_PREVIOUS_REF=abcddcd uv run npm run test:upgrade` (Safari IndexedDB) and
-  `TEST_PREVIOUS_REF=abcddcd uv run npm run test:upgrade:firefox` (Firefox OPFS).
-  The same isolated profile/origin at `/CoffeeOS/` retained exact photo-bearing
-  beans and linked sessions after replacement/startup/reload, read old backups,
-  and preserved records across failed schema/metadata/permission/restore opens.
-  Editing/deletion and archive merge/recovery regressions also passed.
-- The first recent-build upgrade attempt exposed a legacy-only migration
-  assumption in the harness. Migration failure injection now applies only to
-  fixtures that need it, and recent fixtures retain existing photos. A subsequent
-  transient startup failure did not recur on passing runs; fixture-only startup
-  error capture was added. Dependencies remain unchanged.
-- `uv run node tests/drive-auth-helper.mjs` passed simulated GIS success, denial,
-  blocked popup, cancellation, late callback and timeout checks. Installed Safari
-  passed `tests/drive-isolation.mjs`: production `/CoffeeOS/` assets on a static
-  host without native isolation headers, previous-worker update, one-time channel
-  across isolated windows, helper-only header exception, and no Google/DB load
-  in the helper. Production preview main/helper COOP/COEP headers also passed.
-- Build and diff checks passed. **Live Google OAuth/CORS, real upload/recovery
-  across profiles, actual deployed-host behavior and physical iPhone/iPad/Home
-  Screen checks remain unverified.** The user will supply personal-account/device
-  results using Stage 26 diagnostics. Stage 24 stays unchecked until the real
-  service gate passes; Stage 25 has not started.
-- Final verification: `TEST_BASE_URL=http://127.0.0.1:5174/ uv run npm run
-  test:safari` passed the full installed Safari app suite, including startup,
-  navigation, bean/brew writes and reload, input/layout checks, lock exclusion,
-  failed writes, committed warnings and historical backup round trips. Final
-  `test:drive` runs on Safari/IndexedDB and Firefox/OPFS passed the added explicit
-  unchanged-revision/recovery assertions. Final build and diff checks passed.
+## Stage 25: Complete Google Drive Backup & Recovery Workflow
 
-### Registered Client Integration — 2026-10-27
-
-- The user supplied the Google web OAuth client registered for
-  `https://krischris.github.io` and requested the normal integration instead of
-  the temporary setup/test UI. Stage 28 configures that public ID, removes manual
-  client-ID entry and the Stage 26 panel, and retains Connect/Sync/Disconnect.
-- The OAuth helper remains necessary to retain the main database's isolation
-  policy. It uses the real GIS token model and existing ephemeral authorization;
-  it is not a mocked service. Automated test helpers now live outside the app.
-- The user clarified that only the deployed origin is authorized, then explicitly
-  cancelled the live Firefox test and requested implementation only. No local
-  origin, Google Cloud setting, deployed site or personal collection was changed.
-  Real OAuth/Drive results remain unverified; Stage 24's gate stays unchecked.
-
----
-
-### User acceptance — 2026-10-27
-
-- The user reports private testing worked and explicitly accepts Stage 24 as
-  complete. Device, account and transfer details were not supplied; this records
-  user acceptance without claiming additional automated or physical-device checks.
-
-## Stage 25: Complete Google Drive Backup and Recovery Workflow
-
-- [x] **Status:** Complete; accepted by the user on 2026-10-27 after the Stage 35 fix and live round trip
+- [x] **Status:** Complete; user accepted 2026-10-27 after Stage 35 fix, remaining service/device limits retained.
 
 ### Goal
 
-Extend the verified login/basic-sync path with snapshot history, explicit merge
-and replace recovery, larger resumable transfers, robust retry/account handling
-and a finished mobile workflow. Preserve the MVP's connection-time behavior and
-all existing local data/backup compatibility guarantees.
+Extend basic sync with complete history, resumable transfers and explicit recoverable
+merge/replacement, preserving existing records and cloud snapshots.
 
 ### Tasks
 
-1. **Extend cloud discovery and snapshot selection.**
-   - Handle paginated history and simultaneous folder creation across devices.
-     Discover all eligible app-created snapshots, choose a stable upload folder,
-     and retain access to earlier snapshots without deleting duplicate folders.
-   - Treat account-scoped cached folder IDs as hints; rediscover after renames,
-     moves, permission changes or missing files. Do not adopt unrelated folders
-     by display name, broaden Drive access or change the established app markers.
-   - Show a dated history ordered by server-assigned upload time with stable
-     tie handling. Label it “Most recently uploaded,” not proof of latest edits.
-   - Capture the previous latest snapshot before connect-time upload, and keep
-     it as the default restore candidate after that upload. Label the new upload
-     separately so it does not obscure the cloud version the user may want.
-   - Allow explicit selection of an older snapshot if the newest is corrupt,
-     unsupported or too large. Never silently substitute an older backup.
-     Pin a selected file ID and validated bytes through preview/confirmation.
-
-2. **Complete transfer reliability and larger-file support.**
-   - Replace the temporary 4 MiB Drive cap/single multipart path with resumable
-     uploads, bounded chunks, progress and cancellation. Apply the shared archive
-     limits and document tested device capacities; a 1 GB configured ceiling
-     does not establish physical iPhone memory safety.
-   - Preserve immutable snapshot bytes/backup ID while resuming; reconcile
-     ambiguous completion before starting another upload. Exclude unfinished
-     snapshots from history and verify remote size/checksum before success.
-   - Add bounded retries/backoff for transient/rate-limit failures. Distinguish
-     quota exhaustion, revoked access, expired tokens, missing files and offline
-     interruptions. Never retry destructive local work after an ambiguous commit.
-   - Resume a pending transfer after user-driven reauthorization without also
-     triggering a new connect-time snapshot. Handle expired resumable sessions
-     and report unconfirmed remote results honestly.
-   - Bound downloads during reading, minimize full-buffer copies, and preserve
-     the existing manifest/schema/hash/relationship validation. Test photo-heavy
-     files and browser-background interruptions; report actual memory/size limits.
-
-3. **Add explicit cloud merge and replace operations.**
-   - Add Restore from Drive: select a history entry, download/validate it, then
-     show cloud/local counts and a comparison before any data changes.
-     Offer Merge by default:
-
-     | Mode | Local result |
-     | --- | --- |
-     | **Merge with local collection** | Add new IDs, update differing matching IDs, retain local-only records; show overwrite counts. |
-     | **Replace local collection** | Exactly adopt the selected snapshot, removing local-only records; show removal and replacement counts. |
-
-   - Reuse `confirmBackup` and its revision-aware merge/recovery behavior.
-     Matching cloud records can overwrite newer local edits; state this clearly.
-   - Implement a separate revision-aware replacement API. Choosing the mode does
-     nothing by itself: require an explicit **Replace local collection** action
-     identifying the snapshot, affected counts and retained recovery copy.
-   - Fully validate/stage both incoming tables first. Under serialized database
-     access, recheck the local revision, retain a durable immutable pre-replacement
-     recovery snapshot, and atomically replace table contents using the existing
-     database identity. If local data changed, refresh the preview and reconfirm.
-   - Reuse the existing recovery store and `.coffeeos` recovery-download flow.
-     Abort if recovery creation fails or exceeds limits. Never overwrite an
-     earlier recovery or depend on a cloud upload as the sole recovery copy.
-   - Respect parent/child constraints and verify the installed DuckDB API.
-     Do not clear OPFS/IndexedDB, delete/recreate the database, change backend,
-     rename storage or release its ownership lock to perform replacement.
-   - Use the coordinated durable-snapshot/SQL commit path. Pre-commit failures
-     roll back to the original collection; post-commit uncertainty shows the
-     committed warning, refreshes data and retains access to recovery copies.
-     No intermediate empty collection may become the visible or durable result.
-   - Restoring a valid empty snapshot into a populated collection needs the same
-     destructive confirmation. Cancel and validation failures leave data intact.
-   - After merge/replace, refresh both views and report applied results. Do not
-     upload the result immediately; the next explicit Sync now creates a snapshot.
-     A race that stops MVP empty recovery may now offer this restore workflow.
-
-4. **Finish account handling and mobile interaction.**
-   - Extend the MVP section with last confirmed upload, snapshot history,
-     restore previews, progress/cancel controls and recovery downloads.
-     Maintain a single operation state across connect, transfer and restore.
-   - Add deliberate account switching: clear old tokens/pending operations and
-     cloud selections, show the new account, and confirm enabling backup to that
-     account before sending the existing local collection. Late callbacks from
-     an earlier account must never mutate data or start another transfer.
-   - Persist only necessary non-secret account-scoped preferences/status in an
-     additive documented location. Treat them as advisory; remembered connection
-     state is not authorization and must never select the local database.
-   - Keep Disconnect non-destructive and explain how Google access can be revoked
-     separately. Do not claim that clearing a token revokes Google's grant.
-   - Complete accessibility and 393×852 layout checks, clear error/retry states,
-     token-expiry guidance and physical iPhone/Home Screen interruption handling.
-     Keep offline brewing and file backup/import independent of Google availability.
-   - Complete any Google consent/access configuration needed beyond the MVP's
-     dedicated test users and document setup/reconnection limitations. Do not
-     report testing-mode authorization as verified access for all intended users.
-
-5. **Verify the finished workflow and compatibility.**
-   - Extend adapter tests to pagination, ordering ties, multiple marked folders,
-     simultaneous uploads, missing/moved files, account switching, interrupted
-     transfers, expired sessions, quota/rate limits and delayed callbacks.
-   - Verify local/cloud fixtures with conflicting records and local-only IDs:
-     merge preserves local-only data, replacement adopts cloud contents exactly,
-     and downloadable recovery restores every prior record after reload.
-   - Inject failures creating recovery copies, after removal of local rows,
-     during incoming inserts, during durable snapshot commit and after commit.
-     Check rollback/committed warnings and stale-preview reconfirmation on both
-     OPFS and IndexedDB; preserve all baseline archive validation regressions.
-   - Run populated previous-build upgrades on both backends in the same isolated
-     profile/origin, including prior Stage 24 settings/snapshots. Preserve IDs,
-     relationships, dates/nulls, comments, photos and numeric precision; import
-     historical backups; prove failed upgrades keep the original data recoverable.
-   - Run a real Google test-account workflow across isolated profiles/devices,
-     including history discovery, interrupted/resumed upload, reconnect, merge,
-     replacement and recovery download. Check isolation before/after login and
-     any helper/service-worker update. Mocks do not verify live OAuth/CORS behavior.
-   - Verify installed Safari first and Firefox for additional OPFS coverage.
-     Check physical iPhone Safari/Home Screen authorization, background behavior,
-     transfer sizes and memory where available; explicitly record remaining gaps.
-   - Run build, diff checks, existing backup regressions, repository-subpath
-     assets and isolation headers. Use separately installed old/candidate
-     fixture dependencies when dependency changes require it.
+1. Discover all eligible app-marked completed/non-trashed snapshots account-wide,
+   including moved files and paginated history. Select marked upload folder stably
+   across simultaneous creation/renames/moves; cached IDs are hints, no unrelated
+   name-only adoption or deletion of duplicate folders. Preserve old app markers.
+2. Order by server upload time/ties and label “Most recently uploaded.” Capture
+   previous latest before connect upload and keep it the default restore choice;
+   label new upload separately. Let user choose older files explicitly, never
+   silently substitute for corrupt/unsupported backup. Pin file ID and validated bytes.
+3. Upload immutable bytes/backup ID in 1 MiB resumable chunks, progress/cancel,
+   confirmed-offset probes and bounded transient/rate-limit retry/backoff. Reconcile
+   ambiguous completion by backup ID before any second POST; verify final size/hash.
+   Keep unfinished uploads out of history and never claim an unconfirmed result.
+4. Handle quota/revoked/expired/offline/missing-session states. Same-account user
+   reauth resumes the pending operation once, without connect-time duplication.
+   Preserve the cap-removal decision in Stage 22, ZIP32/manifest/actual-length
+   validation and recoverable resource failures; configured format is not capacity proof.
+5. Restore selection downloads/validates/previews before mutation. Default Merge
+   adds/updates IDs, retains local-only records and discloses older-value overwrite.
+   Explicit Replace identifies snapshot/removal counts and requires a deliberate
+   Replace local collection confirmation, including valid empty snapshots.
+6. Under serialized DB access recheck revision/exact comparisons and reconfirm
+   stale previews. Before replacement save durable immutable local recovery; if
+   it fails, abort. Stage both tables and apply atomically with coordinated SQL/
+   snapshot commit, original identity/lock/backend; no empty intermediate state.
+7. Respect pinned DuckDB FK behavior, including the stale reverse FK catalog from
+   the existing bean-delete table rename. Use the validated rollback-safe temporary
+   constraint-holder/recreate-identical-tables transaction only for explicitly
+   confirmed, recovery-protected replacement; never recreate the database/storage.
+8. Pre-commit errors roll back exact original tables; post-commit uncertainty
+   refreshes data, retains recovery and offers backup guidance. Do not retry local
+   destructive work after ambiguous commit or automatically upload after restore.
+9. Account switching clears old authorization/operations/selections and requires
+   confirmation before sending the local collection to the new account. Preserve
+   no remembered authorization or secret preferences. Disconnect is non-destructive;
+   explain revoking Google's grant separately. Offline file/brew flows remain usable.
+10. Opt-in `?drive-debug=1` diagnostics only: safe phase/status/exception locations,
+    copy report and read-only local snapshot/rollback-only staging comparison.
+    Exclude tokens/email/contents/file IDs/SQL/session URLs/raw free-form messages.
+    Ordinary visits expose no debug global/output. No diagnostic upload/import/
+    replacement/recovery creation. History refresh retains completed operation status.
 
 ### Acceptance Criteria (Stage 25 Gate)
 
-- Stage 24 login/basic-sync behavior still works; history and explicit recovery
-  are added without continuous synchronization or automatic conflict resolution.
-- Larger transfers use resumable upload with progress/cancel and bounded retry.
-  One operation cannot create duplicate successful snapshots after a lost response.
-  Unconfirmed/incomplete uploads are not reported as verified backups.
-- Eligible snapshots remain discoverable across profiles and marked folders;
-  account changes, pagination and folder/file changes cannot silently hide data
-  or send a pending operation to the wrong account.
-- Merge retains local-only records. Explicitly confirmed Replace adopts exactly
-  the selected validated snapshot and retains a durable downloadable recovery.
-  Stale previews, invalid files, cancellation and pre-commit failures preserve
-  existing data; post-commit uncertainty produces the correct recovery guidance.
-- Existing cloud snapshots are never overwritten/deleted by sync or Disconnect.
-  Storage identity, archive format and historical imports remain compatible.
-- Mobile/accessibility checks, build, focused reliability tests, populated
-  upgrades and real-service workflows pass, with tested sizes and outstanding
-  platform/service limitations recorded accurately.
-- Continuous sync, scheduled background transfers, multiuser collaboration,
-  automatic conflict resolution and automatic cloud retention cleanup remain
-  outside this stage.
+- Adapter checks cover pagination/ties/multiple folders/moves/concurrent uploads,
+  lost responses, chunks/probes/retry/cancel/expired sessions/reauth, quota and
+  delayed callbacks. One operation never duplicates verified snapshots or sends
+  data to an unconfirmed different account. Include Stage 24's native fetch test.
+- Pinned preview is stable despite history refresh. Merge retains local-only IDs;
+  confirmed Replace adopts exactly selected snapshot. Local changes force renewed
+  confirmation; unchanged/repeated action is idempotent, cancellation never mutates.
+- Inject recovery save/removal/insertion/SQL COMMIT/snapshot save failures on both
+  backends. Verify exact rollback/reload, immutable recovery download, stale-FK
+  runtime handling and visible committed-warning exports. Failed CHECKPOINT does
+  not establish post-reload durability; separately verify later healthy flush.
+- Diagnostics ordinary/opt-in paths and injected packaging failure preserve exact
+  records/revision/recoveries across reload. Private sentinels/IDs/raw errors stay
+  out of output, including V8's first stack-message line. Local checks never upload.
+- Full Safari/Firefox Drive workflow, build, backups and populated Stage 6 upgrades
+  pass. Compare real-service history/upload/download separately from simulated
+  multi-chunk/interruption/account switching/merge/replacement/recovery evidence.
+- Physical iPhone/Home Screen authorization/background/capacity, cross-profile
+  recovery and deployed headers are reported explicitly; no continuous/background
+  sync, automatic conflict resolution or retention cleanup is implied.
 
-### Verification — 2026-10-27
+### Verification — 2026-10-27 (absorbed Stage 33)
 
-- Planning only: moved the fuller workflow and extended failure handling out of
-  Stage 24. Neither stage has been implemented or exercised against Google.
-- The design retains the previously reviewed official references: Google's
-  [browser token model](https://developers.google.com/identity/oauth2/web/guides/use-token-model),
-  [Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth),
-  [upload guide](https://developers.google.com/workspace/drive/api/guides/manage-uploads),
-  [file listing](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list)
-  and [setup/isolation guidance](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid).
-  These references inform implementation; live compatibility is still unverified.
-- All Stage 25 acceptance criteria, browser/service checks and upgrade tests
-  remain pending. Stage 24's real-service gate must pass before this work starts.
-- Documentation verification: Stages 24 and 25 are sequential and both retain
-  unchecked status, Goal, Tasks, acceptance gates and dated notes. Build and
-  diff checks passed; earlier completed stages were preserved.
+- Implemented history/folders/pinned previews, resumable transfer, restore/recovery
+  and switching. 26 simulated adapter checks + complete Safari/IndexedDB and
+  Firefox/OPFS workflows passed. Raw transfer fixture 6 MiB+1 byte; photo archives
+  ~8.3 KiB. These do not establish large-photo/physical iOS memory capacity.
+- Populated Safari upgrade from build preceding `0fb9a4d` and Firefox/OPFS from
+  `0fb9a4d` passed exact records, old backups, failed startup and transactional
+  restore/recovery/reload. Runtime probes confirmed stale reverse FK catalog and
+  rollback-safe constraint-holder workaround with identical recreated table schemas.
+- Recovery failure/removal/insertion/commit/snapshot rollback, local-only modes,
+  stale reconfirmation, committed-warning export and later healthy flush passed.
+  Forced OPFS CHECKPOINT failure does not promise durability after reload.
+- User subsequently reported live post-login failure; mocked success did not close
+  that gate. Stage 35 fixed native receiver behavior; actual history/small live
+  upload/download and acceptance evidence are consolidated in Stage 24 above.
 
+### Verification — 2026-10-27 (absorbed Stage 34 and final acceptance)
 
-### User acceptance — 2026-10-27
+- 29 simulated checks/full workflows and opt-in diagnostics passed on both browsers:
+  no debug global ordinarily, exact read-only local compare, injected packaging
+  failure, sanitized reports and unchanged records/revision/recoveries after reload.
+  V8 raw stack-message filtering and upload-result preservation after history
+  refresh were fixed and regression checked. `0fb9a4d` populated upgrades passed.
+- Native receiver fix brought adapter count to 30 in all three browsers; full
+  Safari/Firefox workflows and sequential populated upgrades passed. User accepted
+  Stages 24/25/33 after real 8,856-byte upload/pinned validated download.
+- No real multi-chunk/interrupted/expired-token transfer, fresh-profile recovery,
+  live explicit merge/replace or cross-device background test is claimed. Physical
+  iOS/Home Screen, Safari OPFS and deployed workflow remain unverified. Testing-mode
+  Google use does not establish public consent approval. No deployment performed.
 
-- The user accepts Stages 24 and 25 as complete after the native-fetch fix,
-  successful real Google upload/download and automated verification recorded in
-  Stages 33–35. Stage 33 records the implementation and is also marked complete.
-- This acceptance does not claim new testing: larger/multi-chunk interrupted or
-  expired-token live transfers, cross-profile recovery, explicit live cloud
-  merge/replacement, physical iOS/Home Screen, Safari OPFS and deployed-build
-  behavior remain unverified as detailed in Stage 35.
+## Stage 30: Public Privacy Policy, About Overlay & Readable Homepage
 
-
----
-
-## Stage 26: Temporary In-App Drive Diagnostics for Personal Device Testing
-
-- [x] **Status:** Implemented and locally verified; personal Google/device results pending
-
-### Goal
-
-Let the user test Stage 24 on their own account/device and share useful results
-without exposing credentials or changing their existing collection. This
-requested diagnostic addition accompanies Stage 24; Stage 25 remains deferred.
-
-### Tasks
-
-1. Add a temporary expandable IO view with safe simulated self-tests, explicit
-   live round-trip testing and a copyable diagnostic report.
-2. Allow one test snapshot upload and a download pinned to that file ID. Verify
-   archive bytes, standard restore validation/staging and every stored field.
-   Always roll back staging: never write local records, revisions, snapshots or
-   recovery entries. Stop on local changes/mismatches and keep the Drive file.
-3. Serialize tests with connection/sync controls and suppress cancelled results.
-   Report safe request phases/statuses and errors, excluding credentials,
-   client ID, account email, photos and record contents.
-4. Document Google setup, simulated/live test limits, fresh-profile recovery
-   and physical Safari/Home Screen checks.
-
-### Acceptance Criteria (Stage 26 Gate)
-
-- IO exposes Run self-tests, Test Drive round trip and Copy diagnostic report.
-  Repeated actions cannot overlap, and disconnected callbacks cannot apply.
-- Self-tests use fake transports without Google or collection writes. The live
-  path compares the exact pinned snapshot against current values/revision and
-  rolls back without local writes; differences/races stop safely.
-- Reports include environment, isolation/backend, PASS/FAIL and operation phases
-  without credentials or record contents. Phone-width controls have 16px inputs
-  and at least 44px touch targets.
-- Build, focused Safari/Firefox checks and applicable archive/upgrade checks
-  pass. Personal Google/device results remain separate from local verification.
-
-### Verification — 2026-10-27
-
-- Implemented the IO panel and shared 16-test simulated adapter suite. Safari
-  27.2 and isolated Firefox passed all checks, exact fixture round trips,
-  unchanged collection revision/recovery entries, repeated submissions, readable
-  denial, sanitized report and 393px layout. The actual DuckDB validation/staging
-  path ran against simulated Drive on both IndexedDB and OPFS. No diagnostic
-  local record writes were required.
-- Stage 24's populated upgrades, archive regressions, helper/worker isolation,
-  build and diff checks cover this addition. No personal browser storage was
-  cleared or used for destructive tests. The user's real Google/physical-device
-  results remain pending; Stage 24 stays unchecked. This temporary panel can be
-  removed in a later numbered update after those results are collected.
-
-### Retirement — 2026-10-27
-
-- Removed the temporary user-facing Drive diagnostic panel and manual client-ID
-  entry in Stage 28 at the user's request. Automated safety checks remain in
-  `tests/`; the Stage 26 implementation/verification above is retained as history.
-
----
-
-## Stage 27: Recoverable Database Worker Startup and Loading Diagnostics
-
-- [x] **Status:** Implemented; local failure/recovery checks passed and user confirmed the deployed fix works
+- [x] **Status:** Complete locally; deployment/Google approval and physical iOS pending.
 
 ### Goal
 
-Address the reported deployed/Home Screen startup hang without resetting storage,
-changing backends or hiding an unreadable collection. Surface worker-load failures
-and provide useful startup details when initialization cannot finish.
+Expose accurate app/privacy information without login, JavaScript or a working database,
+and let in-app users read it without losing work.
 
 ### Tasks
 
-1. Reproduce startup on installed Safari using both Vite and a localhost
-   production `/CoffeeOS/` mirror with GitHub Pages-style caching, gzip and
-   service-worker isolation. Inspect the public deployed asset responses.
-2. Reject worker error/message-decoding failure during instantiation. Bound
-   silent runtime loading by a 120-second inactivity deadline that resets on
-   actual instantiation progress. Terminate the failed worker before opening or
-   registering persistent database files; preserve the recoverable startup path.
-3. Expose read-only startup phases and show Reload/copyable startup details
-   after ten seconds or any failure. Include browser, isolation, Home Screen,
-   controller and local runtime-resource information, without record contents.
-   Do not race/abandon an active restore or create an alternative dataset.
-4. Verify populated previous-build IndexedDB and OPFS upgrades, failed-worker
-   durable-byte preservation, retry/reload, old backups, baseline Safari flows,
-   build and repository-subpath/isolation behavior. Record device limitations.
-
-### Acceptance Criteria (Stage 27 Gate)
-
-- A worker load/error or message-decoding failure exits loading with a recoverable
-  error. An unresponsive instantiation stops after the bounded inactivity period.
-  Failure releases ownership; retry can open the original exact collection.
-- Populated previous-build OPFS and IndexedDB fixtures retain exact records,
-  relationships, photos, units, precision, dates/nulls/comments and historical
-  backup readability after replacement, failure and reload. Failure before open
-  leaves the existing durable bytes and backend identity unchanged.
-- Slow/failed initialization exposes its phase and copyable environment details
-  directly on the loading screen, with a working Reload action and no storage
-  reset, automatic backend switch or empty-collection presentation.
-- Build, focused failure tests, baseline Safari checks and applicable populated
-  upgrades pass. Actual iPhone/Home Screen reproduction and deployed-fix testing
-  remain explicitly separate from localhost Safari verification.
-
-### Verification — 2026-10-27
-
-- User reported the deployed app at `https://krischris.github.io/CoffeeOS/`
-  remaining on “Loading your coffee data…”. Eight Vite reloads and twelve
-  production-mirror starts/reloads passed in isolated Safari 27.2; ordinary
-  desktop startup alone did not reproduce the user's precise device trigger.
-- Public deployed HTML matches the prior local build. Worker, Wasm and Parquet
-  extension URLs returned HTTP 200 with appropriate content types; GitHub Pages
-  supplies no native isolation headers and uses a ten-minute HTTP cache.
-- Inspected the installed pinned DuckDB-Wasm source map/API: its worker error
-  handler clears pending requests without rejecting them. A localhost production
-  mirror returning a missing worker reproduced indefinite loading and that exact
-  error path. With the candidate, the same failed asset exits loading with a
-  recoverable error and startup details. No user storage was reset.
-- Added worker error/messageerror handling and a progress-aware instantiation
-  deadline before persistent-file registration/open, plus read-only startup phases
-  and slow/error diagnostics. Full `test:safari` passed on Safari 27.2/macOS,
-  including writes, reload persistence, locks, failed writes, old CSV/Parquet
-  imports, UI/layout and committed warnings. Build and diff checks passed.
-- Populated upgrades from deployed revision `f5babb8` passed on installed Safari
-  27.2/IndexedDB and isolated Firefox/OPFS using `TEST_PREVIOUS_REF=f5babb8` with
-  `test:upgrade` and `test:upgrade:firefox`. Worker error, message-decoding failure
-  and silent-instantiation timeout each preserved durable byte hashes and exact
-  records after Reload. The timeout was shortened only in automation fixtures.
-  Old CSV/Parquet imports, photo/session fidelity, startup failure preservation,
-  editing/deletion and archive merge/recovery regressions passed on both backends.
-- Firefox additionally verified the slow-startup panel with simulated elapsed
-  time: phase and copyable details appeared while initialization stayed pending.
-  That final clock-based UI assertion was not rerun in Safari before wrap-up;
-  Safari's failure panel and Reload actions passed the populated upgrade checks.
-  Twelve further starts/reloads of the corrected production mirror passed.
-- An intermediate Safari upgrade attempt surfaced a Parquet-load `NetworkError`;
-  a subsequent full run passed. The fixture now waits for a new document after
-  Reload and reports startup errors without silently retrying initialization.
-  The precise original device trigger remains undetermined beyond the reproduced
-  worker-load hang path. No storage reset, backend switch or data-format change
-  was introduced. Final build and `git diff --check` passed.
-- **User confirmation:** on 2026-10-27, the user confirmed in the app that the
-  latest fix worked and requested wrap-up. This is user-reported deployed-app
-  verification; device/browser versions and a full physical iOS/Home Screen
-  lifecycle matrix were not independently checked. No further code changes or
-  test runs were made after that request. Stage 24's live Google gate remains
-  separate and unchanged.
-
-
----
-
-## Stage 28: Registered Google Drive Connection and Remove Temporary Test UI
-
-- [x] **Status:** Implemented; local safety/upgrade checks passed; real Google testing deferred to the user
-
-### Goal
-
-Use the registered public Google client for the ordinary optional Drive backup
-workflow. Remove the temporary setup/diagnostic interface while preserving exact
-local records, archive compatibility, isolation and all MVP sync safeguards.
-
-### Tasks
-
-1. Configure the user's public web OAuth client as the application default,
-   retaining `VITE_GOOGLE_CLIENT_ID` as an optional deployment override. Remove
-   the user-facing client-ID field; Connect works with the configured app.
-2. Retain normal account display, Connect/Reconnect, Sync now, Disconnect,
-   serialization and readable results/errors. Keep the isolated authorization
-   helper, minimal scopes, ephemeral tokens and guarded empty recovery.
-3. Remove the temporary IO diagnostics, self-test/round-trip/copy-report controls
-   and associated styling. Keep adapter tests and round-trip checks in `tests/`,
-   outside the app bundle. Preserve startup failure diagnostics from Stage 27.
-4. Update the setup guide and Stage 24 notes. Run build, local regressions and
-   applicable populated upgrades. Defer real-service testing to the user as
-   explicitly requested; do not change authorized origins or publish the app.
-
-### Acceptance Criteria (Stage 28 Gate)
-
-- IO exposes the configured normal connection controls with no client-ID entry
-  or temporary Drive test panel. The supplied public registration is used when
-  the optional build variable is absent/empty; no secret or token is persisted.
-- Normal snapshot upload/guarded empty recovery, Disconnect, failed/expired auth,
-  cancellation and operation serialization retain their prior behavior. Local
-  records, storage identity, deployment origin and old backups are preserved.
-- Automated adapter tests remain runnable without appearing in the app. Safari
-  and Firefox local safety regressions, build, diff checks and populated upgrade
-  checks pass. Live Google/device results remain explicitly unverified.
-
-### Verification — 2026-10-27
-
-- Configured public ID
-  `336592974400-o78vsk4u36ggvfj5u72ppmif98sktsqj.apps.googleusercontent.com`
-  in `src/driveConfig.ts`. An empty Pages environment variable falls back to this
-  registration. Removed manual ID entry and the temporary IO diagnostic panel;
-  self-tests/round-trip helpers moved to `tests/driveChecks.ts`.
-- Normal UI retains the same authorization helper and sync engine. Tokens remain
-  memory-only; main-page isolation, database ownership/backend, IDs, schema,
-  archive format and local/Drive size caps are unchanged. Import refresh failure
-  now reports that the import already applied and directs a reload.
-- `test:drive` passed on installed Safari 27.2/IndexedDB and isolated Firefox/OPFS:
-  all 16 adapter self-tests, photo/session/precision round trips, guarded recovery,
-  revision/download races, rollback, reload, double-submit guards, denial and
-  393px layout. Tests assert that setup/debug controls are absent. Build passed.
-- An initial live attempt used an isolated localhost Firefox profile; Google's
-  script initially failed to load and then loaded on a read-only retry. No login,
-  consent or transfer completed. The user clarified that only the deployed
-  origin is authorized and then cancelled live testing. The proposed production-
-  origin candidate override was not run, and the pending browser restart was
-  rejected by automatic approval review after cancellation. No personal browsing
-  profile, Google account configuration or deployed application was modified.
-- Populated previous-build upgrades from `a0a427d` passed with
-  `TEST_PREVIOUS_REF=a0a427d uv run npm run test:upgrade` (Safari IndexedDB) and
-  `TEST_PREVIOUS_REF=a0a427d uv run npm run test:upgrade:firefox` (Firefox OPFS).
-  The same isolated origin/profile retained exact beans/photos/linked sessions,
-  dates/nulls/comments and precision across build replacement, startup and reload.
-  Old CSV/Parquet imports, failed startup/worker durable-byte preservation,
-  rollback, editing/deletion and archive merge/recovery checks all passed.
-- Final build and `git diff --check` passed. A production-bundle assertion
-  verified the registered client ID is present and the temporary ID input,
-  diagnostics, test buttons and fake-token fixtures are absent. Dependencies,
-  storage schema/identifiers and deployment origin are unchanged.
-- Real Google authorization, Drive transfer and physical iOS/Home Screen checks
-  are deferred to the user. No production-origin override or deployment was
-  performed. Mocked regressions do not complete the Stage 24 real-service gate.
-
----
-
-## Stage 29: Stable Session Editor While the Keyboard Is Open
-
-- [x] **Status:** Implemented; desktop Safari checks passed; physical iOS keyboard verification pending
-
-### Goal
-
-Keep the brew/session editor's graph, controls and overall scale steady when
-the software keyboard opens, while allowing scrolling to covered fields.
-
-### Tasks
-
-1. Capture editor height, scale, graph height and vertical safe-area padding
-   before native input UI opens. Hold them through field changes and keyboard
-   dismissal; release on leaving the editor or after focus/viewport recovery.
-2. Add scroll space for the covered area without compressing the graph. Preserve
-   responsive layout outside editing and on window-width/orientation changes.
-3. Verify stable geometry under simulated keyboard viewport changes, covered-field
-   scrolling, focus transfer/dismissal, resize and cancel/reopen. Run the existing
-   Safari suite, production-subpath/isolation checks and build.
-
-### Acceptance Criteria (Stage 29 Gate)
-
-- Focusing a session input and shrinking the visible viewport leaves the editor
-  height/scale, graph dimensions and control sizes unchanged. Covered fields
-  remain reachable by scrolling, with draft values intact.
-- Moving between fields preserves geometry. Keyboard dismissal after blur,
-  cancel/reopen and width/orientation changes release stale sizing. Normal
-  responsive layouts, saving, navigation and reload persistence still work.
-- Build and desktop Safari regression checks pass. Storage identifiers, schema,
-  records, field meanings/units, backup formats, dependencies, startup and service
-  workers remain unchanged. Physical iOS keyboard/Home Screen behavior is
-  explicitly distinguished from simulated desktop viewport checks.
-
-### Verification — 2026-10-27
-
-- `uv run npm run build` and `git diff --check` passed with the existing project
-  `.venv` Node installation (`process.execPath` is inside the project's `.venv`).
-- Full `test:safari` passed on installed Safari 27.2/macOS against Vite at
-  `http://127.0.0.1:5175/`: startup/navigation, bean/session writes, reload
-  persistence, editor layouts/chart, save/cancel, failed-write recovery and old
-  CSV/Parquet import/export checks all passed in isolated automation storage.
-- Focused desktop Safari checks used the actual editor DOM/CSS and viewport
-  helper inside 393×852 and 375×667 frames, with simulated 59/34px safe areas.
-  Reducing both the frame and simulated visual viewport by 300px preserved exact
-  editor height/scale, chart/control dimensions, safe-top padding and draft
-  numeric/comment values. The added scroll range reached Comment above the
-  simulated keyboard. Field transfer, blur during dismissal, restored viewport,
-  subsequent height resize, width change and reset/cancel/reopen passed.
-  Geometry assertions allow subpixel rounding when testing a fresh CSS resize.
-- Production `test:safari` passed at
-  `http://127.0.0.1:4188/CoffeeOS/` with `TEST_PRODUCTION=1`, including normal
-  editor geometry, save/cancel, navigation and IO import/reload persistence.
-  An earlier attempt on port 4190 could not load the page in Safari; using the
-  browser-compatible port resolved that local test setup issue.
-- Dev and production preview returned COOP `same-origin` and COEP `require-corp`.
-  Built JavaScript and CSS returned HTTP 200 with the correct content types
-  under `/CoffeeOS/assets/`; the production build retains relative asset URLs.
-- Changes are limited to session editor UI behavior and CSS. No storage,
-  startup, dependency, service-worker, deployment, identifier, schema or backup
-  format changes. Previous-build populated OPFS/IndexedDB upgrade suites were
-  not rerun for this UI-only refinement; no new upgrade-path pass is claimed.
-- Desktop viewport simulation does not reproduce the native iOS keyboard.
-  Physical iPhone/iPad keyboard animation, touch scrolling, focus zoom, picker,
-  Home Screen and storage lifecycle checks remain unverified. No deployment or
-  personal browser profile modification was performed.
-
----
-
-## Stage 30: Public Privacy Policy and In-App About Overlay
-
-- [x] **Status:** Implemented; build and desktop Safari checks passed; deployment and physical iOS checks pending
-
-### Goal
-
-Provide an accessible public privacy-policy URL for Google OAuth and a readable
-About/privacy overlay that keeps users in the app and preserves their current work.
-
-### Tasks
-
-1. Add a standalone `public/privacy.html` explaining CoffeeOS, local storage,
-   optional Google account access/Drive transfers, third-party hosting, retention,
-   deletion, security limits and the user-approved GitHub project contact.
-2. Replace the header tagline with an information icon and About & privacy link.
-   Open the same policy text in a scrollable native dialog with a persistent Back
-   button, Escape dismissal, focus restoration and recoverable loading failure.
-3. Keep the policy public without JavaScript, login or database initialization.
-   Share typography between the public page and overlay; preserve relative URLs.
-4. Run build, Safari regression and focused overlay/public-page checks, including
-   narrow screens, data/reload preservation and production repository subpaths.
+1. Supply standalone `public/privacy.html`/shared CSS: app identity/effective date,
+   local records/photos/recovery, optional Google identity/Drive transfers,
+   ephemeral tokens, hosting, retention/deletion/revocation/security limits and
+   user-approved GitHub project contact. Keep disclosures consistent with behavior.
+2. Header About & privacy opens same-document native dialog, shared policy text,
+   scrolling content/persistent Back, Escape, focus containment/explicit return,
+   retryable loading errors and preserved active tab/drafts. No DB/network auth needed.
+3. Initial `index.html` visibly includes app name/journal description, local/optional
+   Drive explanation and relative `./privacy.html` link with noscript guidance.
+   Keep it during loading/failure; successful startup replaces it with the app.
 
 ### Acceptance Criteria (Stage 30 Gate)
 
-- `/CoffeeOS/privacy.html` is a readable standalone page with clear app identity,
-  effective date, accurate Google/data disclosures and the GitHub contact. It
-  opens without authorization, app JavaScript or database startup.
-- The header visibly links About & privacy. Ordinary activation stays in the
-  current page, with scrollable content and a visible Back button. Back/Escape
-  restore access/focus to the app and preserve navigation, drafts and records.
-  Loading failures allow retry without navigating or altering the collection.
-- Build and installed Safari checks pass. Dev/preview isolation headers and
-  production-relative assets remain correct. Storage, schemas, identifiers,
-  backup formats, dependencies, service workers and deployment origin are unchanged.
-  Deployment, Google approval and physical iOS checks are reported separately.
+- Plain HTTP client reads description/privacy link from production homepage;
+  standalone policy works without scripts/login/DuckDB. Blocked/pending DB cannot
+  hide the policy; normal startup removes fallback and retains About/navigation.
+- Policy/overlay text matches. Back/Escape/retry, focus containment/return, drafts/
+  active tab/record persistence and same-document behavior pass. At 393px, no
+  overflow; Back/link remain touch-sized and Back stays visible while scrolling.
+- Test script-blocked and actual scripts-disabled behavior separately; CSP does
+  not exercise native noscript rendering. Build/Safari/Stage 6 startup upgrades,
+  subpath assets/isolation pass; public hosting/Google approval require own evidence.
 
-### Verification — 2026-10-27
+### Verification — 2026-10-27 (includes Stage 31)
 
-- Added `public/privacy.html` and shared `public/privacy.css`. The policy
-  describes local records/photos and recovery copies, optional Google identity
-  and Drive access, connect-triggered transfer, ephemeral credentials, hosting,
-  deletion/revocation and backup security limits. The user approved the GitHub
-  project as the contact. Checked the Google API Services User Data Policy,
-  OAuth privacy-disclosure requirements and GitHub Pages IP logging guidance
-  against the implementation; no blanket zero-information claim is made.
-- Replaced the header tagline with About & privacy and an information icon.
-  Its native dialog fetches the standalone policy on demand, preserves the
-  current document, and keeps Back visible above the scrolling text. Failed
-  loading offers retry. Safari needed explicit focus restoration on close;
-  that behavior passed after the fix. Setup docs record both OAuth URLs.
-- `uv run npm run build` passed with Node inside the existing project `.venv`.
-  The built homepage references relative `./privacy.css` and hashed app assets;
-  public policy HTML/CSS are copied intact into `dist/`. No dependency changes.
-- Full `TEST_BASE_URL=http://127.0.0.1:5175/ uv run npm run test:safari` passed
-  on installed Safari 27.2/macOS, including startup/navigation, bean/session
-  writes, reload persistence, editor/chart layouts, lock/failure safeguards and
-  old CSV/Parquet import/export regression checks. An initial run caught the
-  dialog's extra form in the existing form-count assertion; Back now uses an
-  ordinary button, and the unchanged suite passed.
-- Focused isolated Safari checks ran against production preview mounted with
-  `--base /CoffeeOS/` at `http://127.0.0.1:4188/CoffeeOS/`. Public policy text
-  matched the overlay exactly and loaded without scripts, DuckDB, login or
-  external service requests. At 393px width, no horizontal overflow occurred,
-  Back retained its 44px touch target and stayed visible while content scrolled.
-  Simulated offline failure/retry, same-document navigation, Back/Escape,
-  keyboard focus containment/return, active-tab/draft preservation and saved
-  bean persistence after reload all passed. Screenshot inspected locally.
-- Dev and production preview returned COOP `same-origin` and COEP
-  `require-corp`. Production HTML, policy, CSS, manifest/icons and app assets
-  returned HTTP 200 with appropriate content types under the repository
-  subpath. Plain preview initially lacked the subpath mount; using its CLI
-  `--base /CoffeeOS/` option corrected the verification setup without changing
-  project config. Final `git diff --check` passed.
-- Changes are limited to public policy content, About UI/styles, descriptive
-  metadata and documentation. Database initialization/lifecycle, storage names,
-  schemas, record units/precision, backup formats, dependencies, service workers,
-  isolation settings and deployment origin are unchanged. Previous-build
-  populated OPFS/IndexedDB upgrade suites were not rerun for this UI/content
-  update; no new upgrade-path pass is claimed.
-- No deployment or Google console changes were performed. The public policy URL
-  becomes available after deployment; live hosting headers and Google approval
-  remain unverified. Physical iPhone/iPad touch, Home Screen and storage
-  lifecycle checks remain unverified; desktop Safari does not establish them.
+- Policy checked against implemented disclosures and official Google/GitHub
+  guidance during implementation; no blanket zero-information claim. Build/full
+  Safari and production public/overlay focus/draft/reload/offline-retry checks passed.
+  Explicit Safari focus return fixed; screenshot inspected. No dependencies changed.
+- Crawler follow-up passed plain HTTP and script-blocked Safari initial view,
+  policy navigation, narrow layout, pending/failed storage, successful app startup.
+  Native scripts-disabled noscript rendering not exercised. Populated `27e039b`
+  Safari/IndexedDB + Firefox/OPFS upgrades passed exact records/backups/recoveries
+  and injected failures; transient local Parquet error passed unchanged rerun.
+- Build/diff, relative policy/assets/manifest/icons and dev/preview headers passed.
+  No deployment/Google Console changes or approval claimed. Physical iOS/Home
+  Screen, live host reachability and storage lifecycle remain unverified.
 
----
+## Stage 32: Edit Beans from Swipes & Actions Menu
 
-## Stage 31: Crawler-Readable Homepage
-
-- [x] **Status:** Implemented; local build, Safari and populated upgrade checks passed; deployment and Google approval pending
+- [x] **Status:** Complete; Safari/IndexedDB + Firefox/OPFS upgrade checks passed, physical iOS pending.
 
 ### Goal
 
-Make CoffeeOS's purpose and privacy-policy link readable from the homepage's
-initial HTML without JavaScript, login or a working database.
+Edit beans in the shared form while preserving identity, photos and all linked brews.
 
 ### Tasks
 
-1. Add a visible basic homepage with the app name, coffee-journal description,
-   local storage and optional Drive backup explanation, and relative policy link.
-2. Keep this content available during loading and startup failures; let successful
-   startup replace it with the normal app. Explain JavaScript use to users with
-   scripts disabled.
-3. Verify the built HTML and policy at the repository subpath, installed Safari
-   startup/navigation/persistence, and populated previous-build upgrade safety.
-
-### Acceptance Criteria (Stage 31 Gate)
-
-- A plain HTTP client can read the app name, feature description and
-  `./privacy.html` link in the production homepage without running scripts.
-- The basic view and policy are readable with scripts disabled and on narrow
-  screens. Loading/failure retains the link; successful startup removes the
-  basic view and retains the ordinary About overlay and app navigation.
-- Build, Safari regressions and populated upgrade checks pass; relative production
-  assets and isolation headers remain correct. Storage identities, record data,
-  backup formats, dependencies, service workers and deployment origin are preserved.
-- Live deployment, Google approval, unavailable browser/backend paths and physical
-  iOS checks are reported separately with their limitations.
-
-### Verification — 2026-10-27
-
-- Added the app name, coffee-journal description, local storage/optional Drive
-  explanation and a normal relative privacy-policy link directly to `index.html`.
-  The content is visible without scripts, with JavaScript guidance in `noscript`.
-  Startup diagnostics append below this view; successful startup replaces it
-  through the existing app rendering. Failure retains the basic view and link.
-- `uv run npm run build` and `git diff --check` passed. Node resolves inside the
-  existing project `.venv`. Plain HTTP checks against production preview at
-  `http://127.0.0.1:4188/CoffeeOS/` found the description/link in the initial HTML.
-  Policy, stylesheet, manifest/icons and hashed assets returned HTTP 200 under
-  the repository subpath. COOP `same-origin` and COEP `require-corp` were retained.
-- Full `TEST_BASE_URL=http://127.0.0.1:5174/ uv run npm run test:safari` passed on
-  installed Safari 27.2/macOS: startup/navigation, bean/session writes, reload
-  persistence, failure/ownership safeguards, editing and legacy CSV/Parquet
-  import/export checks.
-- Focused isolated Safari checks used the production build, localhost-only
-  fixtures and a 393px window. CSP blocked script execution while the homepage
-  remained readable, without JavaScript/Wasm/Google requests; its 44px privacy
-  link navigated to the standalone policy, with no horizontal overflow.
-  Screenshot inspected locally. CSP leaves the parser's scripting flag enabled,
-  so native browser-setting-disabled `noscript` rendering was not exercised.
-  Simulated pending metadata access and a denied storage getter retained a usable
-  policy link. Successful production startup removed the basic view, and the
-  ordinary About dialog and app navigation worked.
-- Populated upgrades from previous build `27e039b` passed using
-  `TEST_PREVIOUS_REF=HEAD uv run npm run test:upgrade` (Safari/IndexedDB) and
-  `TEST_PREVIOUS_REF=HEAD uv run npm run test:upgrade:firefox` (isolated Firefox/OPFS).
-  Each replaces builds within one profile and origin at `/CoffeeOS/`, comparing
-  exact records/relationships, dates, nulls, comments, photos and numeric precision
-  through startup/reload, old CSV/Parquet imports and `.coffeeos` recovery. Injected
-  worker/open/restore/permission failures preserved durable data and recovered on
-  retry. The first Safari attempt hit a local Parquet asset `NetworkError`; an
-  unchanged rerun completed the entire suite. No Safari OPFS upgrade pass is claimed.
-- Storage logic/identities, schemas, record meanings/units, backup formats,
-  dependencies, service workers, isolation settings and deployment origin are
-  unchanged. No user collection or normal browsing profile was modified.
-- No deployment or Google Console changes performed. Public-host reachability,
-  Google approval and physical iPhone/iPad touch, Home Screen and storage lifecycle
-  checks remain unverified; these local checks do not establish them.
-
-## Stage 32: Edit Beans from Swipes and the Actions Menu
-
-- [x] **Status:** Implemented; desktop Safari/IndexedDB and Firefox/OPFS upgrade checks passed; physical iOS pending
-
-### Goal
-
-Edit existing beans using the shared Add a bean form, while preserving bean
-identity, creation dates, photos and linked brew histories.
-
-### Tasks
-
-1. Reveal a yellow Edit action on right swipe; keep Delete on left swipe and
-   expose both actions from the three-dot button, including expanded histories.
-2. Open the existing form at the top with the selected bean's name, dates and
-   photo. Provide Save and Cancel and restore add mode after completion.
-3. Update bean details in place through the existing transactional persistence
-   path, guarding repeated submissions and retaining failed edits for retry.
-4. Verify edit/cancel, photo handling, rollback/retry, record fidelity, existing
-   workflows, populated previous-build upgrades and old backup readability.
+1. Right swipe reveals yellow Edit, left reveals Delete; three-dot menu offers
+   both, including expanded history. Apply Stage 7 dismiss-first interaction:
+   reverse swipe closes before revealing opposite action; surface tap only dismisses.
+2. Edit opens/focuses prefilled form at top with Save/Cancel. Cancel/Escape exits
+   without mutation and completion restores add mode. Preserve photo preparation
+   cancellation and explicit native empty-date normalization.
+3. Update non-key fields without `UPDATE ... RETURNING id`: pinned DuckDB rejects
+   that form for referenced parents. Select result under same serialized queue
+   after transaction. Preserve ID/created_at/linked sessions; never insert on missing ID.
+4. No-op edit retains name whitespace, null dates/photos and timestamp precision.
+   Rollback retains draft for retry; committed flush warning exits edit mode and
+   refreshes without inserting a duplicate. Guard repeated submissions.
 
 ### Acceptance Criteria (Stage 32 Gate)
 
-- Right swipe exposes yellow Edit, left swipe exposes Delete, and the three-dot
-  menu offers both without accidentally expanding/collapsing the bean.
-- Edit from collapsed or expanded cards opens/focuses the prefilled shared form
-  at the top. Save updates one existing bean; Cancel/Escape discard edits.
-- Name, roast/freeze dates and photo can be changed or cleared where optional.
-  Unchanged saves retain original values, including name whitespace, nulls and
-  creation timestamp precision. IDs and every linked session field survive.
-- Failed writes roll back durable data and retain the draft; retry updates once.
-  A committed write with a flush failure shows recovery guidance and exits edit
-  mode so retry cannot insert a duplicate. Missing IDs do not create beans.
-- Build and desktop Safari checks pass; phone geometry remains usable. Populated
-  IndexedDB and OPFS previous-build upgrades at the same origin/subpath retain
-  exact records, old CSV/Parquet imports and recoverable startup failures.
-- Storage identities, schema, backups, dependencies, service workers and origin
-  remain stable. Unverified browser/device/deployment paths are recorded.
+- Edit from collapsed/expanded/menu and both swipe directions works without
+  toggling history. Visible actions dismiss on tap/reverse swipe; next gesture
+  activates normally, action buttons remain usable. Non-writing gestures preserve data.
+- No-op save compares full CSV exactly, including microsecond creation timestamp/
+  whitespace and every sibling/session value. Edit name/dates/photo replacement/
+  removal, cancel while decoding, Cancel/Escape and blank/missing IDs all pass.
+- Inject write/commit/snapshot errors: rollback/reopen/retry updates exactly once;
+  committed warning refreshes and exits. Test Safari empty optional date input
+  via native value reset, keeping validation enabled.
+- Photo-inclusive form fits 393×852 with simulated safe areas, 320×568 has no
+  horizontal overflow, Save/Cancel ≥44px. Build/Safari/Stage 6 upgrades/old backups/
+  subpath/headers pass; physical/device/host gaps remain explicit.
 
-### Verification Notes
+### Verification — 2026-10-27 (includes Stage 37 interaction fix)
 
-- 2026-10-27: `uv run npm run build`, test-module syntax and `git diff --check`
-  passed. Node resolves to `/Users/kkrol/Projects/CoffeeOS/.venv/bin/node`.
-- Full `TEST_BASE_URL=http://127.0.0.1:5176/ uv run npm run test:safari` passed
-  on installed Safari 27.2/macOS: startup/navigation, bean/session writes,
-  reload persistence, validation, phone layouts, backups and failure safeguards.
-- Added focused bean-edit checks to the populated upgrade suites: both swipe
-  directions, menu access and expanded-history editing, prefill/focus/top,
-  unchanged full CSV equality (including microsecond creation timestamps and
-  whitespace), Cancel/Escape, blank names, exact sibling/session preservation,
-  rename/date changes, photo replacement/removal, cancel during photo decoding,
-  rollback/reopen/retry, repeated submit, committed-flush recovery and missing IDs.
-  All focused checks passed in isolated Safari and Firefox sessions.
-- The installed DuckDB runtime rejects `UPDATE ... RETURNING id` for parents
-  referenced by brew sessions. A focused probe confirmed that updating non-key
-  fields without RETURNING succeeds. The final method uses the existing durable
-  transaction path, then selects the bean under the same serialized queue;
-  identity, creation timestamp and sessions are never replaced.
-- Safari's automation can leave empty date segments invalid after assigning
-  `.value = ''`, even while `validity.valid` is true. An isolated native-control
-  probe confirmed resetting `valueAsDate` after clearing resolves this. Fixtures
-  now reset that native value; app validation remains enabled. Nullable editor
-  prefills also reset the native date value explicitly.
-- Populated upgrades from previous build `4d31002` passed with
-  `TEST_PREVIOUS_REF=HEAD uv run npm run test:upgrade` (Safari/IndexedDB), replacing
-  builds at the same `/CoffeeOS/` origin/profile. Exact records survived startup
-  and reload; old CSV/Parquet imports, `.coffeeos` recovery and injected failed
-  startup/write preservation checks passed. Some earlier Safari attempts hit a
-  transient local Parquet asset NetworkError; the unchanged final run passed.
-- Safari edit-form geometry passed at 320×568 and 393×852 with simulated safe
-  areas. No horizontal overflow; both Save/Cancel retain at least 44px targets.
-  At 393×852 the photo-inclusive form fits above navigation. The screenshot at
-  `.cache/bean-edit-safari.png` was inspected locally. Swipe checks use synthetic
-  pointer events; these do not establish physical-device touch behavior.
-- Production preview at `http://127.0.0.1:4188/CoffeeOS/` retained COOP
-  `same-origin` and COEP `require-corp`; all eight HTML-linked assets returned
-  HTTP 200 under the repository subpath. Storage identities, schema, units,
-  backup formats, dependencies, startup, service workers and origin are unchanged.
-- Final `TEST_PREVIOUS_REF=HEAD FIREFOX_BIDI_URL=ws://127.0.0.1:9228/session
-  uv run npm run test:upgrade:firefox` passed in an isolated localhost-only
-  Firefox profile, verifying populated OPFS build replacement, exact records,
-  old backups, new bean/session edits, failed startup/write preservation and reload.
-- Safari OPFS upgrades, physical iPhone/iPad touch, keyboard/viewport and Home
-  Screen/storage lifecycle, and deployed-host response headers remain unverified.
-  No deployment performed; no normal browsing profile or user collection modified.
+- Full Safari 27.2, focused bean-edit cases and populated `4d31002` upgrades
+  passed Safari/IndexedDB + Firefox/OPFS: exact CSV/no-op/linked data, all edits/
+  photos, rollback/retry/warnings, old backups and failed startup preservation.
+- Runtime probe confirmed UPDATE without RETURNING works for referenced beans.
+  Safari date probe identified empty segmented input normalization; fixtures and
+  nullable prefill reset native value explicitly without disabling validation.
+- Geometry/screenshot `.cache/bean-edit-safari.png`, build/diff/headers/eight
+  resources passed. Stage 37 Safari/full populated upgrade added fresh-tap and
+  close-before-opposite regressions (see Stage 7); Firefox not rerun for that fix.
+- Transient local Parquet errors passed unchanged reruns. Safari OPFS, native
+  touch/keyboard, Home Screen/storage lifecycle and deployed-host checks remain
+  unverified. No normal user collection changed and no deployment performed.
 
----
+## Stage 38: Consolidate Feature Requirements & Regression Gates
 
-## Stage 33: Implement Stage 25 Drive History, Transfers and Recovery
-
-- [x] **Status:** Complete; Stage 25 implementation accepted by the user on 2026-10-27; remaining verification limits retained below
+- [x] **Status:** Complete; documentation compaction and build checks passed.
 
 ### Goal
 
-Deliver the Stage 25 workflow after the user's Stage 24 acceptance, preserving
-all existing local records, storage identities and historical backup formats.
+Fold repair sessions into the original feature stages so their instructions and
+acceptance criteria prevent repeating the bugs while preserving dated evidence.
 
 ### Tasks
 
-1. Add complete paginated history and stable marked-folder selection.
-2. Add resumable uploads, bounded retries, progress/cancel and reauthorization.
-3. Add pinned restore previews, merge and explicit atomic replacement with
-   durable recovery copies and stale-preview protection.
-4. Complete account switching and mobile controls; document service limitations.
-5. Run adapter, restore-failure, Safari, populated upgrade and subpath checks.
+1. Consolidate repair/retry/implementation-duplicate stages into their feature
+   owners; retain historical numbers, dates, acceptance and verification limits.
+2. Replace superseded unsafe fallback, stale UI sizing/caps and pending statuses
+   with current requirements, while distinguishing historical checks from new gates.
+3. Put failure causes, specific regression scenarios and applicable test commands
+   beside original tasks. Keep future numbering sequential, starting at Stage 39.
+4. Check stage mapping, required structure, preserved contract/coverage limitations,
+   diff and build. Change documentation only; claim no new runtime/browser results.
 
-### Acceptance Criteria (Stage 33 Gate)
+### Acceptance Criteria (Stage 38 Gate)
 
-- Stage 25's functional and data-preservation criteria are met; completed files
-  remain discoverable and transfer retries do not duplicate successful snapshots.
-- Explicit replacement preserves a downloadable recovery, rolls back failures
-  and requires renewed confirmation after any local change.
-- Build, focused browser checks and previous-build IndexedDB/OPFS upgrades pass.
-- Actual tested sizes, live-service and physical iOS gaps are recorded separately.
-
-### Verification — 2026-10-27
-
-- Implementation started. Stage 24 marked complete on the user's private-test
-  acceptance. Existing Stage 29 removed archive size caps; this update preserves
-  that decision rather than reintroducing the older Stage 25 proposed 1 GB cap.
-
-### Local implementation results — 2026-10-27
-
-- Implemented paginated account-wide app-marked history, moved snapshots, stable
-  marked-folder selection, previous-cloud default selection, pinned previews,
-  explicit merge/replacement, immutable recovery downloads and account-switch
-  confirmation. No secret preferences or remembered authorization are persisted.
-- Added 1 MiB resumable chunks, confirmed-offset probes, bounded transient retry,
-  cancellation/progress, same-account user-driven reauthorization, final hash/size
-  verification and immutable-backup-ID reconciliation without a second POST.
-- 26 simulated adapter checks and complete Drive browser workflows passed in
-  isolated Safari/IndexedDB and Firefox/OPFS. The transfer fixture covered
-  6 MiB + 1 byte; exact photo-containing archives were about 8.3 KiB. Large raw
-  transfers do not establish large photo-archive or physical iPhone memory limits.
-- Populated upgrades passed from the preceding build before commit `0fb9a4d`
-  on Safari/IndexedDB. A further `TEST_PREVIOUS_REF=HEAD` upgrade from `0fb9a4d`
-  passed on isolated Firefox/OPFS while preparing Stage 34. Each uses one profile
-  and origin at `/CoffeeOS/`, exact fields and historical CSV/Parquet imports,
-  failed-startup preservation, transactional restore failures and recovery reload.
-- Replacement tests cover local-only retention/removal, stale reconfirmation,
-  recovery creation failure, removal/insertion/SQL commit/snapshot-save rollback,
-  committed-warning export and a subsequent healthy flush before reload. A forced
-  OPFS CHECKPOINT failure intentionally does not promise post-reload durability.
-- The installed DuckDB retains a reverse FK under `bean_delete_sessions` after
-  the existing delete/rename path. Rollback-only runtime probes established that
-  an empty temporary constraint holder created/dropped inside replacement clears
-  that stale catalog entry. Both live tables are then recreated with the identical
-  schema inside the validated, recovery-protected transaction; the database,
-  files, ownership lock and backend identity remain unchanged.
-- The user subsequently reported a generic unexpected failure after live Google
-  login. Stage 25/33 gates remain unchecked; mocked success does not override
-  that report. Live history/transfers/restores, physical iPhone/Home Screen and
-  deployed-host verification remain unverified for this workflow.
-
----
-
-## Stage 34: Opt-In Live Drive Failure Diagnostics
-
-- [x] **Status:** Diagnostics implemented and locally verified; underlying failure identified and fixed in Stage 35
-
-### Goal
-
-Identify the unexpected error reported after successful Google login, using an
-opt-in deployed diagnostic mode that reveals no credentials or collection contents.
-
-### Tasks
-
-1. Add console events for authorization, history, snapshot capture/packaging,
-   transfer, validation, recovery and view refresh, with safe exception locations.
-2. Expose a copyable report and read-only local archive round-trip checks via
-   `?drive-debug=1`; keep diagnostics disabled on ordinary visits.
-3. Give HTTP/network errors actionable request phases and known safe reasons.
-4. Verify report sanitization, unchanged records/revisions/recoveries, normal
-   Drive flows and upgrade safety. Document deployment and reproduction steps.
-
-### Acceptance Criteria (Stage 34 Gate)
-
-- Opted-in users can reproduce login/sync and copy a report identifying the last
-  successful/failing phase; reports contain no tokens, email, record contents,
-  file IDs, archive bytes, SQL, session URLs or free-form server/error messages.
-- Local checks validate and compare the current snapshot with rollback-only
-  staging; they cannot upload, import, replace, reset or create recovery copies.
-- Ordinary visits expose no diagnostic global or console output. Existing Drive
-  controls and stored collections remain usable; completed status survives history
-  refresh. Build, focused Safari/Firefox and applicable upgrade checks pass.
-- Actual live-service results and access limitations are recorded honestly.
+- Every original stage number 1–37 remains either a feature stage or a mapped
+  completed/retired historical entry; none is renumbered/reused. Cross-stage review
+  findings live with owners. Every active feature stage has status, Goal, Tasks,
+  Acceptance Criteria and dated Verification.
+- Original storage/startup/date/commit, mobile layout/keyboard, swipe-dismissal,
+  native-fetch and restore/diagnostics defects have explicit owner-stage tasks
+  and failure/regression gates. No active instruction reinstates unsafe fallback,
+  obsolete backup caps or a superseded editor interaction.
+- Preserve known negative-zero/scaled-target limits, measured archive sizes,
+  user acceptance and unverified live/device/upgrade paths. Newly strengthened
+  criteria do not retroactively claim tests were run.
+- `uv run npm run build` and `git diff --check` pass. Only `PLAN.md` changes;
+  application/storage/format/identity/dependencies/hosting remain unchanged.
 
 ### Verification — 2026-10-27
 
-- User reproduced the generic unexpected-error message after successful login.
-  The specific cause is not yet known; no root-cause fix is claimed.
-- At the user's explicit request, opened Chrome in a separate project profile.
-  Its Google popup remained blank. Chrome 156 restricts remote debugging of
-  normal profiles; macOS automation reported zero accessible Chrome windows,
-  so no normal-profile attachment or credential inspection was performed.
-- A real localhost HTTP 308 probe in Chrome accepted resumable-style responses
-  with both redirect policies. The initial 308 suspicion was not reproduced;
-  transfer redirect behavior was left unchanged.
-- Added opt-in console/report diagnostics and read-only local checks. No deployment
-  or new live Google success is claimed. The user will deploy and return a report.
-- `uv run npm run build` and `git diff --check` passed. Node resolves inside the
-  project `.venv`; no dependency or lockfile changes were needed. Added the
-  `test:drive:diagnostics` script and dedicated isolated browser checks.
-- 29 simulated Drive adapter checks and full Drive browser workflows passed on
-  Safari/IndexedDB and Firefox/OPFS, including phase-specific HTTP failures,
-  server-message exclusion, exact record/photo recovery, pinned previews,
-  replacement/recovery safeguards and account-switch confirmation.
-- Opt-in diagnostics checks passed on both isolated browsers: ordinary URLs
-  expose no debug global; local checks exactly compare a populated snapshot
-  without record/revision/recovery changes, detect an injected packaging failure,
-  exclude private sentinels and IDs from reports, and preserve records after
-  reload. Final stack filtering also passed on Firefox after excluding V8's raw
-  exception-message line. No live credentials or personal dataset were used.
-- Request progress initially replaced the completed upload message during the
-  subsequent history refresh; the UI regression caught this. The final code
-  restores the confirmed operation result after refreshing history, and the full
-  Safari/Firefox suites passed. An initial Safari upgrade launch conflicted with
-  the shared fixture port; it was rerun sequentially after Firefox completed.
-- Populated upgrades from `0fb9a4d` passed with `TEST_PREVIOUS_REF=HEAD` using
-  `test:upgrade` (Safari/IndexedDB) and `test:upgrade:firefox` (Firefox/OPFS).
-  Same-profile/origin `/CoffeeOS/` replacement retained exact fields, relationships,
-  photos/precision, historical CSV/Parquet imports, recovery copies and reload.
-  Injected startup, permissions, restore and commit failures preserved data.
-- Dev and production preview retained COOP `same-origin` and COEP `require-corp`;
-  the authorization helper retained only its intended exceptions. Seven linked
-  production assets returned HTTP 200 under `/CoffeeOS/`. Storage identities,
-  schemas/units, backup formats, dependencies, service worker and origin remain
-  unchanged. No user storage was cleared or reset.
-- Real Google reproduction/report collection, deployed diagnostic behavior,
-  Safari OPFS, physical iPhone/iPad and Home Screen checks remain unverified.
-  Stage 25/33 stay unchecked because the reported live failure is unresolved.
-
----
-
-## Stage 35: Correct Native Fetch Receiver in Drive Requests
-
-- [x] **Status:** Fixed; native-browser, populated-upgrade and real Google upload/download checks passed
-
-### Goal
-
-Fix the post-login Drive failure identified during user-assisted localhost Chrome
-checks, preserving all records, storage identifiers and backup formats.
-
-### Tasks
-
-1. Invoke the stored HTTP transport with the browser global receiver.
-2. Add a native-browser history-fetch regression with a localhost-only fixture.
-3. Verify native receiver behavior, authenticated read-only history, existing
-   Drive safety checks and populated upgrades; record live transfer limitations.
-4. Update localhost OAuth setup and distinguish firewall from application errors.
-
-### Acceptance Criteria (Stage 35 Gate)
-
-- Stored native fetch can send Drive requests without a receiver-related
-  TypeError; native-browser regression and existing adapter/browser checks pass.
-- Successful login can be followed by authenticated read-only Drive history in
-  the live isolated Chrome profile when Google connectivity is available.
-- Build, populated Safari/IndexedDB and Firefox/OPFS upgrades preserve exact
-  collections, old backups and recoverable failures; subpath/isolation stay valid.
-- No credentials, records or upload-session URLs enter diagnostic output.
-  Actual live upload/restore coverage and unverified devices are reported exactly.
-
-### Verification — 2026-10-27
-
-- The user authorized localhost origins and completed Google login in the
-  separate Chrome profile. Its confirmed local collection has zero beans and
-  zero sessions. The app remained connected but history failed before requests.
-- The user reports changing the firewall to silent allow. An anonymous read-only
-  Drive GET with an invalid placeholder token received HTTP 401, with CORS OPTIONS
-  HTTP 200, establishing API reachability without reading or uploading records.
-- A native Chrome probe with fetch called on an ordinary object threw TypeError
-  before networking; the identical GET with the global receiver returned HTTP
-  401. The client used `this.transport(...)`, which supplies the client receiver.
-  It now explicitly invokes the transport with `globalThis`.
-- Automatic approval review rejected a tool-driven Sync now retry because it
-  could upload collection data without sufficiently explicit payload/destination
-  authorization for that retry. That action was not executed. Investigation used
-  read-only counts, history refresh and anonymous connectivity probes instead.
-- Added a localhost JSON fixture and a transport shim that forwards the client's
-  actual receiver to native browser fetch. No live Google credentials are used
-  by this regression; existing arrow-function mocks cannot catch this issue.
-- All 30 adapter checks passed in actual Chrome 156, Safari/IndexedDB and
-  Firefox/OPFS. Safari/Firefox also passed the full Drive workflow suite,
-  including import/replacement rollback, recovery, pinned preview, account
-  switching and repeated-submit safeguards.
-- Sequential populated upgrades from `0fb9a4d` passed using
-  `TEST_PREVIOUS_REF=HEAD uv run npm run test:upgrade` (Safari/IndexedDB) and
-  `TEST_PREVIOUS_REF=HEAD FIREFOX_BIDI_URL=ws://127.0.0.1:9228/session uv run npm
-  run test:upgrade:firefox` (Firefox/OPFS). Exact records, photos, relationships,
-  historical CSV/Parquet imports, recovery and failed-upgrade preservation passed.
-- After the fix, the user reconnected successfully and reported “No Drive backup
-  yet. No empty backup was uploaded.” This verifies authenticated live history
-  discovery on the configured localhost origin, beyond fake service transports.
-- Initial synthetic fixture preparation hit a database RuntimeError in the
-  development Chrome session. A normal reload, without any reset or storage
-  deletion, retained the original empty collection and allowed preparation of
-  a tiny fixture. This development-runtime interruption is recorded rather than
-  attributed to the HTTP receiver fix; physical/background behavior remains open.
-- Prepared and validated an 8,856-byte synthetic archive containing one bean,
-  one brew session and a generated 16px JPEG, with nulls, zero measurements and
-  binary64 precision values. The user explicitly approved uploading this fixture
-  to the dev account selected during reconnect, downloading/validating it, and
-  retaining the cloud file. No personal collection was uploaded by these checks.
-- The user completed reconnect and reported “Uploaded successfully.” The real
-  resumable upload passed the app's remote size/hash completion checks. A pinned
-  download returned HTTP 200 and passed archive/schema/relationship validation;
-  SQL comparison reported both tables exactly unchanged, including photo and
-  numeric precision. Collection revision and recovery entries were unchanged;
-  preview did not apply merge or replacement. The test backup remains in Drive.
-- This live archive fits in one upload chunk. Larger/multi-chunk, interrupted or
-  expired-token live uploads, cross-profile recovery and explicit live merge/
-  replacement remain unverified; simulated coverage does not establish those
-  paths. Physical iPhone/iPad, Safari OPFS, Home Screen/background lifecycle and
-  deployed build behavior remain unverified. No deployment performed.
-- Storage names, schema/units, backup formats, dependencies, isolation and
-  service worker remain unchanged. No existing records or snapshots were deleted.
-
-- Final Chrome OPFS normal-reload check retained exact synthetic CSV exports,
-  including the photo, microsecond dates and numeric values. No reset or storage
-  deletion was used; Google tokens appropriately clear on reload.
-- Final `uv run npm run build` and `git diff --check` passed. Production preview
-  at `/CoffeeOS/` served all eight relative resources with HTTP 200, retained
-  app COOP/COEP isolation and the helper's narrow header exception. The fix is
-  ready for deployment; it has not been deployed by this session.
-
----
-
-## Stage 36: Record Acceptance of Drive Backup Stages
-
-- [x] **Status:** Complete; user acceptance recorded
-
-### Goal
-
-Reflect the user's acceptance of Stages 24 and 25 without overstating coverage.
-
-### Tasks
-
-1. Retain completed Stage 24; mark Stage 25 and its Stage 33 implementation done.
-2. Preserve earlier verification history and explicitly retain unverified paths.
-
-### Acceptance Criteria (Stage 36 Gate)
-
-- Stages 24, 25 and 33 have checked statuses and dated acceptance context.
-- Existing verification limitations remain visible; application behavior,
-  storage, records and backup formats are unchanged.
-
-### Verification — 2026-10-27
-
-- Recorded the user's acceptance; no new live/device test pass is claimed.
-- Documentation-only update. `uv run npm run build` and `git diff --check`
-  passed; application/storage code was not changed for this acceptance update.
-
----
-
-## Stage 37: Dismiss Swipe Actions Before Opening Cards
-
-- [x] **Status:** Complete; build and desktop Safari interaction checks passed
-
-### Goal
-
-Make bean and brew-session surface taps dismiss visible swipe actions, and require
-bean swipes to close an action before revealing the action on the opposite side.
-
-### Tasks
-
-1. Consume surface taps while actions are visible without expanding/collapsing a
-   bean or opening the brew-session editor.
-2. Close the current bean action on a reverse swipe; allow a subsequent swipe to
-   reveal the opposite action. Preserve swipe-click suppression and action buttons.
-3. Verify both views, normal taps, menus, scrolling and record preservation;
-   build and record browser/device coverage.
-
-### Acceptance Criteria (Stage 37 Gate)
-
-- Tapping the card surface with Edit/Delete visible hides the actions and leaves
-  bean expansion or the session editor unchanged; the next tap works normally.
-- Reversing a bean swipe hides the current action with neither button revealed;
-  a second swipe can reveal the opposite action. This works in both directions.
-- Brew-session reverse swipes dismiss Delete. Intentional Edit/Delete and menu
-  controls remain usable; swipe completion cannot trigger card activation.
-- Build and Safari checks pass, records remain intact across non-writing gestures
-  and reload, and remaining device checks are stated explicitly.
-
-### Verification — 2026-10-27
-
-- `uv run npm run build` and `git diff --check` passed. Node resolves inside this
-  project's `.venv`; no dependency or lockfile changes were needed.
-- `uv run npm run test:safari` passed in an isolated Safari 27.2/macOS session:
-  startup, navigation, bean/session writes, reload persistence, editor layout,
-  histories and backup imports/exports remain usable.
-- Extended the existing interaction checks with fresh pointer-down/up taps to
-  distinguish deliberate dismissal from the click generated by a swipe. Safari
-  passed Edit-to-closed-to-Delete and Delete-to-closed-to-Edit transitions, taps
-  dismissing either bean action without expansion, dismissal inside an expanded
-  history without collapse, next-tap activation, and menu-action dismissal.
-- Session checks passed tap-to-dismiss Delete without opening the editor,
-  opposite-swipe dismissal, menu dismissal, ordinary editing, vertical/short/
-  cancelled gestures, action controls and deletion rollback/retry. Non-writing
-  interactions preserved exact bean/session records.
-- `TEST_PREVIOUS_REF=HEAD uv run npm run test:upgrade` passed on Safari/IndexedDB
-  at `/CoffeeOS/`, including the updated interactions, populated previous-build
-  replacement/reload, exact records, old CSV/Parquet imports, and recoverable
-  worker/startup/restore failures. The suite also passed existing photo, backup
-  and simulated Drive recovery checks; no live cloud operation was performed.
-- Dev and production preview retained COOP `same-origin` and COEP `require-corp`;
-  all eight relative resources linked from production HTML returned HTTP 200
-  under `/CoffeeOS/`.
-- Changes are confined to view interaction handlers and existing checks; storage
-  identities, schema/units, backup formats, dependencies, service worker, origin
-  and deployment configuration are unchanged. No user storage was cleared.
-- Physical iPhone/iPad touch behavior, Home Screen lifecycle, Firefox, OPFS
-  upgrades and deployed-host behavior were not retested in this stage. No
-  deployment performed.
+- Consolidated 37 stage records into 18 feature stages and 19 numbered historical
+  entries, also mapping the cross-stage review; this documentation update is Stage 38.
+  Moved causes/regression gates into feature owners; preserved acceptance dates,
+  actual test evidence, superseded behavior context and explicit coverage gaps.
+- Structure checks passed: all 38 numbers accounted for once, every history owner
+  resolves to a retained feature stage, and every feature/update has checked status,
+  Goal, Tasks, stage gate and dated Verification. Plan reduced from 3,245 to about
+  1,200 lines (63%); no full duplicate repair specifications retained.
+- Checked current archive specification/source for cap removal and native transport/
+  startup handling against consolidated requirements. `uv run npm run build` and
+  `git diff --check` passed; Node resolves inside this project's `.venv`. Only
+  `PLAN.md` changed. No new Safari/Firefox/Chrome, physical iOS, live Google,
+  populated-upgrade or deployment pass is claimed by this documentation update.

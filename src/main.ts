@@ -1,10 +1,13 @@
 import './style.css';
+import { installDriveDiagnostics } from './driveDiagnostics';
 import { initDB, DatabaseStartupError, getStorageMode, getDatabaseStartupPhase } from './db';
 import { createStartupView } from './startupView';
 import { createBeanManager } from './views/beanManager';
 import { createBrewController } from './views/brewController';
 import { createIOView } from './views/ioView';
 import { createAboutView } from './views/aboutView';
+
+installDriveDiagnostics();
 
 const app = document.querySelector<HTMLDivElement>('#app');
 

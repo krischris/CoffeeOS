@@ -2199,7 +2199,7 @@ before adding restore options, large transfers and the finished workflow.
 
 ## Stage 25: Complete Google Drive Backup and Recovery Workflow
 
-- [ ] **Status:** Implementation underway in Stage 33; Stage 24 accepted by the user
+- [x] **Status:** Complete; accepted by the user on 2026-10-27 after the Stage 35 fix and live round trip
 
 ### Goal
 
@@ -2364,6 +2364,17 @@ all existing local data/backup compatibility guarantees.
 - Documentation verification: Stages 24 and 25 are sequential and both retain
   unchecked status, Goal, Tasks, acceptance gates and dated notes. Build and
   diff checks passed; earlier completed stages were preserved.
+
+
+### User acceptance — 2026-10-27
+
+- The user accepts Stages 24 and 25 as complete after the native-fetch fix,
+  successful real Google upload/download and automated verification recorded in
+  Stages 33–35. Stage 33 records the implementation and is also marked complete.
+- This acceptance does not claim new testing: larger/multi-chunk interrupted or
+  expired-token live transfers, cross-profile recovery, explicit live cloud
+  merge/replacement, physical iOS/Home Screen, Safari OPFS and deployed-build
+  behavior remain unverified as detailed in Stage 35.
 
 
 ---
@@ -2909,7 +2920,7 @@ identity, creation dates, photos and linked brew histories.
 
 ## Stage 33: Implement Stage 25 Drive History, Transfers and Recovery
 
-- [ ] **Status:** In progress
+- [x] **Status:** Complete; Stage 25 implementation accepted by the user on 2026-10-27; remaining verification limits retained below
 
 ### Goal
 
@@ -2939,3 +2950,234 @@ all existing local records, storage identities and historical backup formats.
 - Implementation started. Stage 24 marked complete on the user's private-test
   acceptance. Existing Stage 29 removed archive size caps; this update preserves
   that decision rather than reintroducing the older Stage 25 proposed 1 GB cap.
+
+### Local implementation results — 2026-10-27
+
+- Implemented paginated account-wide app-marked history, moved snapshots, stable
+  marked-folder selection, previous-cloud default selection, pinned previews,
+  explicit merge/replacement, immutable recovery downloads and account-switch
+  confirmation. No secret preferences or remembered authorization are persisted.
+- Added 1 MiB resumable chunks, confirmed-offset probes, bounded transient retry,
+  cancellation/progress, same-account user-driven reauthorization, final hash/size
+  verification and immutable-backup-ID reconciliation without a second POST.
+- 26 simulated adapter checks and complete Drive browser workflows passed in
+  isolated Safari/IndexedDB and Firefox/OPFS. The transfer fixture covered
+  6 MiB + 1 byte; exact photo-containing archives were about 8.3 KiB. Large raw
+  transfers do not establish large photo-archive or physical iPhone memory limits.
+- Populated upgrades passed from the preceding build before commit `0fb9a4d`
+  on Safari/IndexedDB. A further `TEST_PREVIOUS_REF=HEAD` upgrade from `0fb9a4d`
+  passed on isolated Firefox/OPFS while preparing Stage 34. Each uses one profile
+  and origin at `/CoffeeOS/`, exact fields and historical CSV/Parquet imports,
+  failed-startup preservation, transactional restore failures and recovery reload.
+- Replacement tests cover local-only retention/removal, stale reconfirmation,
+  recovery creation failure, removal/insertion/SQL commit/snapshot-save rollback,
+  committed-warning export and a subsequent healthy flush before reload. A forced
+  OPFS CHECKPOINT failure intentionally does not promise post-reload durability.
+- The installed DuckDB retains a reverse FK under `bean_delete_sessions` after
+  the existing delete/rename path. Rollback-only runtime probes established that
+  an empty temporary constraint holder created/dropped inside replacement clears
+  that stale catalog entry. Both live tables are then recreated with the identical
+  schema inside the validated, recovery-protected transaction; the database,
+  files, ownership lock and backend identity remain unchanged.
+- The user subsequently reported a generic unexpected failure after live Google
+  login. Stage 25/33 gates remain unchecked; mocked success does not override
+  that report. Live history/transfers/restores, physical iPhone/Home Screen and
+  deployed-host verification remain unverified for this workflow.
+
+---
+
+## Stage 34: Opt-In Live Drive Failure Diagnostics
+
+- [x] **Status:** Diagnostics implemented and locally verified; underlying failure identified and fixed in Stage 35
+
+### Goal
+
+Identify the unexpected error reported after successful Google login, using an
+opt-in deployed diagnostic mode that reveals no credentials or collection contents.
+
+### Tasks
+
+1. Add console events for authorization, history, snapshot capture/packaging,
+   transfer, validation, recovery and view refresh, with safe exception locations.
+2. Expose a copyable report and read-only local archive round-trip checks via
+   `?drive-debug=1`; keep diagnostics disabled on ordinary visits.
+3. Give HTTP/network errors actionable request phases and known safe reasons.
+4. Verify report sanitization, unchanged records/revisions/recoveries, normal
+   Drive flows and upgrade safety. Document deployment and reproduction steps.
+
+### Acceptance Criteria (Stage 34 Gate)
+
+- Opted-in users can reproduce login/sync and copy a report identifying the last
+  successful/failing phase; reports contain no tokens, email, record contents,
+  file IDs, archive bytes, SQL, session URLs or free-form server/error messages.
+- Local checks validate and compare the current snapshot with rollback-only
+  staging; they cannot upload, import, replace, reset or create recovery copies.
+- Ordinary visits expose no diagnostic global or console output. Existing Drive
+  controls and stored collections remain usable; completed status survives history
+  refresh. Build, focused Safari/Firefox and applicable upgrade checks pass.
+- Actual live-service results and access limitations are recorded honestly.
+
+### Verification — 2026-10-27
+
+- User reproduced the generic unexpected-error message after successful login.
+  The specific cause is not yet known; no root-cause fix is claimed.
+- At the user's explicit request, opened Chrome in a separate project profile.
+  Its Google popup remained blank. Chrome 156 restricts remote debugging of
+  normal profiles; macOS automation reported zero accessible Chrome windows,
+  so no normal-profile attachment or credential inspection was performed.
+- A real localhost HTTP 308 probe in Chrome accepted resumable-style responses
+  with both redirect policies. The initial 308 suspicion was not reproduced;
+  transfer redirect behavior was left unchanged.
+- Added opt-in console/report diagnostics and read-only local checks. No deployment
+  or new live Google success is claimed. The user will deploy and return a report.
+- `uv run npm run build` and `git diff --check` passed. Node resolves inside the
+  project `.venv`; no dependency or lockfile changes were needed. Added the
+  `test:drive:diagnostics` script and dedicated isolated browser checks.
+- 29 simulated Drive adapter checks and full Drive browser workflows passed on
+  Safari/IndexedDB and Firefox/OPFS, including phase-specific HTTP failures,
+  server-message exclusion, exact record/photo recovery, pinned previews,
+  replacement/recovery safeguards and account-switch confirmation.
+- Opt-in diagnostics checks passed on both isolated browsers: ordinary URLs
+  expose no debug global; local checks exactly compare a populated snapshot
+  without record/revision/recovery changes, detect an injected packaging failure,
+  exclude private sentinels and IDs from reports, and preserve records after
+  reload. Final stack filtering also passed on Firefox after excluding V8's raw
+  exception-message line. No live credentials or personal dataset were used.
+- Request progress initially replaced the completed upload message during the
+  subsequent history refresh; the UI regression caught this. The final code
+  restores the confirmed operation result after refreshing history, and the full
+  Safari/Firefox suites passed. An initial Safari upgrade launch conflicted with
+  the shared fixture port; it was rerun sequentially after Firefox completed.
+- Populated upgrades from `0fb9a4d` passed with `TEST_PREVIOUS_REF=HEAD` using
+  `test:upgrade` (Safari/IndexedDB) and `test:upgrade:firefox` (Firefox/OPFS).
+  Same-profile/origin `/CoffeeOS/` replacement retained exact fields, relationships,
+  photos/precision, historical CSV/Parquet imports, recovery copies and reload.
+  Injected startup, permissions, restore and commit failures preserved data.
+- Dev and production preview retained COOP `same-origin` and COEP `require-corp`;
+  the authorization helper retained only its intended exceptions. Seven linked
+  production assets returned HTTP 200 under `/CoffeeOS/`. Storage identities,
+  schemas/units, backup formats, dependencies, service worker and origin remain
+  unchanged. No user storage was cleared or reset.
+- Real Google reproduction/report collection, deployed diagnostic behavior,
+  Safari OPFS, physical iPhone/iPad and Home Screen checks remain unverified.
+  Stage 25/33 stay unchecked because the reported live failure is unresolved.
+
+---
+
+## Stage 35: Correct Native Fetch Receiver in Drive Requests
+
+- [x] **Status:** Fixed; native-browser, populated-upgrade and real Google upload/download checks passed
+
+### Goal
+
+Fix the post-login Drive failure identified during user-assisted localhost Chrome
+checks, preserving all records, storage identifiers and backup formats.
+
+### Tasks
+
+1. Invoke the stored HTTP transport with the browser global receiver.
+2. Add a native-browser history-fetch regression with a localhost-only fixture.
+3. Verify native receiver behavior, authenticated read-only history, existing
+   Drive safety checks and populated upgrades; record live transfer limitations.
+4. Update localhost OAuth setup and distinguish firewall from application errors.
+
+### Acceptance Criteria (Stage 35 Gate)
+
+- Stored native fetch can send Drive requests without a receiver-related
+  TypeError; native-browser regression and existing adapter/browser checks pass.
+- Successful login can be followed by authenticated read-only Drive history in
+  the live isolated Chrome profile when Google connectivity is available.
+- Build, populated Safari/IndexedDB and Firefox/OPFS upgrades preserve exact
+  collections, old backups and recoverable failures; subpath/isolation stay valid.
+- No credentials, records or upload-session URLs enter diagnostic output.
+  Actual live upload/restore coverage and unverified devices are reported exactly.
+
+### Verification — 2026-10-27
+
+- The user authorized localhost origins and completed Google login in the
+  separate Chrome profile. Its confirmed local collection has zero beans and
+  zero sessions. The app remained connected but history failed before requests.
+- The user reports changing the firewall to silent allow. An anonymous read-only
+  Drive GET with an invalid placeholder token received HTTP 401, with CORS OPTIONS
+  HTTP 200, establishing API reachability without reading or uploading records.
+- A native Chrome probe with fetch called on an ordinary object threw TypeError
+  before networking; the identical GET with the global receiver returned HTTP
+  401. The client used `this.transport(...)`, which supplies the client receiver.
+  It now explicitly invokes the transport with `globalThis`.
+- Automatic approval review rejected a tool-driven Sync now retry because it
+  could upload collection data without sufficiently explicit payload/destination
+  authorization for that retry. That action was not executed. Investigation used
+  read-only counts, history refresh and anonymous connectivity probes instead.
+- Added a localhost JSON fixture and a transport shim that forwards the client's
+  actual receiver to native browser fetch. No live Google credentials are used
+  by this regression; existing arrow-function mocks cannot catch this issue.
+- All 30 adapter checks passed in actual Chrome 156, Safari/IndexedDB and
+  Firefox/OPFS. Safari/Firefox also passed the full Drive workflow suite,
+  including import/replacement rollback, recovery, pinned preview, account
+  switching and repeated-submit safeguards.
+- Sequential populated upgrades from `0fb9a4d` passed using
+  `TEST_PREVIOUS_REF=HEAD uv run npm run test:upgrade` (Safari/IndexedDB) and
+  `TEST_PREVIOUS_REF=HEAD FIREFOX_BIDI_URL=ws://127.0.0.1:9228/session uv run npm
+  run test:upgrade:firefox` (Firefox/OPFS). Exact records, photos, relationships,
+  historical CSV/Parquet imports, recovery and failed-upgrade preservation passed.
+- After the fix, the user reconnected successfully and reported “No Drive backup
+  yet. No empty backup was uploaded.” This verifies authenticated live history
+  discovery on the configured localhost origin, beyond fake service transports.
+- Initial synthetic fixture preparation hit a database RuntimeError in the
+  development Chrome session. A normal reload, without any reset or storage
+  deletion, retained the original empty collection and allowed preparation of
+  a tiny fixture. This development-runtime interruption is recorded rather than
+  attributed to the HTTP receiver fix; physical/background behavior remains open.
+- Prepared and validated an 8,856-byte synthetic archive containing one bean,
+  one brew session and a generated 16px JPEG, with nulls, zero measurements and
+  binary64 precision values. The user explicitly approved uploading this fixture
+  to the dev account selected during reconnect, downloading/validating it, and
+  retaining the cloud file. No personal collection was uploaded by these checks.
+- The user completed reconnect and reported “Uploaded successfully.” The real
+  resumable upload passed the app's remote size/hash completion checks. A pinned
+  download returned HTTP 200 and passed archive/schema/relationship validation;
+  SQL comparison reported both tables exactly unchanged, including photo and
+  numeric precision. Collection revision and recovery entries were unchanged;
+  preview did not apply merge or replacement. The test backup remains in Drive.
+- This live archive fits in one upload chunk. Larger/multi-chunk, interrupted or
+  expired-token live uploads, cross-profile recovery and explicit live merge/
+  replacement remain unverified; simulated coverage does not establish those
+  paths. Physical iPhone/iPad, Safari OPFS, Home Screen/background lifecycle and
+  deployed build behavior remain unverified. No deployment performed.
+- Storage names, schema/units, backup formats, dependencies, isolation and
+  service worker remain unchanged. No existing records or snapshots were deleted.
+
+- Final Chrome OPFS normal-reload check retained exact synthetic CSV exports,
+  including the photo, microsecond dates and numeric values. No reset or storage
+  deletion was used; Google tokens appropriately clear on reload.
+- Final `uv run npm run build` and `git diff --check` passed. Production preview
+  at `/CoffeeOS/` served all eight relative resources with HTTP 200, retained
+  app COOP/COEP isolation and the helper's narrow header exception. The fix is
+  ready for deployment; it has not been deployed by this session.
+
+---
+
+## Stage 36: Record Acceptance of Drive Backup Stages
+
+- [x] **Status:** Complete; user acceptance recorded
+
+### Goal
+
+Reflect the user's acceptance of Stages 24 and 25 without overstating coverage.
+
+### Tasks
+
+1. Retain completed Stage 24; mark Stage 25 and its Stage 33 implementation done.
+2. Preserve earlier verification history and explicitly retain unverified paths.
+
+### Acceptance Criteria (Stage 36 Gate)
+
+- Stages 24, 25 and 33 have checked statuses and dated acceptance context.
+- Existing verification limitations remain visible; application behavior,
+  storage, records and backup formats are unchanged.
+
+### Verification — 2026-10-27
+
+- Recorded the user's acceptance; no new live/device test pass is claimed.
+- Documentation-only update. `uv run npm run build` and `git diff --check`
+  passed; application/storage code was not changed for this acceptance update.

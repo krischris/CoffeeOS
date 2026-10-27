@@ -26,6 +26,15 @@ export async function runDriveSelfTests(): Promise<DriveCheck[]> {
   const hash = await sha256(bytes);
   const remote = { id: 'test-file', size: '3', createdTime: '2026-10-27T12:00:00.000Z', sha256Checksum: hash,
     appProperties: { coffeeosKind: 'snapshot-v1', backupId: 'test-backup', archiveSha256: hash } };
+  await test('Native browser fetch can read history through the stored transport', async () => {
+    const fixture = new URL('/tests/fixtures/drive-empty-history.json', location.href);
+    // Forward the client's actual receiver to the real browser API. Arrow mocks
+    // cannot expose native fetch's receiver requirement and hid this live failure.
+    const native = function(this: typeof globalThis, _url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+      return fetch.call(this, fixture, init);
+    };
+    assert(await new DriveClient(account, controller.signal, native).folder(false) === null);
+  });
   await test('Expired token stops before any request', async () => {
     let calls = 0; const api = client(async () => { calls++; return json({}); }, { ...account, expiresAt: 0 });
     try { await api.folder(false); throw new Error('Expected expiration'); } catch (error) { assert(error instanceof DriveAuthError); }
@@ -192,6 +201,28 @@ export async function runDriveSelfTests(): Promise<DriveCheck[]> {
       (async () => { calls++; return json({}); }) as typeof fetch, () => undefined,
       async () => ({ ...account, sub: 'different' }));
     await rejects(() => api.history(), 'original Google account'); assert(calls === 0);
+  });
+  await test('Drive errors identify the failed step without copying server data', async () => {
+    const privateMessage = 'private-account-and-file-contents';
+    const api = client(async () => json({ error: { message: privateMessage,
+      errors: [{ reason: 'accessNotConfigured' }] } }, 403));
+    try { await api.history(); throw new Error('Expected denied request'); }
+    catch (error) {
+      assert(error instanceof DriveError);
+      assert(error.message.includes('Read backup history') && error.message.includes('HTTP 403'));
+      assert(error.message.includes('Drive API is not enabled') && !error.message.includes(privateMessage));
+    }
+  });
+  await test('Upload initiation failure retains its request phase', async () => {
+    await rejects(() => client(async (_url, init) => init?.method === 'POST'
+      ? json({ error: { errors: [{ reason: 'insufficientPermissions' }] } }, 403)
+      : json({ files: [] })).upload('folder', bytes, 'test-backup', 'test.coffeeos'), 'Start backup upload failed (HTTP 403)');
+  });
+  await test('Network errors do not expose transport messages', async () => {
+    await rejects(() => client(async (_url, init) => {
+      if (init?.method === 'POST') throw new TypeError('private URL with a credential');
+      return json({ files: [] });
+    }).upload('folder', bytes, 'test-backup', 'test.coffeeos'), 'Start backup upload could not reach Google');
   });
   return results;
 }

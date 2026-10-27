@@ -1,3 +1,4 @@
+import { driveStep, driveFailure } from '../driveDiagnostics';
 import { authorizeDrive } from '../driveAuth';
 import { DriveClient, DriveError, syncDrive } from '../drive';
 import type { DriveAccount, RemoteFile } from '../drive';
@@ -100,7 +101,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     try {
       if (authorize) {
         status.textContent = 'Continue in the Google authorization window…';
-        const next = await authorizeDrive(googleDriveClientId, controller.signal);
+        const next = await driveStep('Authorize Google', () => authorizeDrive(googleDriveClientId, controller.signal));
         controller.signal.throwIfAborted(); account = next;
       }
       if (!account) return;
@@ -112,6 +113,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
       }));
       render(); await task(client, controller.signal);
     } catch (failure) {
+      driveFailure('Drive operation', failure);
       if (current !== generation) return;
       status.textContent = '';
       error.textContent = failure instanceof DriveError || failure instanceof ImportDataError || failure instanceof CommittedWriteError
@@ -124,13 +126,13 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
   }
   async function synchronize(client: DriveClient, signal: AbortSignal): Promise<void> {
     clearPreview();
-    history = await client.history(); const previous = history[0]?.id;
+    history = await driveStep('Read cloud history', () => client.history()); const previous = history[0]?.id;
     showHistory(previous);
     const result = await syncDrive(client, signal);
     signal.throwIfAborted(); status.textContent = result.message;
     if (!result.imported) find('.drive-last').textContent = result.message;
-    if (result.imported) await onImported();
-    history = await client.history(); signal.throwIfAborted(); showHistory(previous);
+    if (result.imported) await driveStep('Refresh app views', onImported);
+    history = await driveStep('Read cloud history', () => client.history()); signal.throwIfAborted(); showHistory(previous); status.textContent = result.message;
   }
   connect.addEventListener('click', () => {
     if (renew && operation) {
@@ -155,12 +157,13 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
   });
   sync.addEventListener('click', () => { enabled = true; void run(synchronize); });
   find('.drive-refresh').addEventListener('click', () => { void run(async (client, signal) => {
-    clearPreview(); history = await client.history(); signal.throwIfAborted(); showHistory(); status.textContent = history.length ? 'History refreshed.' : 'No Drive backup yet.';
+    clearPreview(); history = await driveStep('Read cloud history', () => client.history()); signal.throwIfAborted(); showHistory(); status.textContent = history.length ? 'History refreshed.' : 'No Drive backup yet.';
   }); });
   select.addEventListener('change', clearPreview);
   find('.drive-review').addEventListener('click', () => { void run(async (client, signal) => {
     clearPreview(); const selected = history.find(file => file.id === select.value); if (!selected) return;
-    const validated = await prepareBackup(await client.download(selected)); signal.throwIfAborted();
+    const downloaded = await driveStep('Download snapshot', () => client.download(selected));
+    const validated = await driveStep('Validate downloaded snapshot', () => prepareBackup(downloaded)); signal.throwIfAborted();
     if (validated.manifest.backup_id !== selected.appProperties?.backupId) throw new DriveError('Drive backup identity does not match the archive.');
     pinned = selected; prepared = validated; preview(); status.textContent = 'Review this snapshot before confirming a restore.';
   }); });
@@ -168,10 +171,10 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     if (!prepared) return;
     void run(async () => {
       committing = true; render();
-      const result = await (mode === 'merge' ? confirmBackup(prepared!) : replaceBackup(prepared!));
+      const result = await driveStep(mode === 'merge' ? 'Merge snapshot' : 'Replace snapshot', () => mode === 'merge' ? confirmBackup(prepared!) : replaceBackup(prepared!));
       if ('revision' in result) { prepared!.preview = result; preview(); status.textContent = 'Your collection changed. Review the refreshed counts and confirm again.'; return; }
       clearPreview(); status.textContent = `${mode === 'merge' ? 'Merged' : 'Replaced with'} ${result.beans} beans and ${result.brew_sessions} brew sessions. No automatic upload was started.`;
-      await onImported();
+      await driveStep('Refresh app views', onImported);
     });
   });
   find('.drive-dismiss').addEventListener('click', () => { clearPreview(); status.textContent = 'Restore cancelled. Your collection is unchanged.'; });

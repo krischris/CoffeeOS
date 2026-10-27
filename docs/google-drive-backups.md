@@ -15,10 +15,13 @@ or refresh token belongs in the browser build.
 
 The Google Cloud project must enable **Google Drive API**, configure consent
 branding/audience, and authorize the exact JavaScript origins used for CoffeeOS.
-The registered origin is **only** `https://krischris.github.io` (origins do not
-include `/CoffeeOS/`). Localhost is not registered; real login must use the
-deployed origin. Local automated tests mock Google and need no additional
-authorized origin. For an External app in Testing, add the Google accounts being
+Keep `https://krischris.github.io` registered (origins do not include
+`/CoffeeOS/`). For local live testing, add both `http://localhost` and
+`http://localhost:5174` to the same client's Authorized JavaScript origins, then
+open `http://localhost:5174/?drive-debug=1`. The user reports adding localhost
+on 2026-10-27. Ports and `127.0.0.1` are distinct origins; register exactly the
+origin you use. Local automated tests simulate Google and need no Google origin
+configuration. For an External app in Testing, add the Google accounts being
 used as test users. Grant only
 `https://www.googleapis.com/auth/drive.file`, `openid`, and `email`.
 The GIS popup token model does not require a redirect callback URL.
@@ -189,3 +192,47 @@ was accepted by the user on 2026-10-27 after private testing. Stage 25 still nee
 live history, interrupted transfer/reauthorization, cross-profile restore and
 physical iPhone/Home Screen verification on the deployed origin. Do these with
 dedicated fixtures and a local backup; desktop automation cannot establish them.
+
+## Opt-in live failure diagnostics (Stage 34)
+
+Deploy the candidate build, then open:
+
+`https://krischris.github.io/CoffeeOS/?drive-debug=1`
+
+Open Chrome DevTools → Console, then use Connect/Sync now as usual and reproduce
+the failure. Console lines prefixed `[CoffeeOS Drive]` show stages and safe HTTP
+statuses. Leave that page open until the report is copied; diagnostics are held
+only in memory and reset on reload.
+
+Copy the report in the Console:
+
+```js
+copy(coffeeosDriveDebug.report())
+```
+
+For a read-only check of the current local collection and archive pipeline:
+
+```js
+await coffeeosDriveDebug.runLocalChecks()
+```
+
+Then copy the report again. Local checks capture, package, validate and compare
+all stored fields through rollback-only staging. They do not authorize Google,
+upload, import, replace, create recovery copies or change collection revisions.
+A local edit during comparison stops safely. Avoid starting another operation
+while collecting the report so its sequence stays easy to follow.
+
+Reports contain phases, relative timing, safe exception categories/source
+locations and environment capability flags. They exclude tokens, email, record
+contents/counts, file IDs, SQL, archive bytes, upload-session URLs and raw server
+or exception messages. Do not share an unfiltered network trace, HAR, cookies or
+Google authorization URL. Ordinary visits without `drive-debug=1` expose no
+diagnostic global and emit no diagnostic console events.
+
+Chrome debugging uses a separate project profile and does not inherit normal
+Google cookies. The normal profile may reuse an existing Google login, with
+account selection/consent still controlled by Google. A blank automation popup
+is not evidence that the normal login callback failed. Stage 35 fixed the post-login native-fetch receiver failure. User-assisted Chrome
+localhost testing subsequently passed authenticated history, an 8,856-byte
+synthetic upload, pinned download and exact preview comparison. Extended live
+transfer/recovery and physical-device checks remain separate from that result.

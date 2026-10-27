@@ -1,3 +1,4 @@
+import { driveStep, driveResponse, driveFailure } from './driveDiagnostics';
 import { backupLimits, packageBackup, prepareBackup, sha256, unpackBackup } from './backups';
 import { captureDriveSnapshot, recoverEmptyBackup } from './db';
 
@@ -40,20 +41,30 @@ export class DriveClient {
       throw new DriveError('Drive returned an unsupported upload destination.');
     }
     const retryable = !init.method || (resumable && !init.body);
+    const phase = resumable ? (init.body ? 'Upload backup chunk' : 'Check upload progress')
+      : url.pathname.startsWith('/upload/') ? 'Start backup upload'
+        : url.pathname === '/drive/v3/files' ? (init.method === 'POST' ? 'Create backup folder' : 'Read backup history')
+          : url.searchParams.get('alt') === 'media' ? 'Download selected backup' : 'Verify uploaded backup';
     let renewed = false;
     for (let attempt = 0; ; attempt++) {
       this.signal.throwIfAborted();
       if (Date.now() >= this.account.expiresAt) { await this.renew(); renewed = true; }
+      this.progress(`${phase}…`);
       let response: Response;
       try {
-        response = await this.transport(url.href, {
+        // Native Window.fetch requires its global receiver. Calling the stored
+        // transport as a client method fails before network access in Chrome.
+        response = await this.transport.call(globalThis, url.href, {
           ...init, headers: { ...init.headers, Authorization: `Bearer ${this.account.token}` },
           signal: AbortSignal.any([this.signal, AbortSignal.timeout(60_000)]), redirect: 'error', credentials: 'omit',
         });
       } catch (error) {
         if (retryable && attempt < 3 && !this.signal.aborted) { await this.pause(attempt); continue; }
-        throw error;
+        if (this.signal.aborted) throw error;
+        driveFailure(phase, error);
+        throw new DriveTransientError(`${phase} could not reach Google. Check your connection and browser network restrictions, then retry.`);
       }
+      driveResponse(phase, response.status);
       if (response.status === 401) {
         if (renewed) throw new DriveAuthError('Google access was revoked. Cancel and reconnect.');
         await this.renew(); renewed = true; continue;
@@ -64,9 +75,21 @@ export class DriveClient {
       try { reason = (await response.clone().json()).error?.errors?.[0]?.reason ?? ''; } catch { /* Status still identifies the failure. */ }
       const transient = response.status === 429 || response.status >= 500 || ['rateLimitExceeded', 'userRateLimitExceeded'].includes(reason);
       if (transient && retryable && attempt < 3) { await this.pause(attempt); continue; }
-      if (response.status === 404 || response.status === 410) throw new DriveError('Drive file or upload session is missing or expired. Refresh history; your local collection is kept.');
-      if (reason === 'storageQuotaExceeded') throw new DriveError('Google Drive is full. Free space or save a local backup.');
-      throw new (transient ? DriveTransientError : DriveError)(`Drive request failed (${response.status}). Check connection, Google access and available Drive space, then try again.`);
+      if (response.status === 404 || response.status === 410) throw new DriveError(`${phase} failed (HTTP ${response.status}): Drive file or upload session is missing or expired. Refresh history; your local collection is kept.`);
+      if (reason === 'storageQuotaExceeded') throw new DriveError(`${phase} failed: Google Drive is full. Free space or save a local backup.`);
+      // Never show Google's free-form message: it can contain account or file data.
+      const reasons: Record<string, string> = {
+        accessNotConfigured: 'Drive API is not enabled for this Google project',
+        serviceDisabled: 'Drive API is not enabled for this Google project',
+        insufficientPermissions: 'Google did not grant the required Drive file permission',
+        appNotAuthorizedToFile: 'this account has not authorized CoffeeOS to access that file',
+        rateLimitExceeded: 'Google temporarily limited requests',
+        userRateLimitExceeded: 'Google temporarily limited requests for this account',
+        dailyLimitExceeded: 'the Google project reached its daily request limit',
+        forbidden: 'Google denied this operation',
+      };
+      const detail = reasons[reason] ?? 'Check Google access, connection and available Drive space';
+      throw new (transient ? DriveTransientError : DriveError)(`${phase} failed (HTTP ${response.status}): ${detail}. Try again after resolving this issue.`);
     }
   }
   private async list(query: string): Promise<RemoteFile[]> {
@@ -209,20 +232,21 @@ export class DriveClient {
 }
 
 export async function syncDrive(client: DriveClient, signal: AbortSignal): Promise<{ message: string; imported: boolean }> {
-  const { snapshot, revision } = await captureDriveSnapshot();
+  const { snapshot, revision } = await driveStep('Capture local snapshot', captureDriveSnapshot);
   signal.throwIfAborted();
   if (snapshot.counts.beans + snapshot.counts.brew_sessions > 0) {
-    const file = await packageBackup(snapshot);
-    const { manifest } = await unpackBackup(file.data);
-    const folder = await client.folder(true);
-    await client.upload(folder!, file.data, manifest.backup_id, file.name);
+    const file = await driveStep('Package local snapshot', () => packageBackup(snapshot));
+    const { manifest } = await driveStep('Validate packaged snapshot', () => unpackBackup(file.data));
+    const folder = await driveStep('Discover backup folder', () => client.folder(true));
+    await driveStep('Upload snapshot', () => client.upload(folder!, file.data, manifest.backup_id, file.name));
     return { imported: false, message: `Uploaded backup captured ${snapshot.exported_at}: ${snapshot.counts.beans} beans and ${snapshot.counts.brew_sessions} brew sessions (${file.data.length} bytes). Later edits wait for Sync now.` };
   }
-  const latest = await client.latest();
+  const latest = await driveStep('Read cloud history', () => client.latest());
   if (!latest) return { imported: false, message: 'No Drive backup yet. No empty backup was uploaded.' };
-  const prepared = await prepareBackup(await client.download(latest));
+  const downloaded = await driveStep('Download snapshot', () => client.download(latest));
+  const prepared = await driveStep('Validate downloaded snapshot', () => prepareBackup(downloaded));
   if (prepared.manifest.backup_id !== latest.appProperties?.backupId) throw new DriveError('The latest Drive backup identity does not match its archive. Recovery stopped; keep the original file.');
   const counts = Object.fromEntries(prepared.manifest.tables.map(t => [t.name, t.row_count])) as { beans: number; brew_sessions: number };
-  await recoverEmptyBackup(prepared.files, counts, revision, signal);
+  await driveStep('Recover empty collection', () => recoverEmptyBackup(prepared.files, counts, revision, signal));
   return { imported: true, message: `Recovered ${counts.beans} beans and ${counts.brew_sessions} brew sessions from the most recently uploaded backup (${latest.createdTime}).` };
 }

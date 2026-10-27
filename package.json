@@ -16,7 +16,8 @@
     "test:upgrade": "node tests/bean-upgrade.mjs",
     "test:upgrade:firefox": "TEST_FIREFOX=1 node tests/bean-upgrade.mjs",
     "test:backups": "node tests/backups-browser.mjs",
-    "test:drive": "node tests/drive-auth-helper.mjs && node tests/drive-browser.mjs"
+    "test:drive": "node tests/drive-auth-helper.mjs && node tests/drive-browser.mjs",
+    "test:drive:diagnostics": "node tests/drive-diagnostics.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

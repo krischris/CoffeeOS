@@ -31,8 +31,22 @@ analytics, or developer-operated server receiving your coffee records.
 Browser storage is not a backup: clearing site data, private browsing, or device
 storage cleanup can remove it. Data does not automatically follow you to another
 browser or device. Keep regular backup files, especially before switching devices.
-If storage is unavailable, the app warns you that records will last only until
-the tab closes.
+If saved storage cannot be opened safely, CoffeeOS shows a recoverable error and
+keeps the original data rather than opening an empty replacement.
+
+## Use CoffeeOS offline
+
+Open CoffeeOS while connected and check **IO → Offline use**. Keep it open until
+it says **Ready for offline use**; the first preparation downloads the app and its
+local database runtime. You can then close and reopen CoffeeOS without a network
+connection, log brews, manage beans, and prepare or import local backups. Google
+Drive still needs an internet connection. Native sharing and cloud-backed Files
+locations depend on your device and the destination's availability.
+
+App updates download while you are online and take effect after all CoffeeOS
+windows are closed and reopened. A failed download keeps the previous complete
+offline version. Browser cleanup or storage eviction can remove offline files;
+reopen online to prepare them again and keep regular backups of your collection.
 
 **Google Drive backups are optional.** Connecting uploads a snapshot of a nonempty
 collection, or restores the latest uploaded backup into an empty collection.

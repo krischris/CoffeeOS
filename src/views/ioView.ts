@@ -3,6 +3,7 @@ import type { DataTarget, ExportFile, ImportFile } from '../db';
 import { backupLimits, confirmBackup, packageBackup, prepareBackup, saveBackup } from '../backups';
 import type { PreparedBackup } from '../backups';
 import { createDriveView } from './driveView';
+import { createOfflineStatus } from '../offline';
 
 export function createIOView(container: HTMLElement, onImported: () => Promise<void>): void {
   container.innerHTML = `
@@ -55,6 +56,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
         <p class="legacy-error form-error" role="alert" hidden></p>
       </form>
     </details>`;
+  createOfflineStatus(container);
   const driveContainer = document.createElement('div');
   container.prepend(driveContainer);
   createDriveView(driveContainer, async () => { await onImported(); await recoveries(); });

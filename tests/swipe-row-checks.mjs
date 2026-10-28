@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 
 export async function checkSwipeRows({sync, evaluate, waitFor, api}) {
+  if (api && !process.env.TEST_FIREFOX) {
+    // Safari pauses CSS transitions in hidden automation windows. Synthetic
+    // settling assertions need the same visible-window precondition as drags.
+    await api('/window', {handle:await api('/window')});
+    await waitFor('document.hasFocus() && document.visibilityState === "visible"');
+  }
   if(process.env.TEST_REDUCED_MOTION) assert.equal(await sync(`return matchMedia('(prefers-reduced-motion: reduce)').matches;`),true,'isolated browser honors reduced-motion preference');
   const before=await evaluate(`const db=await getDB();return {beans:await db.getBeans(),sessions:await db.getBrewSessions(),csv:(await db.exportData('csv',false)).map(f=>Array.from(f.data))};`);
   for(const kind of ['bean','session']) {

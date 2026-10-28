@@ -32,6 +32,10 @@ Failure injection is confined
 to automation fixtures. Safari currently selects IndexedDB; Firefox covers OPFS.
 Service-worker replacement runs with host isolation headers; it is not proof of
 GitHub Pages or physical iOS Home Screen behavior.
+The original fault-injection matrix uses the isolation-only worker template;
+its deliberately changing HTML/worker responses cannot be served from an
+immutable offline shell. Stage 52's separate offline suite tests the actual
+generated production worker and update lifecycle on a headerless host.
 
 Stage 9 introduces schema v2: nullable `beans.photo_jpeg` stores a bounded JPEG
 data URL. Existing identifiers and the pinned DuckDB runtime remain unchanged.
@@ -145,3 +149,22 @@ Run the two backends sequentially. The new legacy-text checks also cover default
 rejection, opt-in preservation, merge/empty recovery and recovery downloads.
 Native Safari swipe checks explicitly activate the automation window and assert
 feedback sampled during pointerdown dispatch; missing input gets its own failure.
+
+Stage 52 adds `uv run npm run test:offline` and
+`TEST_FIREFOX=1 uv run npm run test:offline`. Run them sequentially: they rebuild
+the shared `.cache/bean-upgrade` fixtures and serve port 5177. Safari WebDriver
+and the isolated Firefox endpoint must already be running. The previous revision
+defaults to `HEAD` and can be pinned with `TEST_PREVIOUS_REF`.
+
+These checks replace a populated previous production build at the same profile,
+origin and `/CoffeeOS/` path. The candidate host has no isolation headers; the
+real production worker must supply them. After installation, every origin
+request is disconnected and actual tab close/reopen verifies cold startup,
+UI brew saves, exact records/microseconds/photos/nulls/precision, old CSV/Parquet,
+immutable recoveries and local backup creation/validation. Additional checks
+cover failed storage startup, missing/corrupt/interrupted update downloads,
+injected shell-cache quota failure, coherent cache repair, waiting updates with
+drafts, scope-limited cleanup, the helper exception and a headerless first visit
+on a second isolated localhost origin. Quota injection is not a real disk-full
+capacity measurement. These desktop checks do not replace physical airplane-mode
+and Home Screen/storage-eviction acceptance.

@@ -64,7 +64,16 @@
     }, { once: true });
     void navigator.serviceWorker?.getRegistration().then(registration => {
       if (!registration) throw new Error('No isolation worker');
-      return registration.update();
+      return registration.update().then(() => {
+        const pending = registration.installing || registration.waiting;
+        const waiting = () => {
+          if (!active || !registration.waiting) return;
+          finish({ type: 'error' });
+          status.textContent = 'An app update is ready. Close all CoffeeOS windows, reopen CoffeeOS, then connect Google Drive again.';
+        };
+        if (pending) pending.addEventListener('statechange', waiting);
+        waiting();
+      });
     }).catch(() => {
       finish({ type: 'error' }); status.textContent = 'This host still isolates the authorization window. Configure the helper headers in the CoffeeOS setup guide, then reconnect.';
     });

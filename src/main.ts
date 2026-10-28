@@ -15,8 +15,13 @@ if (!app) {
   throw new Error('Missing #app element');
 }
 
-const startup = createStartupView(app, getDatabaseStartupPhase);
+let preparingOffline = Boolean(window.coffeeosOfflineStartup && !window.crossOriginIsolated);
+const startup = createStartupView(app, () => preparingOffline ? 'Preparing CoffeeOS for offline use' : getDatabaseStartupPhase());
 try {
+  // On a headerless host, first install establishes isolation by reloading. Do
+  // not open storage or expose editable drafts before that automatic reload.
+  await window.coffeeosOfflineStartup;
+  preparingOffline = false;
   await initDB();
 } catch (error) {
   console.error('Could not initialize the coffee database.', error);

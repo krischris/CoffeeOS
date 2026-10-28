@@ -18,8 +18,8 @@
 4. **Runtime and hosting:** Pin local DuckDB-Wasm/assets together. Preserve Vite
    `base: './'`, dev/preview COOP `same-origin` and COEP `require-corp`.
    Check relative assets at `/CoffeeOS/`; dev headers do not prove host isolation.
-   The isolation service worker is not an offline cache. Keep the deployment
-   origin stable; an origin change needs an explicit tested transfer/recovery plan.
+   Stage 52 adds a verified production shell cache to the isolation worker. Keep
+   the deployment origin stable; an origin change needs a tested recovery plan.
 5. **Data preservation:** Preserve IDs, bean/session relationships, units, dates,
    timestamp precision, null/empty distinctions, comments, photos and numeric
    precision. Historical CSV/Parquet backups remain readable. Use additive optional
@@ -83,6 +83,8 @@ Bean Manager and IO, deployed with relative PWA assets and database isolation.
 2. Configure strict TypeScript, Vite relative base and both dev/preview isolation
    headers. Load the local `coi-serviceworker.js`; retain its license and Safari
    compatibility retry for bodyless conditional 304 responses without validators.
+   Stage 52 extends production builds with a verified, complete offline shell;
+   updates wait for existing windows to close and never clear saved records.
 3. Supply relative manifest/start URL, icons, standalone iOS metadata and
    `viewport-fit=cover`. Default to Brew Controller; tabs switch cleanly.
 4. Share navy surfaces, light text, peach accents, visible borders/focus and
@@ -2300,3 +2302,50 @@ retaining original and cleanup errors separately, following Stage 50's findings.
   Google and deployed-host behavior remain unverified in this follow-up. Stopped
   the local Vite/preview servers and Safari WebDriver after verification; changes
   remain uncommitted.
+
+## Stage 52: Launch and Brew Offline
+
+- [ ] **Status:** In progress.
+
+### Goal
+
+After one successful online preparation, reopen CoffeeOS without a network
+connection and use the same saved collection to log brews and manage backups.
+
+### Tasks
+
+1. [x] Generate a complete production asset manifest, including DuckDB workers,
+   Wasm and Parquet support; cache and verify one coherent build per installation.
+2. [x] Preserve isolation and the Drive helper exception, expose offline readiness
+   in IO, and avoid automatic update reloads while editors or writes are open.
+3. [x] Verify offline cold launches, writes/reloads, backup use, failed/partial
+   updates and populated previous-build upgrades on IndexedDB and OPFS.
+4. [ ] Run Safari regression, production subpath/header checks and build; record
+   results and physical-device/deployed-host limitations and update user guidance.
+
+### Acceptance Criteria (Stage 52 Gate)
+
+- After IO reports readiness, closing/navigating away and reopening `/CoffeeOS/`
+  with all origin requests unavailable starts the complete app with isolation.
+  Beans, linked sessions, exact fields and subsequent offline writes survive reload.
+- Production output caches its own HTML, JS/CSS, icons, privacy content, DuckDB
+  workers, Wasm and Parquet extension assets. Only same-origin, scoped static
+  resources are cached; no Google/API/token/backup or user database payloads enter
+  the shell cache. Development keeps its existing network behavior.
+- Downloads are checked against the build's hashes. Interrupted, missing, corrupt
+  or quota-failed preparation cannot activate a partial replacement. The prior
+  complete shell and saved data remain available; errors are recoverable.
+- Updates wait for existing app windows to close. First-install isolation reload
+  happens before database opening/editing. Cache cleanup touches only this scope's
+  obsolete static shell caches, retains the preceding build and preserves records.
+- Previous-build fixtures on both storage backends survive replacement, startup
+  and reload at the same isolated profile/origin. Old CSV/Parquet remain readable;
+  failed upgrades retain original records without presenting an empty collection.
+- Safari workflows, `/CoffeeOS/` assets, main/helper isolation, build and whitespace
+  checks pass. Physical iPhone/iPad airplane-mode, Home Screen, native Files/Share,
+  storage eviction and deployed-host behavior are reported separately.
+
+### Verification — 2026-10-28
+
+- Implementation and verification in progress. Storage names, locks, database
+  formats, origin and dependencies remain unchanged.

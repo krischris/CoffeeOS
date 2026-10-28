@@ -180,7 +180,15 @@ async function createEngine(): Promise<{ db: duckdb.AsyncDuckDB; parquetURL: str
   });
   if (!bundle.mainWorker) throw new Error('No compatible database worker is available.');
   startupPhase = 'Loading the database worker and Wasm';
-  const worker = new Worker(bundle.mainWorker);
+  // A blob bootstrap inherits the page's isolation policy on headerless hosts.
+  // importScripts still uses the same Vite-managed, cacheable worker asset.
+  // Development without a controlling service worker keeps direct loading.
+  const bootstrap = navigator.serviceWorker?.controller
+    ? URL.createObjectURL(new Blob([`importScripts(${JSON.stringify(new URL(bundle.mainWorker, location.href).href)});`], { type: 'text/javascript' }))
+    : null;
+  let worker: Worker;
+  try { worker = new Worker(bootstrap ?? bundle.mainWorker); }
+  catch (error) { if (bootstrap) URL.revokeObjectURL(bootstrap); throw error; }
   const db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING), worker);
   // The pinned SDK clears pending tasks on Worker.error without rejecting them.
   // Bound instantiation BEFORE opening/registering any persistent database files.
@@ -212,6 +220,7 @@ async function createEngine(): Promise<{ db: duckdb.AsyncDuckDB; parquetURL: str
     await db.terminate();
     throw error;
   } finally {
+    if (bootstrap) URL.revokeObjectURL(bootstrap);
     clearTimeout(timeout!);
     if (!instantiated) {
       worker.removeEventListener('error', failed);

@@ -24,11 +24,17 @@ const server = createServer(async (req, res) => {
     if (!path.startsWith('/CoffeeOS/')) { res.writeHead(404).end(); return; }
     const relative = path.slice('/CoffeeOS/'.length) || 'index.html';
     let data = await readFile(resolve('.cache/bean-upgrade', build, relative));
+    // This matrix injects network HTML/worker startup faults. Use the isolation
+    // template here so an intentional immutable shell cannot hide those probes.
+    // offline-browser.mjs verifies actual production worker/build replacement.
+    if (build === 'candidate' && relative === 'coi-serviceworker.js') data = await readFile('public/coi-serviceworker.js');
     if (relative.includes('.worker-') && requested.searchParams.has('startup-failure')) {
       data = Buffer.from(requested.searchParams.get('startup-failure') === 'error' ? "throw new Error('Injected database worker load failure');" : '');
     }
     if (relative === 'index.html' && failWorker) data = Buffer.from(data.toString().replace('<head>', `<head><script>
-      const RealWorker=Worker;window.Worker=class extends RealWorker{constructor(url,options){const target=new URL(url,location.href);target.searchParams.set('startup-failure','${failWorker}');super(target,options);if('${failWorker}'==='message')setTimeout(()=>this.dispatchEvent(new MessageEvent('messageerror')),0);}};
+      const RealWorker=Worker;window.Worker=class extends RealWorker{constructor(url,options){const target=new URL(url,location.href);let injected;
+        if(target.protocol==='blob:')injected=URL.createObjectURL(new Blob([${JSON.stringify(failWorker === 'error' ? "throw new Error('Injected database worker load failure');" : '')}],{type:'text/javascript'}));
+        else target.searchParams.set('startup-failure','${failWorker}');super(injected||target,options);if(injected)URL.revokeObjectURL(injected);if('${failWorker}'==='message')setTimeout(()=>this.dispatchEvent(new MessageEvent('messageerror')),0);}};
       const realTimeout=window.setTimeout;window.setTimeout=(fn,delay,...args)=>realTimeout(fn,delay===120000?100:delay,...args);
     </script>`));
     if (relative === 'index.html' && failStartup) data = Buffer.from(data.toString().replace('<head>', "<head><script>indexedDB.open = () => {throw new Error('Injected upgrade permission failure');};</script>"));
@@ -143,8 +149,13 @@ try {
       return {bean, other, legacyPhoto, backups, recoveries, recoveryHashes, beans:await db.getBeans(), sessions:await db.getBrewSessions()};`);
     await evaluate(`await navigator.serviceWorker.register('./coi-serviceworker.js'); await navigator.serviceWorker.ready;`);
     await evaluate(`await (await getDB()).closeDB();`);
-    await api('/url', {url:'about:blank'});
     build = 'candidate';
+    // Establish the current isolation-only fixture policy before opening the
+    // candidate. This suite's HTML/network faults intentionally bypass shell
+    // caching; the offline suite separately exercises waiting production updates.
+    await evaluate(`const reg=await navigator.serviceWorker.getRegistration();await reg.update();const worker=reg.installing||reg.waiting;
+      if(worker&&worker.state!=='activated')await new Promise(resolve=>worker.addEventListener('statechange',()=>{if(worker.state==='activated')resolve();}));`);
+    await api('/url', {url:'about:blank'});
     // Recent previous builds already migrated photos. Inject migration failures
     // only for legacy fixtures that actually require that migration.
     const needsPhotoMigration = seeded.beans.some(bean => !('photo_jpeg' in bean));

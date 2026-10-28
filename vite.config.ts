@@ -1,4 +1,8 @@
+import { createHash } from 'node:crypto';
+import { readFile, writeFile, readdir } from 'node:fs/promises';
+import { resolve, relative } from 'node:path';
 import { defineConfig } from 'vite';
+import type { Plugin } from 'vite';
 
 const isolationHeaders = {
   'Cross-Origin-Opener-Policy': 'same-origin',
@@ -7,7 +11,7 @@ const isolationHeaders = {
 
 export default defineConfig({
   base: './',
-  plugins: [{
+  plugins: [offlineBuild(), {
     name: 'drive-authorization-headers',
     configureServer(server) { server.middlewares.use(authorizationHeaders); },
     configurePreviewServer(server) { server.middlewares.use(authorizationHeaders); },
@@ -30,6 +34,38 @@ export default defineConfig({
     headers: isolationHeaders,
   },
 });
+
+// Generate from final output, including copied public files and Vite-managed
+// DuckDB assets. Build identity belongs only to the shell cache, never user data.
+function offlineBuild(): Plugin {
+  return {
+    name: 'coffeeos-offline-build',
+    apply: 'build',
+    async writeBundle(options) {
+      const directory = resolve(options.dir!);
+      const paths: string[] = [];
+      async function visit(folder: string): Promise<void> {
+        for (const entry of await readdir(folder, { withFileTypes: true })) {
+          const path = resolve(folder, entry.name);
+          if (entry.isDirectory()) await visit(path);
+          else paths.push(relative(directory, path).split('\\').join('/'));
+        }
+      }
+      await visit(directory);
+      const files = [];
+      for (const path of paths.sort()) {
+        const bytes = await readFile(resolve(directory, path));
+        files.push({ path, hash: createHash('sha256').update(bytes).digest('hex') });
+      }
+      const id = createHash('sha256').update(JSON.stringify(files)).digest('hex');
+      const workerPath = resolve(directory, 'coi-serviceworker.js');
+      const worker = await readFile(workerPath, 'utf8');
+      const placeholder = 'const offlineBuild = null;';
+      if (!worker.includes(placeholder)) throw new Error('Missing offline build placeholder');
+      await writeFile(workerPath, worker.replace(placeholder, `const offlineBuild = ${JSON.stringify({ id, files })};`));
+    },
+  };
+}
 
 // Only this static helper may retain Google's popup relationship. The database
 // document, workers and every other asset retain the configured isolation policy.

@@ -1,7 +1,9 @@
 # Google Drive backup and recovery (Stages 24–25)
 
-Google Drive is optional. File backups and offline brewing work without a Google
-connection. There is no automatic background sync. Stage 41 remembers a valid
+Google Drive is optional. File backups and brewing work without a Google
+connection. For offline reopening, first keep the production app open online
+until **IO → Offline use** reports readiness. Drive authorization and transfers
+still need an internet connection. There is no automatic background sync. Stage 41 remembers a valid
 Google connection between visits until the access token expires.
 
 ## Google app configuration

@@ -12,6 +12,7 @@
     "test:review": "node tests/review-browser.mjs",
     "test:db": "node tests/db-browser.mjs",
     "test:safari": "node tests/db-safari.mjs",
+    "test:offline": "node tests/offline-browser.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:upgrade": "node tests/bean-upgrade.mjs",

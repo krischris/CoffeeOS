@@ -44,6 +44,19 @@ return async (path, body, method) => {
     ({context} = await command('browsingContext.create', {type:'tab', userContext}));
     return {sessionId:'firefox'};
   }
+  if (path.endsWith('/window/new')) {
+    const created = await command('browsingContext.create', {type:'tab', userContext});
+    return {handle:created.context, type:'tab'};
+  }
+  if (path.endsWith('/window') && method === 'DELETE') {
+    await command('browsingContext.close', {context});
+    context = undefined;
+    return;
+  }
+  if (path.endsWith('/window')) {
+    if (body?.handle) { context = body.handle; return; }
+    return context;
+  }
   if (method === 'DELETE') {
     await command('browsingContext.close', {context});
     await command('browser.removeUserContext', {userContext});

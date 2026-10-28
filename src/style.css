@@ -367,6 +367,8 @@ button:disabled { opacity: 0.65; cursor: wait; }
 .brewing-chart-summary { margin-top: 12px; font-size: 14px; line-height: 1.6; color: var(--accent); }
 
 .io-import { margin-top: 24px; }
+.io-offline { margin-top: 24px; }
+.io-offline h2 { margin: 0 0 16px; font-size: 20px; }
 .io-drive { margin-bottom: 24px; }
 .io-export, .io-import, .io-drive { min-width: 0; overflow-wrap: anywhere; }
 .io-export h2, .io-import h2, .io-drive h2 { margin: 0 0 20px; font-size: 20px; }

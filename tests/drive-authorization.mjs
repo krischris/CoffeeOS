@@ -96,6 +96,12 @@ try {
     try{check(!cache.saveDriveAuthorization(clientId,account,true),'quota returns memory-only');}finally{Storage.prototype.setItem=set;}
     Storage.prototype.getItem=function(){throw new DOMException('Injected denied storage','SecurityError');};
     try{check(cache.readDriveAuthorization(clientId)===null,'blocked read is optional');}finally{Storage.prototype.getItem=get;}
+    cache.setDriveSwitchPending(true);cache.forgetDriveAuthorization();check(cache.readDriveSwitchPending(),'decision independent of credentials');
+    cache.setDriveSwitchPending(false);check(!cache.readDriveSwitchPending(),'explicit disconnect clears decision');
+    Storage.prototype.setItem=function(){throw new DOMException('Injected full decision storage','QuotaExceededError');};
+    try{check(cache.readDriveSwitchPending(),'unavailable decision storage requires confirmation');}finally{Storage.prototype.setItem=set;}
+    Storage.prototype.getItem=function(){throw new DOMException('Injected denied decision storage','SecurityError');};
+    try{check(cache.readDriveSwitchPending(),'denied decision reads require confirmation');}finally{Storage.prototype.getItem=get;}
     cache.saveDriveAuthorization(clientId,{...account,expiresAt:Date.now()+50},true);
     await new Promise(resolve=>setTimeout(resolve,100));check(localStorage.getItem(key)===null,'expiry timer purges credentials');
   `);
@@ -151,13 +157,31 @@ try {
   console.log('PASS restored identity mismatch, revoked token and expired token discard credentials before any Drive request');
 
   await seedCache(); await reload(); await mock();
-  await sync(`document.querySelector('.drive-switch').click();window.__authSub='other';document.querySelector('.drive-connect').click();`);
+  await evaluate(`cache.setDriveSwitchPending(false);window.__restoreDecisionSet=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw new DOMException('Injected full decision stores','QuotaExceededError');};`);
+  await sync(`document.querySelector('.drive-switch').click();`);
+  assert.match(await sync(`return document.querySelector('.drive-error').textContent;`),/switch could not start/);
+  assert.equal(await evaluate(`return Boolean(cache.readDriveAuthorization(clientId));`),true,'failed switch retains original credential and decision');
+  assert.equal(await sync('return window.__driveReads;'),0);
+  await sync(`Storage.prototype.setItem=window.__restoreDecisionSet;document.querySelector('.drive-switch').click();`);
+  await reload(); await mock();
+  await sync(`window.__authSub='other';document.querySelector('.drive-connect').click();`);
   await wait(`document.querySelector('.drive-sync').textContent.includes('Enable') && ${idle}`);
   assert.equal(await sync('return window.__driveReads;'),0);
   assert.equal(await evaluate(`return cache.readDriveAuthorization(clientId).enabled;`),false);
   await reload();
   assert.equal(await sync(`return document.querySelector('.drive-sync').textContent`),'Enable backup to this account');
   assert.equal(await sync(`return document.querySelector('.drive-refresh').disabled`),true);
+  // Pending choice outlives its unenabled credential, including invalidation.
+  await evaluate(`cache.forgetDriveAuthorization();`);
+  await reload(); await mock();
+  await sync(`window.__authSub='third';document.querySelector('.drive-connect').click();`);
+  await wait(`document.querySelector('.drive-sync').textContent.includes('Enable') && ${idle}`);
+  assert.equal(await sync('return window.__driveReads;'),0,'credential invalidation never clears pending confirmation');
+  await evaluate(`const saved=JSON.parse(localStorage.getItem(cache.driveAuthorizationKey));saved.account.expiresAt=Date.now()-1;localStorage.setItem(cache.driveAuthorizationKey,JSON.stringify(saved));`);
+  await reload(); await mock();
+  await sync(`window.__authSub='fourth';document.querySelector('.drive-connect').click();`);
+  await wait(`document.querySelector('.drive-sync').textContent.includes('Enable') && ${idle}`);
+  assert.equal(await sync('return window.__driveReads;'),0,'expired unenabled token still requires confirmation');
   await sync(`document.querySelector('.drive-disconnect').click();`); await reload();
   assert.equal(await sync(`return document.querySelector('.drive-account').textContent`),'Not connected');
   assert.equal(await evaluate(`return localStorage.getItem(cache.driveAuthorizationKey);`),null);

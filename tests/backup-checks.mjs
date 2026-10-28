@@ -57,7 +57,13 @@ export async function checkBackups({sync,evaluate,waitFor,reload}) {
  await rejected(()=>backups.prepareBackup(bomb),'expanded byte bound');
  // Parquet/data validations use valid, hash-matching archives so checks reach staging.
  const files=await db.exportData('parquet');
- const encode=async(data,counts)=>backups.packageBackup({data,counts,exported_at:manifest.exported_at});
+ // Deliberately construct invalid external archives independently of the now-validating exporter.
+ const encode=async(data,counts)=>{
+   await rejected(()=>backups.packageBackup({data,counts,exported_at:manifest.exported_at}),'export must reject unreadable logical tables');
+   const changed=structuredClone(manifest);
+   for(const t of changed.tables){t.row_count=counts[t.name];t.byte_length=data[t.name].length;t.sha256=await backups.sha256(data[t.name]);}
+   return {data:pack({'manifest.json':new TextEncoder().encode(JSON.stringify(changed)),'beans.parquet':data.beans,'brew_sessions.parquet':data.brew_sessions})};
+ };
  const broken=await encode({beans:new Uint8Array([1,2]),brew_sessions:files[1].data},{beans:3,brew_sessions:2});
  await rejected(()=>backups.prepareBackup(broken.data),'corrupt parquet');
  const orphan=await encode({beans:(await backups.unpackBackup(empty.data)).files[0].data,brew_sessions:files[1].data},{beans:0,brew_sessions:2});

@@ -96,6 +96,11 @@ function renderShell(app: HTMLDivElement): void {
     </nav>
   `;
 
+  window.addEventListener('coffeeos-database-failed', event => {
+    const warning = document.createElement('p'); warning.className = 'storage-warning'; warning.setAttribute('role', 'alert');
+    warning.textContent = (event as CustomEvent<string>).detail;
+    app.querySelector('.app-content')!.prepend(warning);
+  });
   createAboutView(app);
   const tabs = Array.from(app.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
   const panels = Array.from(app.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
@@ -105,7 +110,7 @@ function renderShell(app: HTMLDivElement): void {
   const brewContainer = document.createElement('div');
   app.querySelector('#brew-controller .empty-state')!.replaceWith(brewContainer);
   const brewController = createBrewController(brewContainer, {
-    onSaved: () => beanManager.refresh(),
+    onSaved: async () => { if (!panels[1]?.hidden) await beanManager.refresh(); },
     onAddBean: () => {
       activateTab(1);
       beanManager.openForm();
@@ -115,7 +120,7 @@ function renderShell(app: HTMLDivElement): void {
   const ioContainer = document.createElement('div');
   app.querySelector('#io .empty-state')!.replaceWith(ioContainer);
   createIOView(ioContainer, async () => {
-    await Promise.all([beanManager.refresh(), brewController.refresh()]);
+    await Promise.all([!panels[1]?.hidden ? beanManager.refresh() : Promise.resolve(), !panels[0]?.hidden ? brewController.refresh() : Promise.resolve()]);
   });
 
   function activateTab(activeIndex: number): void {

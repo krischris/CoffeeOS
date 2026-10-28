@@ -280,3 +280,31 @@ is not evidence that the normal login callback failed. Stage 35 fixed the post-l
 localhost testing subsequently passed authenticated history, an 8,856-byte
 synthetic upload, pinned download and exact preview comparison. Extended live
 transfer/recovery and physical-device checks remain separate from that result.
+
+## Review remediation (Stage 44)
+
+Automatic recovery into an empty collection has a local apply boundary. Cancel
+and Disconnect remain available before apply; after apply starts they are disabled
+until the database reports its outcome. A completed recovery refreshes the app
+and reports recovered counts without another cloud request. A committed durability
+failure reports that records are already applied and asks for a local backup;
+it must not be presented as a cancelled transfer or invitation to retry.
+
+Pending Switch account confirmation uses a separate app-path-scoped decision key
+in localStorage, with sessionStorage as a fallback. It contains no token/account
+or collection data and survives credential expiry, invalidation and reload before
+new authorization. Enable and explicit Disconnect clear the pending choice.
+If neither decision store can retain a switch, Switch account leaves the current
+connection in place and shows a recoverable storage error. When neither decision
+store can be read/written safely on open, a fresh connection requires
+Enable confirmation before any Drive request. Ordinary first connections with
+usable decision storage retain their connect-and-sync behavior.
+
+
+Historical whitespace-only names/IDs use CoffeeOS backup format 3, preserving
+original IDs and links exactly, including any damaged legacy photo bytes.
+Healthy backups remain format 1; photo-only compatibility remains format 2.
+Local/Drive previews disclose compatibility requirements. Sync retains an old
+unreadable file and uploads a new preserving snapshot even if its content hash
+matches. Format 3 supports normal merge, replacement, empty-collection recovery
+and read-only diagnostics. See [backup formats](backup-format.md#format-3-preserve-historical-whitespace-only-required-text).

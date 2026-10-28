@@ -7,7 +7,7 @@ import ehParquet from './vendor/duckdb/eh/parquet.duckdb_extension.wasm?url';
 import mvpParquet from './vendor/duckdb/mvp/parquet.duckdb_extension.wasm?url';
 import type { Bean, BrewSession } from './types';
 
-import { isBeanPhoto } from './photos';
+import { isBeanPhoto, isValidBeanPhoto } from './photos';
 import { backupLimits } from './backupContract';
 import { sha256 } from './hash';
 
@@ -31,13 +31,18 @@ const snapshotKey = 'tables-v1';
 const tables = ['beans', 'brew_sessions'] as const;
 const beanColumns = `id, name, CAST(roast_date AS VARCHAR) AS roast_date,
   CAST(freeze_date AS VARCHAR) AS freeze_date,
-  strftime(created_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS created_at, photo_jpeg`;
+  strftime(created_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS created_at, photo_jpeg, CAST(beans AS VARCHAR) AS _record_version`;
 const sessionColumns = `s.id, s.bean_id, b.name AS bean_name,
   strftime(s.brewed_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS brewed_at,
   s.dose_g, s.water_g, s.time_str, s.temp_c, s.grind_um, s.comment,
-  s.yield_g, s.tds_pct, s.extraction_pct`;
+  s.yield_g, s.tds_pct, s.extraction_pct, CAST(s AS VARCHAR) AS _record_version`;
 
 export class DatabaseStartupError extends Error {}
+export class DatabaseRuntimeError extends Error {
+  constructor() { super('The database worker stopped responding. The last change may or may not have committed. Do not submit it again. Reload to reopen saved storage; no replacement collection will be created.'); }
+}
+interface EngineHealth { interrupted: Promise<never>; failure?: Error }
+const engineHealth = new WeakMap<duckdb.AsyncDuckDB, EngineHealth>();
 let startupPhase = 'Waiting to open saved storage';
 export function getDatabaseStartupPhase(): string { return startupPhase; }
 let releaseOwnership: (() => void) | null = null;
@@ -182,7 +187,15 @@ async function createEngine(): Promise<{ db: duckdb.AsyncDuckDB; parquetURL: str
   let timeout: ReturnType<typeof setTimeout>;
   let rejectStartup: (error: Error) => void = () => undefined;
   const interrupted = new Promise<never>((_, reject) => { rejectStartup = reject; });
-  const failed = () => rejectStartup(new DatabaseStartupError('The database worker could not load. Check your connection and reload. Your saved coffee data has been kept.'));
+  let instantiated = false;
+  const health: EngineHealth = { interrupted };
+  engineHealth.set(db, health);
+  void interrupted.catch(() => undefined);
+  const failed = () => {
+    health.failure ??= instantiated ? new DatabaseRuntimeError() : new DatabaseStartupError('The database worker could not load. Check your connection and reload. Your saved coffee data has been kept.');
+    rejectStartup(health.failure);
+    if (instantiated) window.dispatchEvent(new CustomEvent('coffeeos-database-failed', { detail: health.failure.message }));
+  };
   const progress = () => {
     clearTimeout(timeout);
     timeout = setTimeout(() => rejectStartup(new DatabaseStartupError('Loading the database runtime stopped responding. Check your connection and reload. Your saved coffee data has been kept.')), 120_000);
@@ -192,6 +205,7 @@ async function createEngine(): Promise<{ db: duckdb.AsyncDuckDB; parquetURL: str
   progress();
   try {
     await Promise.race([db.instantiate(bundle.mainModule, undefined, progress), interrupted]);
+    instantiated = true;
     const supportsOPFS = bundle.mainModule === ehWasm;
     return { db, parquetURL: supportsOPFS ? ehParquet : mvpParquet, supportsOPFS };
   } catch (error) {
@@ -199,8 +213,10 @@ async function createEngine(): Promise<{ db: duckdb.AsyncDuckDB; parquetURL: str
     throw error;
   } finally {
     clearTimeout(timeout!);
-    worker.removeEventListener('error', failed);
-    worker.removeEventListener('messageerror', failed);
+    if (!instantiated) {
+      worker.removeEventListener('error', failed);
+      worker.removeEventListener('messageerror', failed);
+    }
   }
 }
 
@@ -385,8 +401,18 @@ async function withDatabase<T>(operation: (state: Database) => Promise<T>): Prom
   await initDB();
   return enqueue(async () => {
     if (!database) throw new Error('The database has been closed.');
-    return operation(database);
+    const health = engineHealth.get(database.db);
+    if (health?.failure) throw health.failure;
+    return health ? Promise.race([operation(database), health.interrupted]) : operation(database);
   });
+}
+
+const recordVersions = new WeakMap<object, string>();
+
+function hasChanged(existing: object, original: object): boolean {
+  const version = recordVersions.get(original);
+  return version !== undefined ? recordVersions.get(existing) !== version
+    : Object.keys(existing).some(key => key !== 'bean_name' && (existing as Record<string, unknown>)[key] !== ((original as Record<string, unknown>)[key] ?? null));
 }
 
 async function queryRows<T>(connection: duckdb.AsyncDuckDBConnection, sql: string, params: SQLValue[] = []): Promise<T[]> {
@@ -394,7 +420,11 @@ async function queryRows<T>(connection: duckdb.AsyncDuckDBConnection, sql: strin
   try {
     const result = await statement.query(...params);
     // The explicit SELECT projections define this boundary between Arrow and domain types.
-    return result.toArray().map((row) => row.toJSON() as T);
+    return result.toArray().map((row) => {
+      const value = row.toJSON();
+      if (typeof value._record_version === 'string') { recordVersions.set(value, value._record_version); delete value._record_version; }
+      return value as T;
+    });
   } finally {
     await statement.close();
   }
@@ -424,6 +454,10 @@ const brewSessionDefinition = `(
   extraction_pct DOUBLE
 )`;
 
+export class EditConflictError extends Error {
+  constructor() { super('This record changed or was deleted while you were editing. Your draft is kept. Cancel and reopen the record to review its current values before saving.'); }
+}
+
 export class CommittedWriteError extends Error {
   constructor(cause: unknown) {
     super('The change is already in your collection, but storage could not be confirmed. Do not submit it again. Export a backup from IO before closing this tab.', { cause });
@@ -445,10 +479,10 @@ async function write<T>(state: Database, sql: string, params: SQLValue[]): Promi
   let rows: T[];
   try {
     rows = await queryRows<T>(state.connection, sql, params);
-    // Snapshot this transaction before committing. A failed IndexedDB save rolls back the insert.
-    await snapshotTables(state);
-    await state.connection.query('COMMIT');
+    await commitTransaction(state);
   } catch (error) {
+    if (error instanceof CommittedWriteError) { collectionRevision++; throw error; }
+    if (error instanceof DatabaseRuntimeError) throw error;
     await state.connection.query('ROLLBACK');
     throw error;
   }
@@ -464,7 +498,7 @@ export function getBeans(): Promise<Bean[]> {
 type BeanInput = { name: string; roast_date?: string | null; freeze_date?: string | null; photo_jpeg?: string | null };
 
 function validateBean(input: BeanInput): void {
-  if (input.photo_jpeg != null && !isBeanPhoto(input.photo_jpeg)) throw new Error('Invalid JPEG photo.');
+  if (input.photo_jpeg != null && !isValidBeanPhoto(input.photo_jpeg)) throw new Error('Invalid JPEG photo.');
   for (const date of [input.roast_date, input.freeze_date]) {
     if (date != null && (!/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(date))) {
       throw new Error('Dates must use years from 0001 to 9999.');
@@ -480,12 +514,14 @@ export async function addBean(input: BeanInput): Promise<Bean> {
 }
 
 /** Edit only bean details; preserve identity, creation timestamp and linked sessions. */
-export async function updateBean(id: string, input: Pick<Bean, 'name' | 'roast_date' | 'freeze_date' | 'photo_jpeg'>): Promise<Bean> {
-  validateBean(input);
+export async function updateBean(id: string, input: Pick<Bean, 'name' | 'roast_date' | 'freeze_date' | 'photo_jpeg'>, original?: Bean): Promise<Bean> {
   if (!input.name.trim()) throw new Error('Enter a bean name.');
   return withDatabase(async state => {
-    const existing = await queryRows(state.connection, 'SELECT id FROM beans WHERE id = ?', [id]);
-    if (!existing.length) throw new Error('This bean no longer exists.');
+    const [existing] = await queryRows<Bean>(state.connection, `SELECT ${beanColumns} FROM beans WHERE id = ?`, [id]);
+    if (original && (!existing || hasChanged(existing, original))) throw new EditConflictError();
+    if (!existing) throw new Error('This bean no longer exists.');
+    // Preserve an unchanged historical photo byte for byte; replacements must be valid.
+    validateBean({ ...input, photo_jpeg: input.photo_jpeg === existing.photo_jpeg ? null : input.photo_jpeg });
     // In this DuckDB build, UPDATE ... RETURNING id rewrites the parent row
     // and rejects beans referenced by sessions. Update non-key fields only,
     // then read the result while still holding the serialized database queue.
@@ -499,11 +535,17 @@ export async function updateBean(id: string, input: Pick<Bean, 'name' | 'roast_d
   });
 }
 
-export function getBrewSessions(beanId?: string): Promise<BrewSession[]> {
+export function getBrewSessions(beanId?: string, page?: { offset: number; limit: number }): Promise<BrewSession[]> {
   return withDatabase(({ connection }) => queryRows<BrewSession>(connection,
     `SELECT ${sessionColumns} FROM brew_sessions s JOIN beans b ON b.id = s.bean_id
-      ${beanId === undefined ? '' : 'WHERE s.bean_id = ?'} ORDER BY s.brewed_at DESC, s.id DESC`,
+      ${beanId === undefined ? '' : 'WHERE s.bean_id = ?'} ORDER BY s.brewed_at DESC, s.id DESC${page ? ` LIMIT ${Math.max(1, Math.min(100, Math.trunc(page.limit)))} OFFSET ${Math.max(0, Math.trunc(page.offset))}` : ''}`,
     beanId === undefined ? [] : [beanId]));
+}
+
+/** Counts avoid loading the journal for collapsed bean rows. */
+export function getBeanSessionCounts(): Promise<{ bean_id: string; count: number }[]> {
+  return withDatabase(({ connection }) => queryRows(connection,
+    'SELECT bean_id, count(*)::INTEGER AS count FROM brew_sessions GROUP BY bean_id'));
 }
 
 /** Delete only after an explicit user action; snapshot both tables together. */
@@ -521,9 +563,10 @@ export function deleteBean(beanId: string): Promise<void> {
       await state.connection.query('DROP TABLE brew_sessions');
       await queryRows(state.connection, 'DELETE FROM beans WHERE id = ?', [beanId]);
       await state.connection.query('ALTER TABLE bean_delete_sessions RENAME TO brew_sessions');
-      await snapshotTables(state);
-      await state.connection.query('COMMIT');
+      await commitTransaction(state);
     } catch (error) {
+      if (error instanceof CommittedWriteError) { collectionRevision++; throw error; }
+      if (error instanceof DatabaseRuntimeError) throw error;
       await state.connection.query('ROLLBACK');
       throw error;
     }
@@ -552,14 +595,15 @@ export function addBrewSession(input: Omit<BrewSession, 'id' | 'brewed_at' | 'be
 }
 
 /** Update in place so IDs and bean history links survive editing. */
-export function updateBrewSession(id: string, input: Omit<BrewSession, 'id' | 'bean_name' | 'brewed_at'> & { brewed_at?: string }): Promise<BrewSession> {
+export function updateBrewSession(id: string, input: Omit<BrewSession, 'id' | 'bean_name' | 'brewed_at'> & { brewed_at?: string }, original?: BrewSession): Promise<BrewSession> {
   for (const value of [input.dose_g, input.water_g, input.temp_c, input.grind_um,
     input.yield_g, input.tds_pct, input.extraction_pct]) {
     if (value !== null && !Number.isFinite(value)) return Promise.reject(new Error('Measurements must be finite numbers.'));
   }
   return withDatabase(async (state) => {
-    const existing = await queryRows(state.connection, 'SELECT id FROM brew_sessions WHERE id = ?', [id]);
-    if (!existing.length) throw new Error('This brew session no longer exists.');
+    const [existing] = await queryRows<BrewSession>(state.connection, `SELECT ${sessionColumns} FROM brew_sessions s JOIN beans b ON b.id = s.bean_id WHERE s.id = ?`, [id]);
+    if (original && (!existing || hasChanged(existing, original))) throw new EditConflictError();
+    if (!existing) throw new Error('This brew session no longer exists.');
     return write<BrewSession>(state,
       `UPDATE brew_sessions SET bean_id = ?, brewed_at = COALESCE(?::TIMESTAMP, brewed_at), dose_g = ?, water_g = ?,
         time_str = ?, temp_c = ?, grind_um = ?, comment = ?, yield_g = ?, tds_pct = ?, extraction_pct = ?
@@ -578,7 +622,7 @@ export function closeDB(): Promise<void> {
     initialization = null;
     if (!state) return;
     try {
-      await state.connection.close();
+      if (!engineHealth.get(state.db)?.failure) await state.connection.close();
     } finally {
       state.snapshots?.close();
       try { await state.db.terminate(); }
@@ -639,18 +683,31 @@ export function exportData(format: DataFormat, combined = false): Promise<Export
 }
 
 export interface TableCounts { beans: number; brew_sessions: number }
-export interface BackupSnapshot { data: Snapshot; counts: TableCounts; exported_at: string }
+export interface BackupSnapshot { data: Snapshot; counts: TableCounts; exported_at: string; legacyPhotos?: boolean; legacyText?: boolean }
 export interface MergeCounts { new: number; updated: number; unchanged: number; localOnly: number }
-export interface ImportPreview { revision: number; beans: MergeCounts; brew_sessions: MergeCounts }
+export interface ImportPreview { legacyPhotos?: boolean; legacyText?: boolean; revision: number; beans: MergeCounts; brew_sessions: MergeCounts }
 export interface RecoveryInfo { key: string; created_at: string }
 interface RecoveryRecord extends BackupSnapshot { version: 1 }
 const recoveryPrefix = 'import-recovery-v1:';
+const recoveryInfoPrefix = 'import-recovery-info-v1:';
+
+// Use the same required-text rule for default imports and archive validation.
+function blankRequiredText(table: typeof tables[number]): string {
+  return (table === 'beans' ? ['id', 'name'] : ['id', 'bean_id'])
+    .map(key => `regexp_full_match("${key}", '[\\s\\p{Z}]*')`).join(' OR ');
+}
 
 async function captureBackup(state: Database): Promise<BackupSnapshot> {
   const [counts] = await queryRows<TableCounts>(state.connection, `SELECT
     (SELECT count(*)::INTEGER FROM beans) AS beans,
     (SELECT count(*)::INTEGER FROM brew_sessions) AS brew_sessions`);
-  return { data: await captureTables(state), counts: counts!, exported_at: new Date().toISOString() };
+  const photos = await queryRows<{ photo_jpeg: string }>(state.connection, 'SELECT photo_jpeg FROM beans WHERE photo_jpeg IS NOT NULL');
+  const legacyPhotos = photos.some(row => !isValidBeanPhoto(row.photo_jpeg));
+  const [text] = await queryRows<{ legacy: boolean }>(state.connection, `SELECT
+    EXISTS (SELECT 1 FROM beans WHERE ${blankRequiredText('beans')}) OR
+    EXISTS (SELECT 1 FROM brew_sessions WHERE ${blankRequiredText('brew_sessions')}) AS legacy`);
+  return { data: await captureTables(state), counts: counts!, exported_at: new Date().toISOString(),
+    ...(legacyPhotos ? { legacyPhotos: true } : {}), ...(text?.legacy ? { legacyText: true } : {}) };
 }
 
 /** The queue covers both COPYs and counts; hashing/ZIP runs after releasing it. */
@@ -719,7 +776,9 @@ async function retainImportRecovery(state: Database): Promise<void> {
       tx.onabort = () => reject(tx.error ?? new Error('Could not retain the recovery backup.'));
       tx.onerror = () => {};
       // add (never put) makes recovery copies immutable, even on a UUID collision.
-      tx.objectStore('snapshots').add({ ...snapshot, version: 1 } satisfies RecoveryRecord, recoveryPrefix + crypto.randomUUID());
+      const id = crypto.randomUUID();
+      tx.objectStore('snapshots').add({ ...snapshot, version: 1 } satisfies RecoveryRecord, recoveryPrefix + id);
+      tx.objectStore('snapshots').add({ created_at: snapshot.exported_at }, recoveryInfoPrefix + id);
     });
   } finally { store.close(); }
 }
@@ -728,20 +787,31 @@ export function listImportRecoveries(): Promise<RecoveryInfo[]> {
   return withDatabase(async () => {
     const store = await openSnapshots();
     try {
-      return await new Promise<RecoveryInfo[]>((resolve, reject) => {
-        const results: RecoveryInfo[] = [];
+      const keys = await new Promise<string[]>((resolve, reject) => {
+        const results: string[] = [];
         const tx = store.transaction('snapshots', 'readonly');
-        const request = tx.objectStore('snapshots').openCursor(IDBKeyRange.bound(recoveryPrefix, recoveryPrefix + '\uffff'));
+        const request = tx.objectStore('snapshots').openKeyCursor(IDBKeyRange.bound(recoveryPrefix, recoveryPrefix + '\uffff'));
         request.onsuccess = () => {
           const cursor = request.result;
-          if (!cursor) return;
-          const value = cursor.value as RecoveryRecord;
-          if (value.version === 1) results.push({ key: String(cursor.key), created_at: value.exported_at });
-          cursor.continue();
+          if (cursor) { results.push(String(cursor.key)); cursor.continue(); }
         };
-        tx.oncomplete = () => resolve(results.sort((a, b) => b.created_at.localeCompare(a.created_at)));
+        tx.oncomplete = () => resolve(results);
         tx.onabort = () => reject(tx.error);
       });
+      const results: RecoveryInfo[] = [];
+      for (const key of keys) {
+        const infoKey = recoveryInfoPrefix + key.slice(recoveryPrefix.length);
+        let info = await readRecord<{ created_at: string }>(store, infoKey);
+        if (!info) {
+          // One-time additive index for old copies; original keys/bytes stay intact.
+          const value = await readRecord<RecoveryRecord>(store, key);
+          if (value?.version !== 1) continue;
+          info = { created_at: value.exported_at };
+          await storeRecord(store, infoKey, info);
+        }
+        results.push({ key, created_at: info.created_at });
+      }
+      return results.sort((a, b) => b.created_at.localeCompare(a.created_at));
     } finally { store.close(); }
   });
 }
@@ -766,9 +836,12 @@ function archiveDifference(table: typeof tables[number], left: string, right: st
 /** Keep the IDB snapshot transaction open until SQL commit resolves. This avoids
  * publishing a candidate snapshot if SQL COMMIT fails. An IDB abort after SQL
  * committed is a committed durability warning, preserving the prior snapshot. */
-async function commitArchiveImport(state: Database): Promise<void> {
+async function commitTransaction(state: Database): Promise<void> {
+  const checkWorker = () => { const failure = engineHealth.get(state.db)?.failure; if (failure) throw failure; };
+  checkWorker();
   if (!state.snapshots) { await state.connection.query('COMMIT'); return; }
   const buffers = await captureTables(state);
+  checkWorker();
   await new Promise<void>((resolve, reject) => {
     const tx = state.snapshots!.transaction('snapshots', 'readwrite');
     const store = tx.objectStore('snapshots');
@@ -778,6 +851,8 @@ async function commitArchiveImport(state: Database): Promise<void> {
     tx.oncomplete = () => resolve();
     tx.onerror = () => {};
     tx.onabort = () => {
+      const runtimeFailure = engineHealth.get(state.db)?.failure;
+      if (runtimeFailure) { reject(runtimeFailure); return; }
       void (async () => {
         await committing;
         reject(committed ? new CommittedWriteError(tx.error) : commitFailure ?? tx.error ?? new Error('The backup snapshot could not be saved.'));
@@ -785,12 +860,16 @@ async function commitArchiveImport(state: Database): Promise<void> {
     };
     const keepAlive = () => {
       if (committed || commitFailure) return;
+      // A dead SDK can leave COMMIT pending forever. Release the IDB transaction
+      // without publishing its candidate, so explicit reopen can read saved data.
+      try { checkWorker(); } catch (error) { commitFailure = error; tx.abort(); return; }
       // getKey avoids repeatedly cloning either large Parquet snapshot.
       const request = store.getKey(snapshotKey);
       request.onsuccess = keepAlive;
     };
     const request = store.put(buffers, snapshotKey);
     request.onsuccess = () => {
+      try { checkWorker(); } catch (error) { commitFailure = error; tx.abort(); return; }
       keepAlive();
       committing = state.connection.query('COMMIT').then(() => { committed = true; }).catch(error => {
         commitFailure = error;
@@ -800,33 +879,33 @@ async function commitArchiveImport(state: Database): Promise<void> {
   });
 }
 
-export function previewBackupData(files: ImportFile[], counts: TableCounts): Promise<ImportPreview> {
-  return processImport(files, { counts }) as Promise<ImportPreview>;
+export function previewBackupData(files: ImportFile[], counts: TableCounts, legacyPhotos = false, legacyText = false): Promise<ImportPreview> {
+  return processImport(files, { counts, legacyText, legacyPhotos }) as Promise<ImportPreview>;
 }
-export function mergeBackupData(files: ImportFile[], counts: TableCounts, preview: ImportPreview): Promise<ImportResult | ImportPreview> {
-  return processImport(files, { counts, preview });
+export function mergeBackupData(files: ImportFile[], counts: TableCounts, preview: ImportPreview, legacyPhotos = false, legacyText = false): Promise<ImportResult | ImportPreview> {
+  return processImport(files, { counts, preview, legacyText, legacyPhotos });
 }
 
-export function replaceBackupData(files: ImportFile[], counts: TableCounts, preview: ImportPreview): Promise<ImportResult | ImportPreview> {
-  return processImport(files, { counts, preview, replace: true });
+export function replaceBackupData(files: ImportFile[], counts: TableCounts, preview: ImportPreview, legacyPhotos = false, legacyText = false): Promise<ImportResult | ImportPreview> {
+  return processImport(files, { counts, preview, replace: true, legacyText, legacyPhotos });
 }
 
 /** Cloud recovery can only add to the unchanged, successfully read empty collection. */
-export function recoverEmptyBackup(files: ImportFile[], counts: TableCounts, revision: number, signal: AbortSignal): Promise<ImportResult> {
-  return processImport(files, { counts, empty: { revision, signal } }) as Promise<ImportResult>;
+export function recoverEmptyBackup(files: ImportFile[], counts: TableCounts, revision: number, signal: AbortSignal, onCommit?: () => void, legacyPhotos = false, legacyText = false): Promise<ImportResult> {
+  return processImport(files, { counts, legacyText, legacyPhotos, empty: { revision, signal, onCommit } }) as Promise<ImportResult>;
 }
 
 /** Temporary Drive diagnostic: exercise restore staging and exact comparisons,
  * then ROLLBACK. Never update records, snapshots, revision or recovery copies. */
-export function verifyDriveRoundTrip(files: ImportFile[], counts: TableCounts, revision: number, signal: AbortSignal): Promise<ImportResult> {
-  return processImport(files, { counts, verify: { revision, signal } }) as Promise<ImportResult>;
+export function verifyDriveRoundTrip(files: ImportFile[], counts: TableCounts, revision: number, signal: AbortSignal, legacyPhotos = false, legacyText = false): Promise<ImportResult> {
+  return processImport(files, { counts, legacyText, legacyPhotos, verify: { revision, signal } }) as Promise<ImportResult>;
 }
 
 /** Merge by primary key. All selected files and their durable snapshot succeed together. */
-export function importData(files: ImportFile[]): Promise<ImportResult> {
-  return processImport(files) as Promise<ImportResult>;
+export function importData(files: ImportFile[], options: { preserveLegacyPhotos?: boolean; preserveLegacyText?: boolean } = {}): Promise<ImportResult> {
+  return processImport(files, undefined, options.preserveLegacyPhotos, options.preserveLegacyText) as Promise<ImportResult>;
 }
-function processImport(files: ImportFile[], archive?: { counts: TableCounts; preview?: ImportPreview; replace?: boolean; empty?: { revision: number; signal: AbortSignal }; verify?: { revision: number; signal: AbortSignal } }): Promise<ImportResult | ImportPreview> {
+function processImport(files: ImportFile[], archive?: { legacyText?: boolean; legacyPhotos?: boolean; counts: TableCounts; preview?: ImportPreview; replace?: boolean; empty?: { revision: number; signal: AbortSignal; onCommit?: () => void }; verify?: { revision: number; signal: AbortSignal } }, preserveLegacyPhotos = false, preserveLegacyText = false): Promise<ImportResult | ImportPreview> {
   return withDatabase(async (state) => {
     if (archive?.empty) {
       archive.empty.signal.throwIfAborted();
@@ -901,6 +980,7 @@ function processImport(files: ImportFile[], archive?: { counts: TableCounts; pre
         await connection.query('DROP TABLE incoming_file');
       }
       // Reject ambiguous keys and malformed values before touching either live table.
+      let legacyText = false;
       for (const table of tables) {
         const invalidValues = Object.entries(ioSchema[table]).filter(([, type]) => ['DATE', 'TIMESTAMP', 'DOUBLE'].includes(type))
           .map(([key, type]) => `("${key}" IS NOT NULL AND (NOT isfinite("${key}")${type === 'DOUBLE' ? ''
@@ -908,16 +988,19 @@ function processImport(files: ImportFile[], archive?: { counts: TableCounts; pre
         const required = table === 'beans' ? ['id', 'name', 'created_at'] : ['id', 'bean_id', 'brewed_at'];
         const invalid = [...required.map(key => `"${key}" IS NULL`), "length(trim(id)) = 0", ...invalidValues];
         invalid.push(table === 'beans' ? 'length(trim(name)) = 0' : 'length(trim(bean_id)) = 0');
-        if (archive) for (const key of table === 'beans' ? ['id', 'name'] : ['id', 'bean_id']) {
-          invalid.push(`regexp_full_match("${key}", '[\\s\\p{Z}]*')`);
-        }
-        const [row] = await queryRows<{ invalid: number; duplicates: number }>(connection,
+        const [row] = await queryRows<{ invalid: number; duplicates: number; legacy: number }>(connection,
           `SELECT CAST(count(*) FILTER (WHERE ${invalid.join(' OR ')}) AS INTEGER) AS invalid,
-            CAST(count(*) - count(DISTINCT id) AS INTEGER) AS duplicates FROM incoming_${table}`);
+            CAST(count(*) - count(DISTINCT id) AS INTEGER) AS duplicates,
+            count(*) FILTER (WHERE ${blankRequiredText(table)})::INTEGER AS legacy FROM incoming_${table}`);
+        legacyText ||= row!.legacy > 0;
         if (row!.invalid || row!.duplicates) throw new ImportDataError(`The ${table} file contains invalid values or duplicate IDs.`);
       }
+      if (legacyText && !(archive?.legacyText || preserveLegacyText)) {
+        throw new ImportDataError('Required names and IDs cannot contain only whitespace. For a historical CSV/Parquet backup, enable preservation of legacy whitespace fields to retain their original values.');
+      }
       const photos = await queryRows<{ photo_jpeg: string }>(connection, 'SELECT photo_jpeg FROM incoming_beans WHERE photo_jpeg IS NOT NULL');
-      if (photos.some(row => !isBeanPhoto(row.photo_jpeg) || (archive && !validPhotoEncoding(row.photo_jpeg)))) throw new ImportDataError('The beans file contains an invalid JPEG photo.');
+      const legacyPhotos = photos.some(row => !isValidBeanPhoto(row.photo_jpeg));
+      if (photos.some(row => !isBeanPhoto(row.photo_jpeg)) || (legacyPhotos && !(archive?.legacyPhotos || preserveLegacyPhotos))) throw new ImportDataError('The beans file contains an invalid JPEG photo. For a historical CSV/Parquet backup, enable preservation of damaged legacy photos to retain the original bytes.');
       const [orphans] = await queryRows<{ count: number }>(connection,
         `SELECT CAST(count(*) AS INTEGER) AS count FROM incoming_brew_sessions s
           WHERE ${archive ? '' : 'NOT EXISTS (SELECT 1 FROM beans b WHERE b.id = s.bean_id) AND '}NOT EXISTS (SELECT 1 FROM incoming_beans b WHERE b.id = s.bean_id)`);
@@ -929,7 +1012,7 @@ function processImport(files: ImportFile[], archive?: { counts: TableCounts; pre
 
       if (archive) {
         if (tables.some(table => counts[table] !== archive.counts[table])) throw new ImportDataError('Backup row counts do not match its tables.');
-        const preview = { revision: collectionRevision } as ImportPreview;
+        const preview = { revision: collectionRevision, ...(legacyText ? { legacyText: true } : {}), ...(legacyPhotos ? { legacyPhotos: true } : {}) } as ImportPreview;
         for (const table of tables) {
           const differs = archiveDifference(table, 'i', 'e');
           const [comparison] = await queryRows<MergeCounts>(connection, `SELECT
@@ -987,10 +1070,11 @@ function processImport(files: ImportFile[], archive?: { counts: TableCounts; pre
       }
       for (const table of tables) await connection.query(`DROP TABLE incoming_${table}`);
       archive?.empty?.signal.throwIfAborted();
-      if (archive) await commitArchiveImport(state);
-      else { await snapshotTables(state); await connection.query('COMMIT'); }
+      archive?.empty?.onCommit?.();
+      await commitTransaction(state);
     } catch (error) {
       if (error instanceof CommittedWriteError) { collectionRevision++; throw error; }
+      if (error instanceof DatabaseRuntimeError) throw error;
       await connection.query('ROLLBACK');
       throw error;
     } finally {
@@ -1001,12 +1085,4 @@ function processImport(files: ImportFile[], archive?: { counts: TableCounts; pre
     await flushCommitted(state);
     return counts;
   });
-}
-
-function validPhotoEncoding(photo: string): boolean {
-  const encoded = photo.slice('data:image/jpeg;base64,'.length);
-  try {
-    const decoded = atob(encoded);
-    return decoded.startsWith('\xff\xd8\xff') && decoded.endsWith('\xff\xd9');
-  } catch { return false; }
 }

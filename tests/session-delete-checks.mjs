@@ -88,10 +88,12 @@ export async function checkSessionDeletion({ sync, evaluate, waitFor, api, ready
   await evaluate('const db = await getDB(); await db.closeDB(); await db.initDB();');
   assert.deepEqual(await state(), before, 'Failed deletion preserves durable records');
   await sync(`document.querySelector('${selector} .session-delete').click(); document.querySelector('${selector} .session-delete').click();`);
-  await waitFor(`!document.querySelector('${selector}') && document.querySelector('.session-list').getAttribute('aria-busy') === 'false' && document.querySelector('.bean-list').getAttribute('aria-busy') === 'false'`);
+  await waitFor(`!document.querySelector('${selector}') && document.querySelector('.session-list').getAttribute('aria-busy') === 'false'`);
   const remaining = { beans: before.beans, sessions: before.sessions.filter(session => session.id !== target.id) };
   assert.deepEqual(await state(), remaining, 'Delete removes exactly one session and no beans');
   assert.equal(await sync(`return document.querySelector('.session-count-total').textContent;`), `(${remaining.sessions.length})`);
+  await sync(`document.querySelector('#tab-bean-manager').click();`);
+  await waitFor(`document.querySelector('.bean-list').getAttribute('aria-busy') === 'false'`);
   assert.equal(await sync(`return !!document.querySelector('.bean-session[data-session-id="${target.id}"]');`), false, 'Bean history refreshes');
   await api('/refresh', {}); await ready();
   assert.deepEqual(await state(), remaining, 'Successful deletion survives reload');

@@ -1,3 +1,4 @@
+import {checkDriveRecoveryView} from './drive-recovery-view-checks.mjs';
 import { checkDriveRestore } from './drive-restore-checks.mjs';
 import { checkDriveFingerprints } from './drive-content-checks.mjs';
 import assert from 'node:assert/strict';
@@ -218,4 +219,28 @@ try {
   assert.equal(await sync(`return document.querySelector('.drive-account').textContent`),'Not connected');
   assert.equal(await sync(`return document.documentElement.scrollWidth<=innerWidth`),true);
   console.log('PASS UI connect/sync double-click serialization, navigation, denied auth, normal controls without setup/debug fields, 393px layout');
+  for(const legacyText of [false,true]) await evaluate(String.raw`
+    const db=await getDB(),b=await getBackups(),d=await import('/src/drive.ts'),zip=await import('/node_modules/fflate/esm/browser.js');
+    const textCase=${legacyText};
+    const before=await b.saveBackup();
+    await db.importData([{target:'beans',name:'beans.csv',data:new TextEncoder().encode('id,name,roast_date,freeze_date,created_at,photo_jpeg\nlegacy-drive,Legacy Drive photo,\\N,\\N,2024-01-02T03:04:05.123456Z,"data:image/jpeg;base64,/9j/"\n')}],{preserveLegacyPhotos:true});
+    if(textCase)await db.importData([{target:'beans',name:'beans.csv',data:new TextEncoder().encode('id,name,roast_date,freeze_date,created_at\nlegacy-drive-text,"\t",\\N,\\N,2024-01-02T03:04:05.123456Z\n')}],{preserveLegacyText:true});
+    const preserving=await b.saveBackup(),entries=zip.unzipSync(preserving.data),manifest=JSON.parse(new TextDecoder().decode(entries['manifest.json']));
+    manifest.format_version=1;delete manifest.photo_encoding;delete manifest.text_encoding;entries['manifest.json']=new TextEncoder().encode(JSON.stringify(manifest));
+    const oldBytes=zip.zipSync(entries,{level:0}),oldHash=await b.sha256(oldBytes),contentHash=await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data);
+    window.__uiCloud=[{bytes:oldBytes,remote:{id:'old-unreadable-photo',createdTime:'2024-01-01T00:00:00Z',size:String(oldBytes.length),sha256Checksum:oldHash,appProperties:{coffeeosKind:'snapshot-v1',backupId:manifest.backup_id,archiveSha256:oldHash,contentSha256V1:contentHash}}}];
+    const posts=window.__uiPosts,c=new AbortController(),client=new d.DriveClient({token:'fake',expiresAt:Date.now()+3600000,sub:'test',email:'test@example.invalid'},c.signal);
+    const result=await d.syncDrive(client,c.signal);
+    if(!result.message.includes('Uploaded')||window.__uiPosts!==posts+1)throw Error('Unreadable format 1 with equal content hash must be replaced by a new preserving snapshot');
+    const newest=window.__uiCloud.at(-1);if((await b.prepareBackup(newest.bytes)).manifest.format_version!==(textCase?3:2))throw Error('Drive replacement must use the required compatibility format');
+    const repeated=await d.syncDrive(client,c.signal);if(!repeated.message.includes('Already backed up')||window.__uiPosts!==posts+1)throw Error('Readable preserving snapshot skips repeated upload and restores exact records');
+    const exact=await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data);
+    for(const bean of await db.getBeans())await db.deleteBean(bean.id);
+    const recovered=await d.syncDrive(client,c.signal);
+    if(!recovered.imported||await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data)!==exact)throw Error('Drive recovery lost compatibility fields');
+    if(window.__uiCloud.length!==2)throw Error('Old unreadable cloud archive must be retained');
+    await b.replaceBackup(await b.prepareBackup(before.data));
+  `);
+  console.log('PASS legacy-photo/text Drive sync uploads readable formats 2/3 over an equal-hash unreadable format 1 backup, retains old files and skips repeated upload and restores exact records');
+  await checkDriveRecoveryView({evaluate});
 } finally { if(session) await api('',undefined,'DELETE'); }

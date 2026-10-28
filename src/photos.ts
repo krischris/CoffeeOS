@@ -3,6 +3,16 @@ export function isBeanPhoto(value: string): boolean {
   return value.length <= 2_000_000 && /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(value);
 }
 
+/** New photos use canonical base64 and both JPEG boundary markers. */
+export function isValidBeanPhoto(value: string): boolean {
+  if (!isBeanPhoto(value)) return false;
+  const encoded = value.slice('data:image/jpeg;base64,'.length);
+  try {
+    const bytes = atob(encoded);
+    return btoa(bytes) === encoded && bytes.startsWith('\xff\xd8\xff') && bytes.endsWith('\xff\xd9');
+  } catch { return false; }
+}
+
 export async function compressBeanPhoto(file: File): Promise<string> {
   if (file.size > 30 * 1024 * 1024) throw new Error('Choose a photo smaller than 30 MB.');
   const url = URL.createObjectURL(file);
@@ -21,7 +31,7 @@ export async function compressBeanPhoto(file: File): Promise<string> {
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
     for (const quality of [0.8, 0.65, 0.5]) {
       const jpeg = canvas.toDataURL('image/jpeg', quality);
-      if (isBeanPhoto(jpeg)) return jpeg;
+      if (isValidBeanPhoto(jpeg)) return jpeg;
     }
     throw new Error('This photo is too large. Choose a smaller image.');
   } catch (error) {

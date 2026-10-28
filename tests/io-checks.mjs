@@ -37,6 +37,12 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
       form.requestSubmit(); form.requestSubmit();`);
     await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
     await waitFor(`document.querySelector('.bean-list').getAttribute('aria-busy') === 'false' && document.querySelector('.session-list').getAttribute('aria-busy') === 'false'`);
+    // Hidden views refresh on entry; exercise the user-visible results after import.
+    await sync(`document.querySelector('#tab-bean-manager').click();`);
+    await waitFor(`document.querySelector('.bean-list').getAttribute('aria-busy') === 'false'`);
+    await sync(`document.querySelector('#tab-brew-controller').click();`);
+    await waitFor(`document.querySelector('.session-list').getAttribute('aria-busy') === 'false'`);
+    await sync(`document.querySelector('#tab-io').click();`);
     return sync(`return { error: !document.querySelector('.legacy-error').hidden,
       message: document.querySelector('.legacy-status').textContent, detail: document.querySelector('.legacy-error').textContent };`);
   }

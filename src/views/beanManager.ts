@@ -1,7 +1,8 @@
-import { CommittedWriteError, addBean, updateBean, deleteBean, getBeans, getBrewSessions } from '../db';
+import { CommittedWriteError, EditConflictError, DatabaseRuntimeError, addBean, updateBean, deleteBean, getBeans, getBrewSessions, getBeanSessionCounts } from '../db';
 import { compressBeanPhoto, isBeanPhoto } from '../photos';
 import type { Bean, BrewSession } from '../types';
 import { renderSessionMetrics } from './sessionMetrics';
+import { attachSwipeRow } from './swipeRow';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -25,7 +26,7 @@ function renderSession(session: BrewSession): HTMLElement {
   return card;
 }
 
-function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onDelete: () => Promise<void>): HTMLElement {
+function renderBean(bean: Bean, sessionCount: number, onEdit: () => void, onDelete: () => Promise<void>): HTMLElement {
   const card = document.createElement('article');
   card.className = 'bean-card';
   card.dataset.beanId = bean.id;
@@ -49,7 +50,7 @@ function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onD
     dates.append(field);
   }
   if (dates.childElementCount) summary.append(dates);
-  summary.append(textElement('p', `${sessions.length} brew ${sessions.length === 1 ? 'session' : 'sessions'}`, 'session-count'));
+  summary.append(textElement('p', `${sessionCount} brew ${sessionCount === 1 ? 'session' : 'sessions'}`, 'session-count'));
   summary.append(textElement('span', 'Tap anywhere to close', 'bean-close-hint'));
   details.append(summary);
   const history = document.createElement('div');
@@ -65,8 +66,39 @@ function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onD
     photo.loading = 'lazy';
     history.append(photo);
   }
-  if (sessions.length) history.append(...sessions.map(renderSession));
-  else history.append(textElement('p', 'No brew sessions yet', 'bean-empty'));
+  const rows = document.createElement('div');
+  const controls = document.createElement('div');
+  const previous = textElement('button', 'Previous 50', 'secondary-button');
+  const next = textElement('button', 'Next 50', 'secondary-button');
+  previous.type = next.type = 'button';
+  const pageStatus = textElement('p', '', 'history-status');
+  pageStatus.setAttribute('role', 'status');
+  controls.append(previous, next);
+  history.append(rows, pageStatus, controls);
+  controls.hidden = true;
+  let offset = 0, loaded = false, loading = false;
+  async function loadPage(start: number): Promise<void> {
+    if (loading) return;
+    loading = true; previous.disabled = next.disabled = true;
+    pageStatus.textContent = 'Loading brew history…';
+    try {
+      const sessions = await getBrewSessions(bean.id, { offset: start, limit: 50 });
+      offset = start; loaded = true;
+      rows.replaceChildren(...sessions.map(renderSession));
+      if (!sessionCount) rows.append(textElement('p', 'No brew sessions yet', 'bean-empty'));
+      controls.hidden = sessionCount <= 50;
+      previous.disabled = offset === 0;
+      next.disabled = offset + sessions.length >= sessionCount;
+      pageStatus.textContent = sessionCount ? `${offset + 1}–${offset + sessions.length} of ${sessionCount} sessions` : '';
+      history.scrollTop = 0;
+    } catch {
+      loaded = false;
+      pageStatus.textContent = 'History could not be loaded. Close and reopen this bean to retry.';
+    } finally { loading = false; }
+  }
+  previous.addEventListener('click', () => void loadPage(Math.max(0, offset - 50)));
+  next.addEventListener('click', () => void loadPage(offset + 50));
+  details.addEventListener('toggle', () => { if (details.open && !loaded) void loadPage(0); });
   details.append(history);
   const actions = textElement('button', '•••', 'bean-actions');
   actions.type = 'button';
@@ -78,7 +110,7 @@ function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onD
   edit.hidden = true;
   const remove = textElement('button', 'Delete', 'bean-delete');
   remove.type = 'button';
-  remove.setAttribute('aria-label', `Delete ${bean.name} and all ${sessions.length} brew sessions`);
+  remove.setAttribute('aria-label', `Delete ${bean.name} and all ${sessionCount} brew sessions`);
   remove.hidden = true;
   const failure = textElement('p', '', 'form-error');
   failure.setAttribute('role', 'alert');
@@ -93,6 +125,7 @@ function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onD
     card.classList.toggle('actions-revealed', action === 'menu');
     edit.hidden = action !== 'edit' && action !== 'menu';
     remove.hidden = action !== 'delete' && action !== 'menu';
+    edit.inert = remove.inert = false;
     actions.setAttribute('aria-expanded', String(action !== null));
   }
   actions.addEventListener('click', () => {
@@ -102,36 +135,22 @@ function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onD
   card.addEventListener('keydown', event => {
     if (event.key === 'Escape') { reveal(null); if (!details.open) actions.focus(); }
   });
-  let gesture: { id: number; x: number; y: number; horizontal: boolean } | null = null;
-  let suppressClick = false;
-  surface.addEventListener('pointerdown', event => {
-    if (!event.isPrimary || event.button !== 0 || (event.target as Element).closest('button')) return;
-    suppressClick = false;
-    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, horizontal: false };
+  attachSwipeRow(surface, {
+    disabled: () => deleting,
+    ignore: target => Boolean(target.closest('button, a, input, select, textarea')),
+    position: () => revealed === 'edit' ? 1 : revealed === 'delete' ? -1 : 0,
+    allowsRight: true,
+    preview: offset => {
+      card.classList.remove('actions-revealed');
+      edit.hidden = offset <= 0; remove.hidden = offset >= 0;
+      edit.inert = remove.inert = true;
+    },
+    settle: direction => {
+      const action = direction === 'left' ? 'delete' : 'edit';
+      reveal(direction ? (revealed !== null && revealed !== action ? null : action) : revealed);
+    },
   });
-  surface.addEventListener('pointermove', event => {
-    if (!gesture || gesture.id !== event.pointerId) return;
-    const dx = event.clientX - gesture.x;
-    const dy = event.clientY - gesture.y;
-    if (!gesture.horizontal && Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { gesture = null; return; }
-    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.3) {
-      gesture.horizontal = true;
-      suppressClick = true;
-      if (surface.hasPointerCapture(event.pointerId) === false && event.isTrusted) surface.setPointerCapture(event.pointerId);
-    }
-  });
-  surface.addEventListener('pointerup', event => {
-    if (!gesture || gesture.id !== event.pointerId) return;
-    const dx = event.clientX - gesture.x;
-    if (gesture.horizontal && Math.abs(dx) >= 40) {
-      const action = dx < 0 ? 'delete' : 'edit';
-      reveal(revealed !== null && revealed !== action ? null : action);
-    }
-    gesture = null;
-  });
-  surface.addEventListener('pointercancel', () => { gesture = null; suppressClick = false; });
   surface.addEventListener('click', event => {
-    if (suppressClick) { event.preventDefault(); event.stopPropagation(); suppressClick = false; return; }
     if (revealed !== null && !(event.target as Element).closest('button')) {
       event.preventDefault();
       event.stopPropagation();
@@ -143,6 +162,7 @@ function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onD
     const content = card.closest<HTMLElement>('.app-content');
     if (open) listScrollTop = content?.scrollTop ?? 0;
     details.open = open;
+    if (open && !loaded) void loadPage(0);
     card.classList.toggle('is-expanded', open);
     if (content) content.scrollTop = open ? 0 : listScrollTop;
     if (open) history.scrollTop = 0;
@@ -179,7 +199,7 @@ function renderBean(bean: Bean, sessions: BrewSession[], onEdit: () => void, onD
     void onDelete().catch(error => {
       failure.textContent = error instanceof CommittedWriteError
         ? 'Deletion was applied, but storage could not be confirmed. Export a backup from IO before closing this tab.'
-        : 'Could not delete this bean. Your data was preserved; please try again.';
+        : error instanceof DatabaseRuntimeError ? error.message : 'Could not delete this bean. Your data was preserved; please try again.';
       failure.hidden = false;
     }).finally(() => {
       deleting = false;
@@ -225,6 +245,7 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
       <p class="form-message" role="status" aria-live="polite"></p>
       <p class="form-error" role="alert" hidden></p>
     </form>
+    <p class="collection-warning form-error" role="alert" hidden></p>
     <section class="bean-collection" aria-labelledby="bean-list-heading">
       <h2 id="bean-list-heading">Your beans <span class="bean-count"></span></h2>
       <div class="list-error" role="alert" hidden>
@@ -268,6 +289,7 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
   const cancel = form.querySelector<HTMLButtonElement>('.cancel-bean')!;
   const message = form.querySelector<HTMLElement>('.form-message')!;
   const error = form.querySelector<HTMLElement>('.form-error')!;
+  const collectionWarning = container.querySelector<HTMLElement>('.collection-warning')!;
   const list = container.querySelector<HTMLElement>('.bean-list')!;
   const count = container.querySelector<HTMLElement>('.bean-count')!;
   const listStatus = container.querySelector<HTMLElement>('.list-status')!;
@@ -365,27 +387,24 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
     listStatus.textContent = 'Loading beans…';
     listError.hidden = true;
     try {
-      const [beans, sessions] = await Promise.all([getBeans(), getBrewSessions()]);
+      const [beans, counts] = await Promise.all([getBeans(), getBeanSessionCounts()]);
       if (version !== refreshVersion) return;
-      const byBean = new Map<string, BrewSession[]>();
-      for (const session of sessions) {
-        const history = byBean.get(session.bean_id) ?? [];
-        history.push(session);
-        byBean.set(session.bean_id, history);
-      }
-      list.replaceChildren(...beans.map(bean => renderBean(bean, byBean.get(bean.id) ?? [], () => editBean(bean), async () => {
+      const byBean = new Map(counts.map(row => [row.bean_id, row.count]));
+      const expanded = list.querySelector<HTMLElement>('.bean-card.is-expanded')?.dataset.beanId;
+      list.replaceChildren(...beans.map(bean => renderBean(bean, byBean.get(bean.id) ?? 0, () => editBean(bean), async () => {
         try { await deleteBean(bean.id); }
         catch (failure) {
           if (failure instanceof CommittedWriteError) {
             await refresh();
-            error.textContent = 'Deletion was applied, but storage could not be confirmed. Export a backup from IO before closing this tab.';
-            error.hidden = false;
+            collectionWarning.textContent = 'Deletion was applied, but storage could not be confirmed. Export a backup from IO before closing this tab.';
+            collectionWarning.hidden = false;
             return;
           }
           throw failure;
         }
         await refresh();
       })));
+      if (expanded) list.querySelector<HTMLElement>(`.bean-card[data-bean-id="${CSS.escape(expanded)}"] .bean-summary`)?.click();
       if (!beans.length) {
         const empty = textElement('div', '', 'empty-state');
         empty.append(textElement('h3', 'No beans yet'), textElement('p', 'Add your first bean above to start your collection.'));
@@ -422,7 +441,7 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
     error.hidden = true;
     try {
       const input = { name: original && name.value === original.name ? original.name : name.value.trim(), roast_date: roastDate.value || null, freeze_date: freezeDate.value || null, photo_jpeg: photo };
-      const bean = await (original ? updateBean(original.id, input) : addBean(input));
+      const bean = await (original ? updateBean(original.id, input, original) : addBean(input));
       resetEditor();
       if (original) setFormOpen(false);
       message.textContent = `${original ? 'Saved' : 'Added'} ${bean.name}.`;
@@ -434,7 +453,7 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
         await refresh();
       }
       error.textContent = failure instanceof CommittedWriteError ? failure.message
-        : 'Your bean could not be saved. Your entries are still here; please try again.';
+        : (failure instanceof EditConflictError || failure instanceof DatabaseRuntimeError) ? failure.message : 'Your bean could not be saved. Your entries are still here; please try again.';
       error.hidden = false;
     } finally {
       saving = false;

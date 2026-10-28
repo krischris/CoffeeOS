@@ -1,9 +1,9 @@
 import { driveStep, driveFailure } from '../driveDiagnostics';
 import { authorizeDrive, verifyDriveAccount } from '../driveAuth';
-import { driveAuthorizationKey, forgetDriveAuthorization, readDriveAuthorization, saveDriveAuthorization } from '../driveAuthorization';
+import { driveAuthorizationKey, driveSwitchKey, readDriveSwitchPending, setDriveSwitchPending, forgetDriveAuthorization, readDriveAuthorization, saveDriveAuthorization } from '../driveAuthorization';
 import { DriveAuthError, DriveClient, DriveError, syncDrive } from '../drive';
 import type { DriveAccount, RemoteFile } from '../drive';
-import { CommittedWriteError, ImportDataError } from '../db';
+import { CommittedWriteError, ImportDataError, DatabaseRuntimeError } from '../db';
 import { confirmBackup, prepareBackup, replaceBackup } from '../backups';
 import type { PreparedBackup } from '../backups';
 import { googleDriveClientId } from '../driveConfig';
@@ -58,7 +58,8 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
   function restore(): void {
     const saved = readDriveAuthorization(googleDriveClientId);
     account = saved?.account ?? null; verified = false; storageUnavailable = false;
-    enabled = saved?.enabled ?? true;
+    switching = readDriveSwitchPending() || saved?.enabled === false;
+    enabled = !switching && (saved?.enabled ?? true);
     if (saved) status.textContent = enabled ? 'Connection remembered. Choose Sync now to back up or recover your collection.' : 'Confirm enabling backup to the displayed account before any transfer.';
     render();
   }
@@ -99,6 +100,9 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     const intro = document.createElement('p');
     intro.textContent = `Selected snapshot ${pinned.id}, uploaded ${pinned.createdTime}; captured ${prepared.manifest.exported_at}.`;
     box.append(intro);
+    if (prepared.manifest.format_version >= 2) {
+      const note = document.createElement('p'); note.textContent = prepared.manifest.format_version === 3 ? 'This backup preserves legacy whitespace-only names and IDs, and any damaged photo bytes. Restoring requires CoffeeOS backup format 3 support.' : 'This backup preserves damaged legacy photo bytes. Some photos may not display; restoring requires CoffeeOS backup format 2 support.'; box.append(note);
+    }
     for (const table of ['beans', 'brew_sessions'] as const) {
       const c = prepared.preview[table], p = document.createElement('p');
       p.textContent = `${table === 'beans' ? 'Beans' : 'Brew sessions'}: cloud ${c.new + c.updated + c.unchanged}, local ${c.localOnly + c.updated + c.unchanged}; ${c.new} added, ${c.updated} overwritten, ${c.unchanged} unchanged. Merge keeps ${c.localOnly} local-only records; Replace removes them.`;
@@ -117,7 +121,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
       if (authorize) {
         status.textContent = 'Continue in the Google authorization window…';
         const next = await driveStep('Authorize Google', () => authorizeDrive(googleDriveClientId, controller.signal));
-        controller.signal.throwIfAborted(); account = next; verified = true; enabled = !switching; remember();
+        controller.signal.throwIfAborted(); account = next; verified = true; enabled = !switching; if (!enabled) setDriveSwitchPending(true); remember();
       }
       if (!account) return;
       if (!verified && Date.now() < account.expiresAt) {
@@ -137,7 +141,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
       if (current !== generation) return;
       if (failure instanceof DriveAuthError) { forgetDriveAuthorization(account?.token); account = null; verified = false; }
       status.textContent = '';
-      error.textContent = failure instanceof DriveError || failure instanceof ImportDataError || failure instanceof CommittedWriteError
+      error.textContent = failure instanceof DatabaseRuntimeError || failure instanceof DriveError || failure instanceof ImportDataError || failure instanceof CommittedWriteError
         ? failure.message : 'Drive operation could not finish. Your collection and earlier backups are kept. Check your connection and storage, then retry.';
       error.hidden = false;
       if (failure instanceof CommittedWriteError) { clearPreview(); await onImported().catch(() => undefined); }
@@ -149,9 +153,13 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     clearPreview();
     history = await driveStep('Read cloud history', () => client.history()); const previous = history[0]?.id;
     showHistory(previous);
-    const result = await syncDrive(client, signal);
-    signal.throwIfAborted(); status.textContent = result.message;
-    if (result.imported) await driveStep('Refresh app views', onImported);
+    const result = await syncDrive(client, signal, () => { committing = true; status.textContent = 'Applying recovered records. Keep this page open…'; render(); });
+    status.textContent = result.message;
+    if (result.imported) {
+      await driveStep('Refresh app views', onImported);
+      return; // Local outcome is final; a subsequent network failure must not hide it.
+    }
+    signal.throwIfAborted();
     history = await driveStep('Read cloud history', () => client.history()); signal.throwIfAborted(); showHistory(previous); status.textContent = result.message;
   }
   connect.addEventListener('click', () => {
@@ -175,7 +183,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
       await synchronize(client, signal);
     }, true);
   });
-  sync.addEventListener('click', () => { enabled = true; if (account) remember(); void run(synchronize); });
+  sync.addEventListener('click', () => { if (operation) return; enabled = true; switching = false; setDriveSwitchPending(false); if (account) remember(); void run(synchronize); });
   find('.drive-refresh').addEventListener('click', () => { void run(async (client, signal) => {
     clearPreview(); history = await driveStep('Read cloud history', () => client.history()); signal.throwIfAborted(); showHistory(); status.textContent = history.length ? 'History refreshed.' : 'No Drive backup yet.';
   }); });
@@ -203,29 +211,38 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     render();
   }
   cancel.addEventListener('click', () => {
+    if (committing) return;
     generation++; operation?.abort(); operation = null; renew = null; clearPreview(); render();
     status.textContent = 'Transfer cancelled. A file already accepted by Drive may still finish; refresh history before another upload.';
   });
   disconnect.addEventListener('click', () => {
-    forgetDriveAuthorization();
+    if (committing) return;
+    forgetDriveAuthorization(); setDriveSwitchPending(false);
     clear(); switching = false; enabled = true; error.hidden = true;
     status.textContent = 'Disconnected. Local records and Drive files are kept. A transfer already accepted by Drive may still finish.';
   });
   find('.drive-switch').addEventListener('click', () => {
+    if (operation) return;
+    if (!setDriveSwitchPending(true)) {
+      error.textContent = 'Account switch could not start because browser storage cannot retain the required confirmation. Restore storage access and try again. Your current connection is kept.';
+      error.hidden = false; return;
+    }
     forgetDriveAuthorization();
-    clear(); switching = true; enabled = false; status.textContent = 'Connect the new Google account, then confirm enabling backup.';
+    clear(); error.hidden = true; switching = true; enabled = false; status.textContent = 'Connect the new Google account, then confirm enabling backup.';
   });
-  window.addEventListener('pagehide', clear);
-  const shown = (event: PageTransitionEvent) => { if (event.persisted) restore(); };
+  const hidden = () => { if (!committing) clear(); };
+  window.addEventListener('pagehide', hidden);
+  const shown = (event: PageTransitionEvent) => { if (event.persisted && !committing) restore(); };
   window.addEventListener('pageshow', shown);
   const changed = (event: StorageEvent) => {
-    if ((event.key === driveAuthorizationKey || event.key === null) && event.storageArea === localStorage) {
-      clear(); status.textContent = 'The Drive connection changed in another window. Reconnect to continue.';
+    if ((event.key === driveAuthorizationKey || event.key === driveSwitchKey || event.key === null) && event.storageArea === localStorage) {
+      if (committing) { verified = false; return; }
+      clear(); switching = readDriveSwitchPending(); status.textContent = 'The Drive connection changed in another window. Reconnect to continue.';
     }
   };
   window.addEventListener('storage', changed);
   if (import.meta.hot) import.meta.hot.dispose(() => {
-    clear(); window.removeEventListener('pagehide', clear); window.removeEventListener('pageshow', shown); window.removeEventListener('storage', changed);
+    clear(); window.removeEventListener('pagehide', hidden); window.removeEventListener('pageshow', shown); window.removeEventListener('storage', changed);
   });
   restore();
 }

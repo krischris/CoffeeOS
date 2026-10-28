@@ -279,6 +279,8 @@ details[open] > .bean-summary { margin-bottom: 12px; }
 .bean-card.bean-card.actions-revealed { padding-bottom: 48px; }
 .actions-revealed > :is(.bean-edit, .bean-delete) { top: auto; bottom: 0; width: 50%; height: 48px; }
 .delete-revealed > :is(.bean-surface, .session-surface) { transform: translateX(-96px); }
+:is(.bean-surface, .session-surface).is-pressed { background: var(--surface-raised); }
+:is(.bean-surface, .session-surface).is-swiping { transition: none; will-change: transform; user-select: none; -webkit-user-select: none; }
 .bean-edit:disabled, .bean-delete:disabled, .session-delete:disabled { opacity: .65; }
 @media (prefers-reduced-motion: reduce) { .bean-surface, .session-card .session-surface { transition: none; } }
 .bean-card h3 { margin: 0; font-size: 20px; font-weight: 650; }
@@ -606,3 +608,7 @@ button:disabled { opacity: 0.65; cursor: wait; }
 .io-drive select { width: 100%; max-width: 100%; margin: 8px 0 16px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; }
 .io-drive p { overflow-wrap: anywhere; }
 .io-drive .drive-preview { margin-top: 16px; }
+
+.collection-warning:not([hidden]) { position: relative; z-index: 6; padding: 12px; background: var(--surface); }
+.io-legacy label:has([type="checkbox"]) { display: flex; align-items: center; gap: 12px; }
+.io-legacy input[type="checkbox"] { width: 44px; flex: 0 0 44px; }

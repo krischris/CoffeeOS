@@ -243,18 +243,28 @@ function formatBackupSize(bytes: number): string {
   return `${size.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unit]}`;
 }
 
-export async function syncDrive(client: DriveClient, signal: AbortSignal): Promise<{ message: string; imported: boolean }> {
+export async function syncDrive(client: DriveClient, signal: AbortSignal, onRecoveryCommit?: () => void): Promise<{ message: string; imported: boolean }> {
   const { snapshot, revision } = await driveStep('Capture local snapshot', captureDriveSnapshot);
   signal.throwIfAborted();
   if (snapshot.counts.beans + snapshot.counts.brew_sessions > 0) {
     const hash = await driveStep('Fingerprint local snapshot', () => hashBackupContents(snapshot.data));
     const latest = await driveStep('Read cloud history', () => client.latest());
     let cloudHash = latest?.appProperties?.contentSha256V1;
+    let needsPreservingBackup = false;
     if (latest) {
       if (latest.sha256Checksum?.toLowerCase() !== latest.appProperties?.archiveSha256) {
         throw new DriveError('The latest Drive backup checksum does not match its metadata. Refresh history and keep the original file.');
       }
-      if (!cloudHash || !/^[a-f0-9]{64}$/.test(cloudHash)) {
+      // Earlier exporters could label damaged legacy photos as format 1. An equal
+      // content hash alone must not keep pointing to an unreadable archive.
+      if (snapshot.legacyPhotos || snapshot.legacyText) {
+        const bytes = await driveStep('Download snapshot for comparison', () => client.download(latest));
+        const { manifest } = await driveStep('Validate comparison snapshot', () => unpackBackup(bytes));
+        if (manifest.backup_id !== latest.appProperties?.backupId) throw new DriveError('Drive backup identity does not match the archive. Keep the original file.');
+        needsPreservingBackup = manifest.format_version < (snapshot.legacyText ? 3 : 2);
+        if (!needsPreservingBackup) await driveStep('Validate comparison snapshot', () => prepareBackup(bytes));
+      }
+      if (!needsPreservingBackup && (!cloudHash || !/^[a-f0-9]{64}$/.test(cloudHash))) {
         // Older snapshots lack the optional logical hash. Validate their existing
         // archive and compare records without rewriting or replacing the backup.
         const downloaded = await driveStep('Download snapshot for comparison', () => client.download(latest));
@@ -267,7 +277,7 @@ export async function syncDrive(client: DriveClient, signal: AbortSignal): Promi
       }
     }
     signal.throwIfAborted();
-    if (hash === cloudHash) return { imported: false,
+    if (!needsPreservingBackup && hash === cloudHash) return { imported: false,
       message: `Already backed up. Your collection captured ${snapshot.exported_at} matches the most recently uploaded Drive backup (${latest!.createdTime}). No upload needed. Later edits wait for Sync now.` };
     const file = await driveStep('Package local snapshot', () => packageBackup(snapshot));
     const { manifest } = await driveStep('Validate packaged snapshot', () => unpackBackup(file.data));
@@ -282,6 +292,6 @@ export async function syncDrive(client: DriveClient, signal: AbortSignal): Promi
   const prepared = await driveStep('Validate downloaded snapshot', () => prepareBackup(downloaded));
   if (prepared.manifest.backup_id !== latest.appProperties?.backupId) throw new DriveError('The latest Drive backup identity does not match its archive. Recovery stopped; keep the original file.');
   const counts = Object.fromEntries(prepared.manifest.tables.map(t => [t.name, t.row_count])) as { beans: number; brew_sessions: number };
-  await driveStep('Recover empty collection', () => recoverEmptyBackup(prepared.files, counts, revision, signal));
+  await driveStep('Recover empty collection', () => recoverEmptyBackup(prepared.files, counts, revision, signal, onRecoveryCommit, prepared.manifest.format_version >= 2, prepared.manifest.format_version === 3));
   return { imported: true, message: `Recovered ${counts.beans} beans and ${counts.brew_sessions} brew sessions from the most recently uploaded backup (${latest.createdTime}).` };
 }

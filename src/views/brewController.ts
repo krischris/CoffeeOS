@@ -1,7 +1,8 @@
-import { CommittedWriteError, addBrewSession, updateBrewSession, deleteBrewSession, getBeans, getBrewSessions } from '../db';
+import { CommittedWriteError, EditConflictError, DatabaseRuntimeError, addBrewSession, updateBrewSession, deleteBrewSession, getBeans, getBrewSessions } from '../db';
 import type { BrewSession } from '../types';
 import { createBrewingChart } from './brewingChart';
 import { stabilizeEditorViewport } from './editorViewport';
+import { attachSwipeRow } from './swipeRow';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -49,6 +50,7 @@ function renderSession(session: BrewSession, onEdit: () => void, onDelete: () =>
     if (deleting) return;
     card.classList.toggle('delete-revealed', open);
     remove.hidden = !open;
+    remove.inert = false;
     actions.setAttribute('aria-expanded', String(open));
   }
   actions.addEventListener('click', () => {
@@ -58,33 +60,15 @@ function renderSession(session: BrewSession, onEdit: () => void, onDelete: () =>
   card.addEventListener('keydown', event => {
     if (event.key === 'Escape') { reveal(false); actions.focus(); }
   });
-  let gesture: { id: number; x: number; y: number; horizontal: boolean } | null = null;
-  let suppressClick = false;
-  surface.addEventListener('pointerdown', event => {
-    if (!event.isPrimary || event.button !== 0 || (event.target as Element).closest('.session-menu')) return;
-    suppressClick = false;
-    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, horizontal: false };
+  attachSwipeRow(surface, {
+    disabled: () => deleting,
+    ignore: target => Boolean(target.closest('.session-menu')),
+    position: () => card.classList.contains('delete-revealed') ? -1 : 0,
+    allowsRight: false,
+    preview: offset => { remove.hidden = offset >= 0; remove.inert = true; },
+    settle: direction => reveal(direction ? direction === 'left' : card.classList.contains('delete-revealed')),
   });
-  surface.addEventListener('pointermove', event => {
-    if (!gesture || gesture.id !== event.pointerId) return;
-    const dx = event.clientX - gesture.x;
-    const dy = event.clientY - gesture.y;
-    if (!gesture.horizontal && Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { gesture = null; return; }
-    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.3) {
-      gesture.horizontal = true;
-      suppressClick = true;
-      if (!surface.hasPointerCapture(event.pointerId) && event.isTrusted) surface.setPointerCapture(event.pointerId);
-    }
-  });
-  surface.addEventListener('pointerup', event => {
-    if (!gesture || gesture.id !== event.pointerId) return;
-    const dx = event.clientX - gesture.x;
-    if (gesture.horizontal && Math.abs(dx) >= 40) reveal(dx < 0);
-    gesture = null;
-  });
-  surface.addEventListener('pointercancel', () => { gesture = null; suppressClick = false; });
   surface.addEventListener('click', event => {
-    if (suppressClick) { event.preventDefault(); event.stopPropagation(); suppressClick = false; return; }
     if (!remove.hidden && !(event.target as Element).closest('.session-menu')) {
       event.preventDefault();
       event.stopPropagation();
@@ -100,7 +84,7 @@ function renderSession(session: BrewSession, onEdit: () => void, onDelete: () =>
     void onDelete().catch(error => {
       failure.textContent = error instanceof CommittedWriteError
         ? 'Deletion was applied, but storage could not be confirmed. Export a backup from IO before closing this tab.'
-        : 'Could not delete this session. Your data was preserved; please try again.';
+        : error instanceof DatabaseRuntimeError ? error.message : 'Could not delete this session. Your data was preserved; please try again.';
       failure.hidden = false;
     }).finally(() => {
       deleting = false;
@@ -405,7 +389,7 @@ export function createBrewController(container: HTMLElement, options: {
       if (editing) {
         await updateBrewSession(editing.id, { ...values,
           brewed_at: input('brewed_at').value === initialDate ? undefined : new Date(input('brewed_at').value).toISOString(),
-        });
+        }, editing);
       } else await addBrewSession(values);
     } catch (failure) {
       console.error('Could not save brew session.', failure);
@@ -415,7 +399,7 @@ export function createBrewController(container: HTMLElement, options: {
         await Promise.all([refresh(), options.onSaved()]);
         return;
       }
-      error.textContent = 'Your session could not be saved. Your entries are still here; please try again.';
+      error.textContent = (failure instanceof EditConflictError || failure instanceof DatabaseRuntimeError) ? failure.message : 'Your session could not be saved. Your entries are still here; please try again.';
       error.hidden = false;
       return;
     } finally {

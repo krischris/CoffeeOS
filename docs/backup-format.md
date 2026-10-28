@@ -1,4 +1,4 @@
-# CoffeeOS backup format, version 1
+# CoffeeOS backup formats 1, 2 and 3
 
 This is the normative archive and logical data schema contract. The generated
 [example-v1.coffeeos](fixtures/example-v1.coffeeos) includes three beans (one with
@@ -38,7 +38,7 @@ limits are deliberately narrowed by this reader. The distributed license is
 | Property | Type and rule |
 | --- | --- |
 | `format` | String, exactly `coffeeos-backup` |
-| `format_version` | Integer, exactly 1 (archive/manifest version) |
+| `format_version` | Integer, 1 normally; 2 for legacy photos; 3 for historical whitespace fields (contracts below) |
 | `data_schema_version` | Integer, exactly 1 (logical backup schema, independent of internal database schema) |
 | `backup_id` | UUID with standard hyphens, RFC variant and version 1–8; identifies this export, never database or record identity |
 | `exported_at` | UTC ISO 8601 `YYYY-MM-DDTHH:mm:ss[.fraction]Z`, 1–6 fractional digits when present, valid calendar date/time |
@@ -126,11 +126,45 @@ independent-reader verification below for emitted annotations and exact values.
 metadata, lock names, credentials, browser settings and device identity are
 excluded. Existing database and snapshot identities do not change.
 
+## Format 2: preserve historically accepted damaged photos
+
+New photo writes and default legacy imports require canonical base64 with JPEG
+start/end markers. A historical CSV/Parquet file can contain photo strings accepted
+by earlier builds that fail those checks. **Import an older backup → Preserve
+damaged legacy photo bytes** explicitly allows the old bounded JPEG-prefix/base64
+shape, without rewriting, decoding or discarding its bytes. Existing saved values
+remain accessible on startup, and an unchanged historical photo can be retained
+when editing its bean. Replacement photos still use the new validation.
+
+Exports inspect their actual staged tables before offering a download. Healthy
+collections retain format 1. A collection or immutable recovery containing those
+old opaque photo values exports `format_version: 2`, `data_schema_version: 1`,
+and the required manifest property `photo_encoding: "legacy-opaque-v1"`. This is
+an explicit compatibility contract: only photo validation changes; the three
+archive files, Parquet schemas, field meanings/units, checksums, limits and merge
+rules remain identical. Format 2 readers accept the historical bounded photo
+shape, keep the exact original string and disclose that some photos may not
+display. They do not promise that the retained bytes decode as an image.
+
+Format 2 filenames include `-legacy-photos-v2`; export and restore previews state
+the compatibility requirement. Earlier CoffeeOS readers reject format 2 rather
+than losing photos. Upgrade those readers before restoring it. Existing format 1
+archives remain readable. Original historical files, original stored snapshots
+and retained recovery bytes are never rewritten by this validation change.
+
+If an earlier build produced an unreadable format 1 archive containing a damaged
+photo, keep the original archive, extract its two Parquet files with a standard ZIP
+reader, and import them through the explicit legacy preservation option. This
+retains every original table value; the next export uses readable format 2. Drive
+sync with a local legacy-photo collection checks the cloud archive format before
+accepting an equal fingerprint, uploading a new format 2 snapshot when an old
+format 1 snapshot would otherwise be reused. Older Drive files remain intact.
+
 ## Consistency, bounds and merge
 
 Both tables and their counts are captured in one serialized database operation.
-Application writes cannot interleave. Hashing and ZIP packaging follow outside
-the database queue. Export fails without replacing an earlier prepared download
+Application writes cannot interleave. Logical readability is checked in a separate serialized staging/rollback operation.
+Hashing and ZIP packaging run outside the database queue. Export fails without replacing an earlier prepared download
 if the collection cannot fit the reader's limits.
 
 There is no application-imposed cap on archive or total expanded collection
@@ -228,3 +262,36 @@ with ZipFile('repacked.zip', 'w', compression=ZIP_DEFLATED) as z:
 `repacked.zip` is importable by CoffeeOS. No CoffeeOS-specific reader is needed to
 read either Parquet table. Do not edit/repack only one entry without updating the
 manifest hashes, lengths and row counts; validation will reject the mismatch.
+
+## Format 3: preserve historical whitespace-only required text
+
+Default CSV/Parquet imports now apply the archive's nonblank rule to bean IDs,
+bean names, session IDs and session bean IDs. Validation uses the same SQL
+whitespace predicate for every default import. Rejected imports do not change
+live records or saved snapshots.
+
+Older builds accepted some whitespace-only values (for example a quoted tab ID
+or newline name). Existing storage remains readable without migration or
+normalization. **Import an older backup → Preserve legacy whitespace-only names
+and IDs exactly** explicitly permits these historical values. The older minimum
+validation still applies: NULL, empty/space-trimmed-empty required strings,
+duplicate keys, orphan sessions and invalid dates/numbers remain rejected.
+Damaged photos have their own independent preservation checkbox.
+
+A collection or immutable recovery containing these values exports format 3,
+with `data_schema_version: 1`, `text_encoding: "legacy-whitespace-v1"` and
+`photo_encoding: "legacy-opaque-v1"`. Format 3 includes format 2's photo
+preservation allowance, whether or not that particular collection needs it.
+All schemas, table paths, hashes, limits, relationships and units are unchanged.
+Every original string is preserved, including IDs and foreign keys; no trimming,
+replacement labels or reassigned IDs occur. The filename includes
+`-legacy-fields-v3`, and local/Drive previews disclose the required reader version.
+
+Healthy exports still use format 1; damaged-photo-only exports still use format 2.
+Older readers reject format 3. If an old format 1/2 archive contains whitespace
+fields that its reader rejects, retain the original, extract both Parquet tables,
+and import using the explicit legacy text option (and photo option if needed).
+The next export produces readable format 3. Recovery downloads inspect the saved
+bytes, so older immutable copies work without rewriting their keys or payloads.
+Drive creates a new readable compatibility backup even when an unreadable older
+archive has the same content fingerprint; the original remote file is retained.

@@ -1,4 +1,4 @@
-import { CommittedWriteError, importData, ImportDataError, listImportRecoveries, readImportRecovery } from '../db';
+import { CommittedWriteError, DatabaseRuntimeError, importData, ImportDataError, listImportRecoveries, readImportRecovery } from '../db';
 import type { DataTarget, ExportFile, ImportFile } from '../db';
 import { backupLimits, confirmBackup, packageBackup, prepareBackup, saveBackup } from '../backups';
 import type { PreparedBackup } from '../backups';
@@ -47,6 +47,8 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
           <label for="import-beans">Beans file</label><input id="import-beans" name="beans" type="file" accept=".parquet,.csv">
           <label for="import-sessions">Brew sessions file</label><input id="import-sessions" name="brew_sessions" type="file" accept=".parquet,.csv">
           <label for="import-combined">Or one combined file</label><input id="import-combined" name="combined" type="file" accept=".parquet,.csv">
+          <label><input type="checkbox" name="preserve_legacy_photos"> Preserve damaged legacy photo bytes (photos may not display; backups require CoffeeOS format 2)</label>
+          <label><input type="checkbox" name="preserve_legacy_text"> Preserve legacy whitespace-only names and IDs exactly (backups require CoffeeOS format 3)</label>
           <button class="primary-button" type="submit">Import older files</button>
         </fieldset>
         <p class="legacy-status form-message" role="status" aria-live="polite"></p>
@@ -79,7 +81,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
   }
   function showError(element: HTMLElement, message: string): void { element.textContent = message; element.hidden = false; }
   function detail(failure: unknown): string {
-    return failure instanceof ImportDataError || failure instanceof CommittedWriteError ? failure.message
+    return failure instanceof DatabaseRuntimeError || failure instanceof ImportDataError || failure instanceof CommittedWriteError ? failure.message
       : 'Check the backup and available storage, then try again. Keep the original file.';
   }
   function linkFor(exported: ExportFile, parent: HTMLElement, key: string, label: string): File {
@@ -101,7 +103,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
       let canShare = false;
       try { canShare = typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] }); } catch { /* Download remains available. */ }
       share.hidden = !canShare;
-      exportStatus.textContent = 'Backup ready. Choose Download or Share.';
+      exportStatus.textContent = exported.name.includes('-legacy-fields-v3') ? 'Backup ready. Legacy fields and photo bytes are preserved; restoring requires CoffeeOS backup format 3 support. Choose Download or Share.' : exported.name.includes('-legacy-photos-v2') ? 'Backup ready. Damaged legacy photos are preserved; restoring requires CoffeeOS backup format 2 support. Choose Download or Share.' : 'Backup ready. Choose Download or Share.';
     }).catch(failure => {
       showError(exportError, `Backup could not be prepared. ${detail(failure)}`);
       exportStatus.textContent = file ? 'Your earlier prepared backup is still available.' : '';
@@ -130,6 +132,9 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
     const info = document.createElement('p');
     info.textContent = `${manifest.exported_at} · ${manifest.producer.name} ${manifest.producer.version}`;
     preview.append(info);
+    if (manifest.format_version >= 2) {
+      const note = document.createElement('p'); note.textContent = manifest.format_version === 3 ? 'Legacy whitespace-only names and IDs, and any damaged photo bytes, will be preserved exactly. Future backups require CoffeeOS backup format 3 support.' : 'Damaged legacy photo bytes will be preserved. Some photos may not display. Future backups require CoffeeOS backup format 2 support.'; preview.append(note);
+    }
     for (const table of ['beans', 'brew_sessions'] as const) {
       const p = document.createElement('p'), c = comparison[table];
       p.textContent = `${manifest.tables.find(t => t.name === table)!.row_count} ${table === 'beans' ? 'beans' : 'brew sessions'}: ${c.new} new, ${c.updated} updated, ${c.unchanged} unchanged.`;
@@ -177,7 +182,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
         if (failure instanceof CommittedWriteError) {
           clearPreview(); uploaded = null; form.reset(); status.textContent = '';
           showError(error, failure.message); await refreshImported(error);
-        } else { showError(error, `Import failed. Your file is still available for retry. ${detail(failure)}`); status.textContent = ''; }
+        } else { showError(error, failure instanceof DatabaseRuntimeError ? failure.message : `Import failed. Your file is still available for retry. ${detail(failure)}`); status.textContent = ''; }
       } finally { await recoveries(); setBusy(false); }
     })();
   });
@@ -218,18 +223,21 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
     void (async () => {
       try {
         const uploads: ImportFile[] = await Promise.all(selected.map(async ({ target, file }) => ({ target, name: file.name, data: new Uint8Array(await file.arrayBuffer()) })));
-        const result = await importData(uploads);
+        const result = await importData(uploads, { preserveLegacyText: legacy.querySelector<HTMLInputElement>('[name=preserve_legacy_text]')!.checked, preserveLegacyPhotos: legacy.querySelector<HTMLInputElement>('[name=preserve_legacy_photos]')!.checked });
         legacy.reset(); legacyStatus.textContent = `Imported ${result.beans} ${result.beans === 1 ? 'bean' : 'beans'} and ${result.brew_sessions} brew ${result.brew_sessions === 1 ? 'session' : 'sessions'}.`;
         await refreshImported(legacyError);
       } catch (failure) {
         legacyStatus.textContent = '';
         if (failure instanceof CommittedWriteError) { legacy.reset(); showError(legacyError, failure.message); await refreshImported(legacyError); }
-        else showError(legacyError, `Import failed. Your selected files are still here for retry. ${detail(failure)}`);
+        else showError(legacyError, failure instanceof DatabaseRuntimeError ? failure.message : `Import failed. Your selected files are still here for retry. ${detail(failure)}`);
       } finally { setBusy(false); }
     })();
   });
   setBusy(false);
-  void recoveries();
+  // Recovery payloads from older builds can be large; list only when IO is visited.
+  const panel = container.closest<HTMLElement>('[role=tabpanel]');
+  if (panel) new MutationObserver(() => { if (!panel.hidden) void recoveries(); }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
+  else void recoveries();
   window.addEventListener('pagehide', event => { if (!event.persisted) releaseURLs(); });
   if (import.meta.hot) import.meta.hot.dispose(releaseURLs);
 }

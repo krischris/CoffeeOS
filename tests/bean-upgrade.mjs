@@ -1,4 +1,7 @@
+import {checkDriveRecoveryView} from './drive-recovery-view-checks.mjs';
+import { checkReviewRemediation, checkHistoryScale, checkRuntimeWorkerFailure } from './review-remediation-checks.mjs';
 import { checkDriveRestore } from './drive-restore-checks.mjs';
+import { checkSwipeRows } from './swipe-row-checks.mjs';
 import { checkBackupUpgrade } from './backup-upgrade-checks.mjs';
 import { checkSessionEditing } from './session-edit-checks.mjs';
 import { checkSessionDeletion } from './session-delete-checks.mjs';
@@ -51,7 +54,7 @@ async function request(path, body, method = body === undefined ? 'GET' : 'POST')
   const response = await fetch(endpoint + path, {
     method, headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(120_000),
   });
   const { value } = await response.json();
   if (!response.ok || typeof value?.error === 'string') throw new Error(JSON.stringify(value));
@@ -107,7 +110,7 @@ try {
     build = 'previous';
     const created = await request('/session', { capabilities: { alwaysMatch: { browserName: 'safari' } } });
     session = created.sessionId;
-    await api('/timeouts', { script: 45_000, pageLoad: 45_000 });
+    await api('/timeouts', { script: 120_000, pageLoad: 45_000 });
     await api('/url', {url: base}); await ready();
     if (mode === 'indexeddb') {
       await evaluate(`const db = await getDB(); await db.closeDB();
@@ -125,7 +128,19 @@ try {
       for (const bean_id of [bean.id, bean.id, other.id]) await db.addBrewSession({...values, bean_id});
       const backups = [];
       for (const format of ['csv', 'parquet']) backups.push((await db.exportData(format, false)).map((f,i) => ({target:i ? 'brew_sessions' : 'beans', name:f.name, data:Array.from(f.data)})));
-      return {bean, other, backups, beans:await db.getBeans(), sessions:await db.getBrewSessions()};`);
+      const original=await db.captureDriveSnapshot();
+      const textCSV='id,name,roast_date,freeze_date,created_at\\n"\\t","\\n",\\\\N,\\\\N,2024-01-02T03:04:05.123456Z\\n';
+      await db.importData([{target:'beans',name:'beans.csv',data:new TextEncoder().encode(textCSV)}]);
+      await db.addBrewSession({...values,bean_id:'\\t'});
+      await db.updateBean(bean.id,{...bean,name:'Old immutable recovery copy'});
+      const recoveryFiles=['beans','brew_sessions'].map(target=>({target,name:target+'.parquet',data:original.snapshot.data[target]}));
+      await db.mergeBackupData(recoveryFiles,original.snapshot.counts,await db.previewBackupData(recoveryFiles,original.snapshot.counts));
+      const recoveries=await db.listImportRecoveries(),recoveryHashes=[];
+      for(const copy of recoveries)recoveryHashes.push(await db.hashBackupContents((await db.readImportRecovery(copy.key)).data));
+      const legacyPhoto=await db.addBean({name:'Previously accepted damaged photo',photo_jpeg:'data:image/jpeg;base64,/9j/'});
+      backups.length=0;
+      for(const format of ['csv','parquet'])backups.push((await db.exportData(format,false)).map((f,i)=>({target:i?'brew_sessions':'beans',name:f.name,data:Array.from(f.data)})));
+      return {bean, other, legacyPhoto, backups, recoveries, recoveryHashes, beans:await db.getBeans(), sessions:await db.getBrewSessions()};`);
     await evaluate(`await navigator.serviceWorker.register('./coi-serviceworker.js'); await navigator.serviceWorker.ready;`);
     await evaluate(`await (await getDB()).closeDB();`);
     await api('/url', {url:'about:blank'});
@@ -155,6 +170,11 @@ try {
     const state = () => evaluate(`const db = await getDB(); return {beans:await db.getBeans(), sessions:await db.getBrewSessions()};`);
     const expected = {beans:seeded.beans.map(bean => ({photo_jpeg:null, ...bean})), sessions:seeded.sessions};
     assert.deepEqual(await state(), expected);
+    const recoveryUpgrade=await evaluate(`const db=await getDB();
+      const copies=await db.listImportRecoveries(),hashes=[];
+      for(const copy of copies)hashes.push(await db.hashBackupContents((await db.readImportRecovery(copy.key)).data));
+      return {copies,hashes};`);
+    assert.deepEqual(recoveryUpgrade,{copies:seeded.recoveries,hashes:seeded.recoveryHashes},'old immutable recovery keys/dates/bytes survive additive metadata indexing');
     await api('/refresh', {}); await ready(); assert.deepEqual(await state(), expected);
     if(seeded.beans.every(bean=>'photo_jpeg' in bean)) {
       const hashes=await evaluate(`const db=await getDB();const files=${JSON.stringify(seeded.backups[1])};
@@ -162,9 +182,16 @@ try {
       assert.equal(hashes[0],hashes[1],'previous-build Parquet hashes match upgraded records');
     }
     for (const backup of seeded.backups) {
-      await evaluate(`await (await getDB()).importData(${JSON.stringify(backup)}.map(f => ({...f, data:new Uint8Array(f.data)})));`);
+      await evaluate(`await (await getDB()).importData(${JSON.stringify(backup)}.map(f => ({...f, data:new Uint8Array(f.data)})),{preserveLegacyPhotos:true,preserveLegacyText:true});`);
       assert.deepEqual(await state(), expected);
     }
+    const legacyExport=await evaluate(`const b=await getBackups();return (await b.prepareBackup((await b.saveBackup()).data)).manifest.format_version;`);
+    assert.equal(legacyExport,3,'previous-build whitespace fields and damaged photo export readable format 3');
+    await evaluate(`const b=await getBackups(),db=await getDB();const saved=await b.saveBackup(),hash=await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data);await b.replaceBackup(await b.prepareBackup(saved.data));if(await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data)!==hash)throw Error('v3 upgrade roundtrip changed records');`);
+    await evaluate(`await (await getDB()).deleteBean('${seeded.legacyPhoto.id}');`);
+    expected.beans=expected.beans.filter(bean=>bean.id!==seeded.legacyPhoto.id);
+    seeded.beans=seeded.beans.filter(bean=>bean.id!==seeded.legacyPhoto.id);
+    console.log('PASS previously accepted damaged photo survives build replacement/reload, old CSV/Parquet opt-in import and readable format 3 export');
     // Storage loss on the candidate must reject opening the previous data.
     const blocked = await evaluate(`const db = await getDB(); await db.closeDB();
       const original = ${mode === 'opfs' ? 'navigator.storage.getDirectory' : 'IDBObjectStore.prototype.get'};
@@ -262,6 +289,10 @@ try {
       try{try{await db.initDB();return false;}catch{return db.getStorageMode()===null;}}
       finally{release();await request;}`);
     assert.equal(lock,true);await api('/refresh',{});await ready();assert.deepEqual(await state(),expected);
+    // Compatibility values remained present through every failed-startup probe.
+    await evaluate(`await (await getDB()).deleteBean('\\t');`);
+    expected.beans=expected.beans.filter(bean=>bean.id!=='\t');
+    expected.sessions=expected.sessions.filter(item=>item.bean_id!=='\t');
     const added = await evaluate(`const db=await getDB();const bean=await db.addBean({name:'After upgrade'});
       const session=await db.addBrewSession({bean_id:bean.id,dose_g:null,water_g:null,time_str:null,temp_c:null,grind_um:null,comment:'new',yield_g:null,tds_pct:null,extraction_pct:null});return {bean,session};`);
     expected.beans.unshift(added.bean); expected.sessions.unshift({...added.session, bean_name:added.bean.name});
@@ -269,6 +300,7 @@ try {
     await api('/refresh',{});await ready();assert.deepEqual(await state(),expected);
     await openBeans();
     await checkBeanManager({sync, api, waitFor});
+    await checkSwipeRows({sync, evaluate, waitFor, api});
     const selector = `.bean-card[data-bean-id="${seeded.bean.id}"]`;
     assert.equal(await sync(`return document.querySelector('${selector} details').open;`), false);
     await sync(`document.querySelector('${selector} summary').click();`);
@@ -322,6 +354,10 @@ try {
     await photoChecks({sync,evaluate,waitFor,openBeans,api,ready,state});
     await checkBackupUpgrade({sync,evaluate,waitFor,api,ready,state});
     await checkDriveRestore({evaluate,api,ready});
+    await checkReviewRemediation({sync,evaluate,waitFor,api,ready});
+    await checkHistoryScale({sync,evaluate,waitFor});
+    await checkDriveRecoveryView({evaluate});
+    await checkRuntimeWorkerFailure({evaluate});
     console.log('PASS', mode, 'previous-build upgrade at /CoffeeOS/, exact fields, old CSV/Parquet, failed open preservation, collapse/swipe/delete/reload', mode === 'indexeddb' ? 'and failed-delete rollback' : '');
     await api('', undefined, 'DELETE'); session = undefined;
   }

@@ -134,3 +134,14 @@ in-app test controls. `test:drive` loads its shared checks from
 deferred at the user's request. Only `https://krischris.github.io` is authorized;
 localhost regressions continue to mock OAuth and Drive. Populated upgrade checks
 use `TEST_PREVIOUS_REF=a0a427d` for the preceding build.
+
+
+Stage 47 uses `TEST_PREVIOUS_REF=35ab417` for both upgrade suites. The old build
+seeds tab/newline-only fields and a linked session using its original public
+import API, plus damaged photos. Historical CSV/Parquet, immutable recovery
+payloads, exact fields and format 3 exports are checked after build replacement
+and reload; whitespace records remain present through failed-startup probes.
+Run the two backends sequentially. The new legacy-text checks also cover default
+rejection, opt-in preservation, merge/empty recovery and recovery downloads.
+Native Safari swipe checks explicitly activate the automation window and assert
+feedback sampled during pointerdown dispatch; missing input gets its own failure.

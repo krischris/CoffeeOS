@@ -195,6 +195,11 @@ and recoverable failures that preserve the original collection.
   deployed fix worked, without device/version details. Precise original device
   trigger and a full physical iOS/Home Screen lifecycle matrix remain unverified.
 
+### Follow-up Verification — 2026-10-28
+
+- R1 ordinary writes and imports now coordinate SQL/IndexedDB publication; see
+  the Stage 44 failure matrix and populated upgrade evidence.
+
 ## Stage 3: Bean Manager Tab (`src/views/beanManager.ts`)
 
 - [x] **Status:** Complete; desktop Safari passed, physical iOS date-control checks pending.
@@ -238,6 +243,12 @@ Create beans and display each bean's complete, correctly associated brew history
   At 393px, fields measured 327px within a 361px card; native semantics retained.
 - Build, full Safari regression suite and dev/preview headers passed. Physical
   iOS/date-picker and deployed-host checks remain unverified by these runs.
+
+### Follow-up Verification — 2026-10-28
+
+- R7 collapsed bean rows fetch counts; opened histories use 50-session pages.
+  Hidden views refresh on entry. See Stage 44 measurements and Safari
+  interaction checks.
 
 ## Stage 4: Brew Controller & Live Extraction Chart
 
@@ -283,6 +294,12 @@ responsive brewing-control chart. Stages 14–16 own the later editor/edit/delet
   appearance was adjusted to honor 44px height. No overflow at 390px.
 - Service-worker isolation, local assets and dev/preview headers passed. Physical
   iPhone/iPad, native keyboard, Home Screen and actual host checks remain open.
+
+### Follow-up Verification — 2026-10-28
+
+- R5 session drafts check the original record atomically; R7 hidden Bean Manager
+  work is deferred after saves. See Stage 44 precision/conflict and interaction
+  checks.
 
 ## Stage 5: Historical CSV/Parquet IO & Deployment
 
@@ -330,6 +347,12 @@ Preserve interoperable legacy backups and a reproducible GitHub Pages deployment
   6's durable-only startup policy and do not authorize application memory fallback.
 - No GitHub Actions deployment, physical Files/Share or host acceptance was
   established by this stage. Stage 22 replaces ordinary CSV/Parquet export controls.
+
+### Follow-up Verification — 2026-10-28
+
+- R1 legacy CSV/Parquet imports share coordinated commit handling. R6 damaged
+  historical photos have an explicit preservation option. See Stage 44 old-file
+  and failed-commit checks.
 
 ## Stage 6: Upgrade Compatibility & Persistent Data Protection
 
@@ -408,6 +431,12 @@ Make upgrades, startup and failures preserve the same exact recoverable collecti
   Local worker replacement uses host isolation headers; it is not live Pages
   upgrade proof. Future migrations/dependency/origin changes need their own tests.
 
+### Follow-up Verification — 2026-10-28
+
+- Stage 44 repeats populated previous-build IndexedDB/OPFS upgrades, old-file
+  imports and failed-startup preservation; collection storage identities remain
+  unchanged.
+
 ## Stage 7: Collapsible Bean Entries & Swipe-to-Delete
 
 - [x] **Status:** Complete; local gestures/deletion/upgrades passed, physical touch pending.
@@ -456,6 +485,12 @@ Keep bean histories compact and provide deliberate, recoverable bean deletion.
 - Stage 37 did not rerun Firefox/OPFS. Physical touch/scroll arbitration, screen
   reader operation, Home Screen lifecycle, Safari OPFS and deployed host remain open.
 
+### Follow-up Verification — 2026-10-28
+
+- R1 cascading deletes share coordinated commit handling; R3 committed deletion
+  alerts are outside the editor/rows; R7 histories load on demand. See Stage 44
+  regressions.
+
 ## Stage 9: Optional Compressed Bean Photos
 
 - [x] **Status:** Complete; local photo/migration gates passed, physical device pending.
@@ -497,6 +532,12 @@ Add optional bean photos with a recoverable additive migration and old-backup fi
 - Physical camera/library, HEIC/orientation, Home Screen lifecycle, Safari OPFS
   and deployed-host checks remain unverified; unsupported images fail recoverably.
 
+### Follow-up Verification — 2026-10-28
+
+- R6 new photos use consistent encoding/marker checks. Previously accepted
+  damaged photo bytes survive upgrade and explicit legacy import; compatibility
+  archives use format 2. See Stage 44.
+
 ## Stage 11: Compact Mobile Brew Cards & Saved Charts
 
 - [x] **Status:** Complete; Safari retry passed. Feed disclosure later superseded by Stage 15 direct editing.
@@ -533,6 +574,11 @@ Provide a compact date/bean/EY feed and saved-brew chart access on phone widths.
   reruns passed. Cause unconfirmed; no application fix claimed.
 - Build/diff and headers passed. Physical iOS/Home Screen, hosted behavior and
   previous-build upgrade paths were not established by this presentation rerun.
+
+### Follow-up Verification — 2026-10-28
+
+- Stage 44 preserves brew card editing/swipes and defers hidden Bean Manager
+  work. Session drafts reject imported record changes atomically.
 
 ## Stage 14: Single-Page iPhone Brew Editor
 
@@ -651,6 +697,12 @@ Edit the original brew record directly without losing imported values or precisi
 - Physical iOS picker, keyboard, larger text, Home Screen and actual host remain
   unverified; current proportional layout supersedes original fixed-size assertions.
 
+### Follow-up Verification — 2026-10-28
+
+- R1 session writes share coordinated commit handling; R5 stale session drafts
+  reject imported changes, including microseconds. See Stage 44 exact-data and
+  failure tests.
+
 ## Stage 16: Swipe to Delete Brew Sessions
 
 - [x] **Status:** Complete; Safari/IndexedDB + Firefox/OPFS checks passed, physical iOS pending.
@@ -693,6 +745,12 @@ Delete exactly one brew through deliberate swipe/actions without accidental edit
 - Firefox/OPFS not rerun for Stage 37. Physical touch/scroll, native keyboard,
   Home Screen lifecycle, Safari OPFS and deployed host remain unverified.
 
+### Follow-up Verification — 2026-10-28
+
+- R1 session deletion shares coordinated commit handling. Stage 44 verifies
+  rollback/reopen, retry and committed warnings; hidden histories refresh on tab
+  entry.
+
 ## Stage 21: Compact Bean Editor & Pinned Bean Histories
 
 - [x] **Status:** Complete; desktop Safari/IndexedDB upgrades passed, physical iOS pending.
@@ -730,6 +788,12 @@ Keep bean creation compact and inspect long histories without losing collection 
   passed exact records, old backups, failure recovery and edit/photo/delete regressions.
 - OPFS upgrades not rerun in this feature session; older Safari, physical native
   selection/touch/keyboard, Home Screen and deployed host remain unverified.
+
+### Follow-up Verification — 2026-10-28
+
+- R7 expanded histories page through all stored sessions; collapsed beans render
+  no metrics rows. Stage 44 repeats pinned scrolling, keyboard, selection and
+  swipe checks.
 
 ## Stage 22: Portable Single-File CoffeeOS Backups
 
@@ -842,6 +906,12 @@ merge, retaining old backups and recoverable overwrites.
   Home Screen storage, older Safari and deployed-host checks remain unverified.
   Threshold-sized browser tests above 1 GB are not claimed; no deployment performed.
 
+### Follow-up Verification — 2026-10-28
+
+- R6 exports validate logical readability before download. Healthy data keeps
+  format 1; damaged legacy photo bytes use explicit format 2. Archive
+  corruption/commit tests remain in place; see Stage 44.
+
 ## Stage 24: Google Drive Login & Basic Snapshot Sync
 
 - [x] **Status:** Complete; user accepted 2026-10-27, later native-fetch fix/live small round trip passed.
@@ -941,6 +1011,12 @@ with offline/local data independent of Google availability.
 - User accepted 24/25/33 (Stage 36). Live Safari OAuth, cross-profile recovery,
   live merge/replace, large/interrupted/expired-token transfers, physical iOS/Home
   Screen, Safari OPFS and deployed-build behavior remain unverified by this evidence.
+
+### Follow-up Verification — 2026-10-28
+
+- R2 automatic empty recovery enters an explicit local apply phase. Stage 44
+  actual-view Cancel/Disconnect tests cover staging, snapshot/commit boundaries
+  and durability failures on both backends.
 
 ## Stage 25: Complete Google Drive Backup & Recovery Workflow
 
@@ -1050,6 +1126,12 @@ merge/replacement, preserving existing records and cloud snapshots.
   iOS/Home Screen, Safari OPFS and deployed workflow remain unverified. Testing-mode
   Google use does not establish public consent approval. No deployment performed.
 
+### Follow-up Verification — 2026-10-28
+
+- R2 local recovery outcomes remain visible and refresh views; R4 switch
+  confirmation is independent of credentials; R5 editor conflicts protect
+  imported records. See Stage 44.
+
 ## Stage 30: Public Privacy Policy, About Overlay & Readable Homepage
 
 - [x] **Status:** Complete locally; deployment/Google approval and physical iOS pending.
@@ -1151,6 +1233,12 @@ Edit beans in the shared form while preserving identity, photos and all linked b
 - Transient local Parquet errors passed unchanged reruns. Safari OPFS, native
   touch/keyboard, Home Screen/storage lifecycle and deployed-host checks remain
   unverified. No normal user collection changed and no deployment performed.
+
+### Follow-up Verification — 2026-10-28
+
+- R1 bean edits/deletes share coordinated commit handling, R3 warnings are
+  visible outside the editor, and R5 original-record checks preserve stale
+  drafts. See Stage 44 Safari and upgrade evidence.
 
 ## Stage 38: Consolidate Feature Requirements & Regression Gates
 
@@ -1412,3 +1500,563 @@ remains valid, preserving explicit transfers and all local records/backups.
 - Live Google renewal/revocation, Safari OPFS, actual browser-restart cookie/token
   lifecycle, physical iPhone/iPad/Home Screen/storage lifecycle and deployed-host
   behavior remain unverified. No deployment or Google Console change performed.
+
+### Follow-up Verification — 2026-10-28
+
+- R4 switch intent survives the pre-authorization reload gap and token
+  expiry/invalidation. Unretainable switches keep the current connection with a
+  recoverable error; see Stage 44 storage-failure checks.
+
+## Stage 42: Direct Touch Feedback & Finger-Tracking Row Swipes
+
+- [x] **Status:** Complete locally; desktop Safari/Firefox checks passed, physical iOS feel pending.
+
+### Goal
+
+Make brew and bean rows react on contact and follow horizontal finger movement
+while preserving native vertical scrolling, explicit actions and stored records.
+
+### Tasks
+
+1. Replace release-only swipe recognition with shared pointer tracking: immediate
+   pressed feedback, a small direction threshold, live transforms without easing
+   during drag, bounded end resistance and animated open/closed settling.
+2. Preview the revealed action during dragging, but keep it inert until release.
+   Preserve bean Edit/Delete directions, reverse-to-close, menus, keyboard access,
+   tap-to-edit/expand/dismiss, and the existing 40px reveal threshold.
+3. Preserve vertical scrolling/pinch zoom, scrollable expanded bean histories,
+   text selection, and reduced-motion support. Cancel safely on pointer loss,
+   multi-touch/cancellation without accidental activation; prevent native image
+   dragging from interrupting row tracking.
+4. Verify intermediate movement before release, press/scroll/cancel/reversal,
+   action/tap separation and unchanged data in isolated Safari, plus existing
+   editor/delete regressions and production subpath/isolation checks.
+
+### Acceptance Criteria (Stage 42 Gate)
+
+- A row highlights on contact and moves with horizontal input before pointerup;
+  the revealed control tracks the exposed edge and cannot activate mid-drag.
+  Dragging has no transform transition; release settles to the intended action.
+- Small drags return to their prior state; reverse swipes close existing actions
+  without switching sides in one gesture. Cancellation/lost capture/multi-touch
+  restore prior state and remove temporary styles without editing/deleting data.
+- Vertical gestures preserve scrolling and do not reveal actions or open editors.
+  Normal taps, menu/keyboard controls, expanded history interaction and selection
+  remain usable. Touch targets/phone layouts and reduced motion remain intact.
+- Build, focused Safari gesture checks, existing edit/delete/data checks and
+  production `/CoffeeOS/` assets/COOP/COEP pass. Record physical-device limitations.
+- No storage/startup/dependency/service-worker/format/origin changes. Preserve all
+  IDs, relationships, record fields/units/dates/nulls/precision and old backups.
+
+### Verification — 2026-10-28
+
+- `uv run npm run build`, `git diff --check` and full `test:safari` passed on
+  desktop Safari 27.2 in isolated automation sessions. Shared row tracking now
+  highlights on contact, locks horizontal intent after 5px, follows the finger
+  without an easing transition and settles after release with the existing
+  40px threshold. No swipe invokes Edit/Delete directly.
+- New `swipe-row-checks.mjs` runs in Safari smoke and populated-upgrade suites.
+  It checks exact intermediate 8/32/60px offsets before release, pressed state,
+  inert action previews, short/reverse drags, bounded overscroll, cancellation,
+  surface capture loss versus child capture handoff, second-pointer cancellation,
+  vertical-axis locking, menus/Escape, tap-to-edit/expand, selected history text,
+  native-image-drag prevention, and byte-identical CSV/records after interaction.
+  Trusted Safari mouse-pointer actions also verify live tracking/capture across
+  separate down/move/up commands; touch/multitouch events are simulated.
+- Safari/IndexedDB and Firefox/OPFS suites passed populated build replacement
+  from `35ab417` at the same isolated `/CoffeeOS/` origin/profile. Existing
+  session/bean edit and delete tests passed: unchanged field fidelity, rollback,
+  retry, duplicate-submit guards, histories, committed-write warnings and reload.
+  Prior CSV/Parquet/archive imports and recovery remained readable; injected
+  startup/permission/worker failures preserved stored data with recoverable errors.
+- Firefox's final focused gesture checks passed with reduced motion enabled only
+  in the isolated test profile: direct dragging and zero-duration release settling
+  both work. The production-subpath/isolation suite and direct dev/preview header
+  checks passed; relative assets and helper-only header exception are preserved.
+- This update changes row interaction/CSS only; collection storage, startup,
+  dependencies, service worker, backup formats, identifiers, origin and deployment
+  are unchanged. No normal browser profile or user collection was used.
+- Physical iPhone/iPad touch feel, real pinch/scroll arbitration, Home Screen
+  behavior, Safari reduced-motion settings and deployed-host behavior remain
+  unverified. Desktop pointer automation is not a physical iOS acceptance pass.
+
+## Stage 43: Codebase Review & Follow-up Remediation
+
+- [x] **Status:** R1–R7 and both investigations implemented; final acceptance passed in Stage 45.
+
+### Goal
+
+Address the correctness, data-preservation and performance findings in
+[the 2026-10-28 codebase review](docs/code-review-2026-10-28.md). The report
+contains source locations, causes, reproduction steps, observed results, owning
+stages, fix directions and individual regression gates. This review did not
+change application behavior. Remediation is implemented in Stage 44; its final
+acceptance gate passed in Stage 45. See [the handover](docs/remediation-handover-2026-10-28.md).
+
+### Tasks
+
+1. [x] Review the current application, including uncommitted Stage 42 changes,
+   inspect storage/backup/Drive/UI failure paths, run existing Safari checks and
+   reproduce actionable findings in isolated sessions. Preserve existing edits.
+2. [x] **R1 / P1 — fix first:** Use coordinated SQL/IndexedDB commit handling for
+   ordinary writes, cascading bean deletion and legacy imports. A rejected SQL
+   commit must never publish a changed durable snapshot. Preserve committed-write
+   warning semantics and revision accounting. Extend the owning storage/edit/IO
+   regression tests with the missing IndexedDB COMMIT-failure cases.
+3. [x] **R2–R3 / P2:** Make empty Drive recovery's apply/commit phase explicit;
+   cancellation must not conceal committed local records or skip view refresh.
+   Move bean-deletion durability warnings outside the hidden editor/removed row.
+4. [x] **R4 / P2:** Preserve the account-switch confirmation requirement when
+   reloading before authorization and when an unenabled credential expires or
+   is invalidated. Keep the choice independent of expiring token material.
+5. [x] **R5 / P2:** Detect stale bean editor saves atomically after an import
+   changes the edited record; preserve drafts and require an explicit conflict
+   decision. Audit the analogous asynchronous-import/session-editor interaction.
+6. [x] **R6 / P2:** Reconcile legacy photo acceptance with archive readability.
+   Reject inconsistent new input while providing a data-preserving path for
+   already-stored/previously-exported values. Never silently strip photos or
+   make existing collections inaccessible by tightening startup validation.
+7. [x] **R7 / P2:** Load/render histories on demand and defer hidden-view work.
+   Preserve all stored history, ordering, counts, navigation and swipe behavior.
+   Measure collapsed DOM size and refresh time against the review's fixture.
+8. [x] Investigate the two explicitly unverified areas in the report: full
+   recovery-payload scans during startup and post-instantiation worker failures.
+   Record measured results and either a regression/fix or a justified disposition;
+   do not assume they are covered by startup/small-fixture tests.
+9. [x] After implementation, update owning-stage verification and this stage's
+   status. Run relevant Safari regressions and populated previous-build upgrades
+   for both IndexedDB and OPFS, including historical imports and failed-upgrade
+   preservation. Keep device/live-service gaps explicit.
+
+### Acceptance Criteria (Stage 43 Gate)
+
+- R1 failure injections cover bean/session add, update and delete, linked bean
+  deletion, and CSV/Parquet imports. Pre-commit failures preserve exact live and
+  durable data after reload; post-commit durability failures produce visible,
+  accurate warnings without duplicate retries or incorrect rollback/revisions.
+- R2 cancellation/disconnection before and during recovery has an accurate
+  outcome, refreshed views and preserved data on both backends. R3 warnings
+  remain visibly rendered and accessible with the editor closed or bean expanded.
+- R4 requires Enable confirmation across the pre-authorization reload gap,
+  post-authorization reload, expiry and credential-storage failure paths, before
+  any transfer. Existing first-connect, reconnect and Disconnect behavior passes.
+- R5 stale drafts cannot silently overwrite imported record versions. Ordinary
+  no-op saves retain dates, photos, nulls, text and numeric/timestamp precision.
+- R6 newly accepted data produces a readable archive; old stored values and
+  historical backups retain an explicit, tested recovery/import path with their
+  bytes preserved. No silent destructive normalization is permitted.
+- R7 a collapsed 1,000-session collection does not construct every session's
+  metric subtree. All history remains reachable; counts, ordering, save/import/
+  delete refresh and Stage 42 interactions pass. Record comparable measurements.
+- The two investigation items have evidence-backed dispositions. Build, relevant
+  Safari suites, local production subpath assets and COOP/COEP checks pass.
+  Previous-build populated IndexedDB/OPFS upgrade, old-backup import and failed
+  upgrade preservation checks pass before claiming storage fixes complete.
+- Preserve all record IDs/relationships, field meanings/units, dates/nulls/comments/
+  precision, storage identifiers, recoverable copies and deployment origin.
+  No implicit reset, fallback to an empty collection or silent backend switch.
+
+### Verification — 2026-10-28
+
+- Reviewed working tree based on `35ab417`, including the existing Stage 42
+  edits. Added the review report and this stage only; application/dependency/
+  storage/service-worker/deployment changes are not part of this review.
+- Project-local Node executable confirmed. `uv run npm run build`, full
+  `test:safari`, `test:drive:authorization` and `test:drive` passed in desktop
+  Safari 27.2 isolated localhost automation sessions using IndexedDB. Google
+  authorization/transport were simulated; 31 Drive adapter checks passed.
+- Focused probes reproduced all seven report findings: five ordinary write
+  variants rolled back live records but changed records after database reopen;
+  a cancelled recovery committed 3 beans/2 sessions with zero view refreshes;
+  the bean-delete warning had no rendered geometry; pre-authorization switch
+  reload reached a mocked folder-creation POST without Enable; a stale draft
+  overwrote an imported bean name; an accepted malformed legacy photo caused
+  self-exported archive validation to fail; collapsed histories created 31,163
+  DOM descendants for 1,003 sessions (~88 ms desktop trigger-to-observed finish,
+  including automation polling, not a physical-device performance benchmark).
+- Reproduction instructions and specific regression gates are retained in the
+  report. Temporary probe scripts/results remain under ignored `.cache/review-*`;
+  a future checkout can implement the tests from the self-contained report.
+- `drive-isolation.mjs` passed local production `/CoffeeOS/` startup/assets and
+  main/helper isolation checks. Direct dev/preview requests confirmed COOP
+  `same-origin` and COEP `require-corp`. Final build and `git diff --check` passed.
+- Remediation is not implemented. No new populated previous-build upgrade,
+  Firefox/OPFS, physical iPhone/iPad/Home Screen, live Google or deployed-host
+  pass is claimed. The two additional investigation items have source evidence
+  only. Prior stage results remain historical records; they do not close this gate.
+
+### Remediation follow-up — 2026-10-28
+
+- R1–R7 and both investigation items are implemented in Stage 44. Targeted
+  regressions and populated prior-build checks passed during implementation.
+  The final worker/COMMIT change passed focused Safari/IndexedDB and Firefox/OPFS
+  fault checks; final whole-suite and populated-upgrade reruns remain outstanding.
+- The user requested a handover after the current worker-failure item. Continue
+  from [the handover](docs/remediation-handover-2026-10-28.md); do not treat the
+  original review's historical “not implemented” notes as the current status.
+
+## Stage 44: Implement Review Remediation & Preservation Regressions
+
+- [x] **Status:** Implementation and final acceptance complete; final reruns recorded in Stage 45.
+
+### Goal
+
+Implement Stage 43 findings R1–R7 and investigate its recovery-listing and runtime
+worker-failure concerns, preserving existing collections and historical backups.
+
+### Tasks
+
+1. [x] Coordinate every SQL/IndexedDB commit; cover rejected commits, snapshot put/
+   abort failures, post-commit warnings, exact revisions and retry/reopen behavior.
+2. [x] Make automatic Drive recovery enter an explicit commit phase; keep committed
+   results visible and refresh views. Render bean-delete warnings outside editors.
+3. [x] Persist pending account-switch confirmation independently of credentials.
+4. [x] Reject stale bean/session drafts using record-local original versions inside
+   the serialized operation, preserving draft values and precision.
+5. [x] Validate new photos consistently; offer explicit historical damaged-photo
+   preservation and readable versioned archives retaining original photo bytes.
+6. [x] Fetch counts for collapsed beans and page opened histories; defer hidden-view
+   refresh and recovery listing. Add lightweight recovery metadata additively.
+7. [x] Inject post-startup worker failures; fail pending UI work and quarantine the
+   engine with an honest unknown-outcome message, preserving storage for reload.
+8. [x] Run build, Safari regressions, authorization/Drive checks, populated prior-build
+   IndexedDB and OPFS upgrades, old imports, startup-failure preservation and local
+   production subpath/isolation checks. Record device/live-service gaps.
+
+### Acceptance Criteria (Stage 44 Gate)
+
+- Stage 43 R1–R7 acceptance criteria pass with regression evidence; committed
+  durability warnings increment revision once and never roll back committed SQL.
+- Cancel/Disconnect cannot conceal an automatic local recovery commit; results
+  and visible view counts agree. Account-switch confirmation survives reload,
+  token expiry/invalidation and unavailable decision storage.
+- Changed/deleted edited records reject stale saves without touching imports;
+  unrelated changes and ordinary unchanged saves remain valid.
+- Healthy collections keep archive format 1. Explicit legacy preservation keeps
+  historical damaged photo bytes readable through format 2, with compatibility
+  disclosed; startup never tightens validation over saved collections.
+- A fresh collapsed 1,000-session collection creates zero history metrics rows;
+  all sessions remain reachable in sorted pages of at most 50. Record DOM/time.
+- Recovery listing avoids cloning indexed payloads; old immutable recovery keys
+  and bytes survive additive metadata indexing. Runtime worker errors release
+  pending callers, reject further operations, and preserve reload recovery.
+- Build, required Safari and populated previous-build IndexedDB/OPFS checks pass;
+  old CSV/Parquet imports and failed upgrades preserve exact data. Keep IDs,
+  relationships, meanings/units/dates/nulls/comments/precision, storage identity,
+  origin and deployment unchanged. No implicit empty fallback or destructive reset.
+
+### Verification — 2026-10-28
+
+- Implemented R1–R7 and both additional investigations; retained all pre-existing
+  Stage 42 edits and the Stage 43 review. Build and `git diff --check` pass.
+  No collection schema, dependency, existing storage identity, origin or hosting
+  change. Format 2 is an explicit legacy-photo compatibility contract; original
+  stored values and old CSV/Parquet remain recoverable without normalization.
+- Ordinary-write failure matrices passed 32 IndexedDB and 16 OPFS cases covering
+  bean/session add/update/delete, cascading delete and CSV/Parquet imports. SQL
+  COMMIT rejection, IDB put/abort/post-commit abort and OPFS post-commit failure
+  checks cover exact live/durable data, revisions, retry and reopen behavior.
+- Actual Drive recovery views passed 16 IndexedDB / 12 OPFS lifecycle cases for
+  Cancel/Disconnect at download/staging/capture/COMMIT/after-COMMIT and applicable
+  durability failures. Account-switch checks passed pre-authorization reload,
+  post-authorization reload, expiry/invalidation, storage failure and BFCache.
+  Unretainable switches preserve the current connection. Drive also replaces an
+  equal-hash unreadable old photo archive with readable format 2, retaining old
+  files and skipping a repeated upload. All Google traffic was simulated.
+- Bean/session original-record checks reject stale edits including microsecond-
+  only changes, imported photos/nulls/dates and deleted IDs; unrelated changes
+  and ordinary precision-preserving saves pass. Actual UI drafts remain intact;
+  committed bean deletion alerts have rendered geometry outside the closed form.
+- Populated upgrades from `35ab417` passed in isolated same-profile/origin
+  `/CoffeeOS/` Safari/IndexedDB and Firefox/OPFS sessions during implementation.
+  Exact records, historical CSV/Parquet, old immutable recovery keys/dates/bytes
+  and old-build damaged photos survived build replacement/startup/reload.
+  Injected metadata/schema/permission/worker startup failures preserved data and
+  exposed recoverable errors. The latest worker/keepalive change still requires
+  those full upgrade gates to be rerun before this stage is complete.
+- A fresh collapsed 1,000-session upgraded fixture created zero history rows and
+  91 descendants, versus the review's 1,003 rows / 31,163 descendants. All sessions
+  are reachable in sorted 50-row pages. Trigger-to-observed completion varied
+  ~8–112 ms Safari / ~103–104 ms Firefox, including polling; no controlled timing
+  or physical-iOS speed claim. Existing pinning, scroll, editor and swipe checks
+  passed during implementation. Latest full Safari run hit an intermittent native
+  pointer assertion; test input cleanup was added and awaits a full rerun.
+- Recovery listing no longer runs at initial mounting. Profiling ~3.2–4.9 MB of
+  retained payloads showed zero payload reads after additive metadata indexing;
+  original recovery keys/bytes survive. Indexed listing was sometimes slower at
+  this small record count (~4–13 ms versus ~3–9 ms value scans); the established
+  benefit is avoiding payload cloning and startup work, not a timing guarantee.
+- Post-startup real SDK worker-failure injections passed on both backends for a
+  pending read, an editor save and COMMIT. Saving UI settles, drafts remain, the
+  failed engine rejects further operations and warnings describe unknown commit
+  outcome without retry advice. IDB keepalive aborts without publishing candidate
+  data or blocking reopen; unknown COMMIT never triggers speculative rollback.
+  OPFS preserves all original records whether the interrupted insert committed
+  or not. Explicit reopen recovers a readable original collection.
+- Latest source passed build and focused runtime checks on both backends.
+  Safari/Firefox backup, Drive and authorization suites and earlier full Safari
+  smoke passed during this work. Final whole-suite/upgrade/subpath/isolation
+  reruns remain open, as detailed in
+  [the requested handover](docs/remediation-handover-2026-10-28.md).
+- Physical iPhone/iPad/Home Screen/storage lifecycle, Safari OPFS, live Google and
+  deployed-host behavior remain unverified. No deployment or real account upload
+  performed. Work stopped after the current worker-failure checks at the user's
+  request; no final acceptance pass is implied.
+
+### Final acceptance follow-up — 2026-10-28
+
+- Stage 45 completed the outstanding gates against the final worker/COMMIT source:
+  full Safari smoke/remediation, populated `35ab417` upgrades on Safari/IndexedDB
+  and Firefox/OPFS, historical backups, failed-startup preservation, simulated
+  Drive/authorization, diagnostics, build and local production isolation passed.
+- Stage 43 task 9 and Stage 44 task 8 are complete. The verification above remains
+  the implementation-session record; final measurements, Safari automation
+  reliability notes and explicit device/live-service gaps are recorded in Stage 45.
+
+## Stage 45: Complete Remediation Acceptance Verification
+
+- [x] **Status:** Complete; final desktop acceptance gates passed.
+
+### Goal
+
+Complete the outstanding Stage 43–44 acceptance gates against the final worker/
+COMMIT implementation, preserving all existing edits, data and historical fixtures.
+
+### Tasks
+
+1. [x] Rerun the full Safari suite and investigate any remaining trusted pointer
+   failure without weakening gesture assertions.
+2. [x] Rerun populated upgrades from `35ab417` sequentially in isolated Safari/
+   IndexedDB and Firefox/OPFS at the same `/CoffeeOS/` origin and profile.
+3. [x] Run final backup, Drive, authorization, runtime-worker and production
+   subpath/isolation regressions; confirm dev/preview response headers and build.
+4. [x] Record results and remaining environment gaps, update Stage 43 task 9 and
+   Stage 44 task 8/status only after their gates pass, and refresh the handover.
+
+### Acceptance Criteria (Stage 45 Gate)
+
+- Full Safari gestures/edit/delete/IO checks pass without reduced assertions.
+- Both previous-build upgrades preserve exact records, old CSV/Parquet backups,
+  immutable recovery copies and damaged-photo compatibility across replacement,
+  startup and reload; injected failures retain recoverable original data.
+- Final backup/Drive/authorization/runtime regressions, build, diff whitespace
+  checks and local production `/CoffeeOS/` assets/COOP/COEP pass.
+- Restore the tracked example archive after generated test output. Preserve
+  existing storage identifiers, schema, dependencies, origin and user edits.
+- Distinguish desktop Safari/IndexedDB and Firefox/OPFS evidence from unverified
+  physical iOS/Home Screen, Safari OPFS, live Google and deployed-host behavior.
+
+### Verification — 2026-10-28
+
+- Read the remediation handover and current stages; confirmed project-local Node
+  resolves inside `.venv`. Initial `uv run npm run build` passed.
+- Full `uv run npm run test:safari` passed twice in isolated desktop Safari 27.2
+  after an initial trusted-pointer contact assertion failed on a session row.
+  Ten focused bean/session swipe repetitions and the final Safari upgrade also
+  passed. Added bounded native-event diagnostics with listener cleanup, retaining
+  immediate contact, exact pre-release movement, capture and data assertions.
+  The intermittent failure's cause remains unconfirmed; diagnostics are retained
+  for recurrence. No production gesture behavior changed in this continuation.
+- `TEST_PREVIOUS_REF=35ab417 uv run npm run test:upgrade` and
+  `TEST_PREVIOUS_REF=35ab417 uv run npm run test:upgrade:firefox` passed sequentially.
+  Each replaces the previous build at the same isolated `/CoffeeOS/` origin/profile.
+  Exact IDs/relationships/fields/precision/nulls/dates/comments/photos, historical
+  CSV/Parquet, damaged-photo opt-in imports/format 2, immutable recovery keys/bytes,
+  reload and injected failed-startup preservation passed. No empty fallback was
+  presented on failure. Safari used IndexedDB; Firefox used OPFS.
+- Final `test:backups`, `test:drive`, `test:drive:authorization` and
+  `test:drive:diagnostics` passed on both browsers/backends. Archive validation,
+  rollback, recovery UI, legacy-photo Drive replacement, account-switch retention,
+  sanitized diagnostics and unchanged data/revisions passed; 31 simulated Drive
+  adapter checks passed per browser. Google authorization/transport were simulated.
+- Firefox `TEST_FIREFOX=1 uv run npm run test:review` passed; both populated upgrades
+  also ran the final remediation and worker checks. Reconfirmed 32 IndexedDB / 16
+  OPFS commit-failure cases and 16 IndexedDB / 12 OPFS actual recovery-view cases.
+  Pending SDK requests/save UI settle, failed engines quarantine, unknown COMMIT
+  never triggers speculative rollback, and explicit reopen retains original data.
+- The final upgraded 1,000-session fixtures produced zero collapsed history rows
+  and 91 descendants on both backends; all ordered pages remained reachable.
+  Observed trigger-to-finish times were ~111 ms Safari / ~103 ms Firefox, including
+  polling. Indexed recovery listing read zero payloads versus ~4.86 MB Safari /
+  ~3.21 MB Firefox value scans. These are fixture observations, not controlled
+  timing or physical-device performance claims.
+- `uv run node tests/drive-isolation.mjs` passed production `/CoffeeOS/` startup,
+  relative assets, previous service-worker update, isolated main window and the
+  helper-only header exception/BroadcastChannel without requesting Google.
+  Direct dev/preview requests returned COOP `same-origin` and COEP `require-corp`;
+  preview helper headers also passed. `uv run npm run build` and `git diff --check`
+  passed against the final source.
+- Restored `docs/fixtures/example-v1.coffeeos` byte-for-byte after backup tests.
+  Existing uncommitted work is preserved. This continuation changes only test
+  diagnostics and documentation; no collection schema, storage identity,
+  dependencies, origin, hosting or production application code changed.
+- Test dev/preview servers, Safari WebDriver and isolated Firefox were stopped.
+  Raw run logs remain under ignored `.cache/stage45-*.log`. No normal browser
+  profile or user collection was used; no commit, deployment or real Google upload.
+- Physical iPhone/iPad touch/viewport, Home Screen installation/storage lifecycle,
+  Safari OPFS, live Google authorization/transport and deployed-host response
+  headers/behavior remain unverified. Desktop acceptance does not certify these.
+
+## Stage 46: Independently Review Remediation & Diagnose Pointer Failures
+
+- [x] **Status:** Review complete; two P2 findings remain for remediation.
+
+### Goal
+
+Audit the Stage 43 findings against the final implementation and tests, and
+identify the event boundary behind the handover's intermittent Safari pointer
+failure without disturbing the existing uncommitted implementation.
+
+### Tasks
+
+1. [x] Compare R1–R7 and both investigations with source and regression evidence.
+2. [x] Rerun build and targeted isolated Safari checks; probe uncovered boundaries.
+3. [x] Reproduce native pointer failure with event traces and distinguish
+   automation delivery from application gesture handling.
+4. [x] Record findings, reproducible evidence and remaining environment gaps in
+   a follow-up review; preserve earlier acceptance records.
+
+### Acceptance Criteria (Stage 46 Gate)
+
+- Every original finding has an explicit evidence-backed disposition.
+- New defects have concrete reproduction steps and source locations; pointer
+  conclusions distinguish observed facts from unconfirmed underlying causes.
+- Build and selected regression results are recorded accurately, including
+  failures. No passing rerun is used to erase a reproduced intermittent failure.
+- Preserve application code, storage identities, schema, dependencies, historical
+  fixtures and all pre-existing user edits. Review completion does not imply
+  newly reported defects are fixed or physical iOS behavior is verified.
+
+### Verification — 2026-10-28
+
+- Confirmed Node resolves inside this project's `.venv`. Build and fresh full
+  desktop Safari 27.2 smoke/remediation checks passed on IndexedDB, including the
+  32-case commit matrix, stale drafts, legacy-photo preservation, lazy histories
+  and post-startup worker failures. Audited existing previous-build upgrade logs
+  and their test sources; no new upgrade or Firefox pass is claimed.
+- Reproduced the intermittent trusted-contact assertion in a repeated isolated
+  Safari run. At failure the document-level trusted-event trace was empty after
+  successful WebDriver move/down responses, with a clean row, expected hit target
+  and empty selection. Forty cycles with an extra state observation and ten with
+  the original first-state-read timing subsequently passed. Missing versus delayed
+  delivery and the underlying Safari/WebDriver cause remain unconfirmed; repeated
+  passes do not close that automation issue.
+- Independently reproduced a real shared gesture-handler defect with trusted
+  Safari mouse input: press just inside a session row, release outside before
+  capture, then swipe again. Release leaves the row pressed; the next press only
+  clears stale state and its 60px drag leaves offset zero/no revealed action.
+  This is distinct from the empty-event-trace failure. Physical touch is unverified.
+- Reproduced the remaining R6-related compatibility gap: legacy CSV imports accept
+  a tab-only bean name or ID, then `saveBackup()` rejects the entire collection.
+  JPEG-specific preservation is fixed, but broader accepted-input/export parity
+  is not. No data loss occurred in these isolated probes.
+- Fresh `test:drive:authorization` and the 16-case actual recovery-view matrix
+  (`TEST_REVIEW_ONLY=recovery uv run npm run test:review`) passed with mocked
+  Google traffic. Local production `drive-isolation.mjs`, `/CoffeeOS/` assets,
+  service-worker update and main/helper isolation passed. Direct dev/preview
+  responses confirmed COOP `same-origin` and COEP `require-corp`; final build
+  and `git diff --check` passed.
+- Added [the independent follow-up review](docs/remediation-followup-review-2026-10-28.md)
+  with all original dispositions, two P2 findings, reproduction steps and fix
+  gates. Updated review/handover links without rewriting historical acceptance.
+  Application/test code, schema, storage identities, dependencies, fixtures and
+  origin are unchanged; only review documentation was edited. Raw logs/probes
+  remain under ignored `.cache/stage46-*`.
+- Physical iPhone/iPad/Home Screen/storage lifecycle, Safari OPFS, live Google
+  and deployed-host behavior remain unverified. No deployment, commit, real
+  account upload or normal browser collection was used.
+
+
+## Stage 47: Preserve Legacy Text Backups & Complete Pointer Cleanup
+
+- [x] **Status:** Complete; fixes and desktop acceptance passed.
+
+### Goal
+
+Fix Stage 46 F1/F2 while preserving existing records, historical backups, storage
+identities and the current gesture behavior for scrolling, selection and zoom.
+
+### Tasks
+
+1. [x] Align default legacy text validation; add explicit historical text
+   preservation and a versioned archive contract for exact existing values.
+2. [x] Propagate compatibility through local/recovery/Drive backups and previews.
+3. [x] Clean up gestures on outside release and window interruption; distinguish
+   native input delivery from synchronous handler feedback in Safari tests.
+4. [x] Run targeted regressions, full Safari checks, populated previous-build
+   upgrades on IndexedDB/OPFS, historical imports, failed-startup preservation,
+   build and production subpath/isolation checks; document remaining gaps.
+
+### Acceptance Criteria (Stage 47 Gate)
+
+- Default imports reject whitespace-only required text consistently. Explicit
+  historical import and existing storage preserve original IDs, links, text,
+  photos, dates, nulls and precision; their exports/recoveries restore exactly.
+- Healthy archives retain format 1 and photo-only compatibility retains format 2.
+  New text compatibility is versioned, disclosed, and used by all restore paths.
+  Equal-hash unreadable old Drive archives receive a readable preserving copy.
+- Outside release/cancellation, blur/pagehide and hidden documents clear pending
+  gestures. The next swipe works; temporary listeners are removed on every exit.
+  Exact movement, capture, selection, vertical scrolling and multitouch still pass.
+- Native Safari tests identify absent events separately and assert pressed state
+  at event dispatch, without retrying gestures or waiting for application feedback.
+- Populated prior-build upgrades and failure recovery preserve exact data on
+  Safari/IndexedDB and Firefox/OPFS. Build and local production checks pass;
+  physical iOS, Safari OPFS, live Google and deployed-host gaps remain explicit.
+
+### Verification — 2026-10-28
+
+- Read the follow-up review and current implementation. Existing uncommitted work
+  is preserved. No schema, dependency, database/snapshot/lock identity or origin
+  change was made. Existing records and immutable recovery payloads are not rewritten.
+- Default legacy imports now share required-text validation with archives. An
+  explicit text-preservation checkbox retains historical whitespace-only names,
+  IDs and foreign keys. Readable format 3 archives use the explicit
+  `legacy-whitespace-v1` text and `legacy-opaque-v1` photo contracts, while healthy
+  and photo-only exports keep formats 1 and 2. Local/recovery/Drive exports,
+  merge/replace/empty recovery and diagnostics propagate the compatibility flags.
+- Pending gestures now have temporary outside-release/cancel, second-contact,
+  window-blur/pagehide and visibility listeners, removed by an AbortController on
+  every finish. Element focus transfer is distinguished from actual window blur.
+  Existing pointer capture, scrolling, selection and pinch behavior is retained.
+- Native tests now explicitly activate the automation window and sample pressed
+  state synchronously during pointerdown bubbling. Missing native delivery fails
+  separately; tests never retry gestures or poll for feedback. An initial trace
+  confirmed missing input with `document.hasFocus() === false`; after activation,
+  three focused repetitions, full Safari and the production upgrade passed,
+  including off-row release followed by a 60px swipe. This fixes the test's focus
+  precondition, not a claimed Safari engine defect or physical-iOS certification.
+- Full Safari 27.2 smoke/remediation passed, including the new actual legacy-import
+  opt-in/export/preview UI, four exact text compatibility cases, 32 IndexedDB commit
+  fault cases, stale drafts, recovery indexing and runtime worker failures. The
+  larger populated run initially exceeded one batched command's 120-second test
+  deadline; splitting the unchanged matrix into one fault case per command passed.
+  An early regression also caught element blur being mistaken for window blur;
+  the final handler filters the event target, and all native checks then passed.
+- Populated upgrades from `35ab417` passed sequentially on Safari/IndexedDB and
+  headless Firefox/OPFS at the same isolated `/CoffeeOS/` origin/profile. The old
+  build created tab/newline fields, linked sessions, damaged photos and immutable
+  recoveries via its original APIs. Exact fields/IDs/links/precision, historical
+  CSV/Parquet opt-ins, format 3 roundtrip, build replacement and reload passed.
+  Whitespace records remained present through injected worker/schema/metadata/
+  storage/permission failures; original durable data survived and no empty
+  replacement collection was presented. Both upgrades also ran the new text
+  cases, gesture checks, commit matrices (32 IDB / 16 OPFS), actual recovery-view
+  lifecycle cases (16 IDB / 12 OPFS), and runtime COMMIT-worker checks.
+- Mocked Drive checks passed on both backends: equal-hash unreadable format 1
+  archives receive new readable format 2/3 copies, old files remain, repeat sync
+  skips upload and empty recovery preserves exact data. Final Safari backup,
+  authorization and diagnostics suites passed. Final Firefox backup and diagnostic
+  suites also passed, including exact round trips and unchanged revisions/recoveries.
+- Local production `drive-isolation.mjs` passed `/CoffeeOS/` assets/startup,
+  previous service-worker update and main/helper isolation. Direct dev and preview
+  requests returned HTTP 200, COOP `same-origin`, COEP `require-corp`. Build and
+  `git diff --check` passed. Raw logs are in ignored `.cache/stage47-*`.
+- Physical iPhone/iPad touch/viewport, Home Screen/storage lifecycle, Safari OPFS,
+  live Google and deployed-host behavior remain unverified. No normal browser
+  profile, real collection, real Google upload, deployment or commit was used.
+
+- Restored the tracked example archive byte-for-byte after backup tests. Final
+  build and diff whitespace checks passed. Stopped the local dev/preview servers,
+  Safari WebDriver and the isolated headless Firefox process. Existing user edits
+  remain uncommitted; no outstanding local acceptance gate remains for this stage.

@@ -1,8 +1,10 @@
+import { checkReviewRemediation, checkHistoryScale, checkRuntimeWorkerFailure } from './review-remediation-checks.mjs';
 import assert from 'node:assert/strict';
 import { checkIO } from './io-checks.mjs';
 import { checkBrewingChart } from './brewing-chart-checks.mjs';
 import { checkBrewEditor } from './brew-editor-checks.mjs';
 import { checkBeanManager } from './bean-manager-checks.mjs';
+import { checkSwipeRows } from './swipe-row-checks.mjs';
 // Start safaridriver and Vite first; Safari uses an isolated automation session.
 const endpoint = process.env.SAFARI_WEBDRIVER_URL ?? 'http://127.0.0.1:4444';
 const base = process.env.TEST_BASE_URL ?? 'http://127.0.0.1:5173/';
@@ -11,7 +13,7 @@ async function request(path, body, method = body === undefined ? 'GET' : 'POST')
   const response = await fetch(endpoint + path, {
     method, headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(120_000),
   });
   const { value } = await response.json();
   if (!response.ok || typeof value?.error === 'string') throw new Error(JSON.stringify(value));
@@ -22,6 +24,7 @@ const sync = (script) => api('/execute/sync', { script, args: [] });
 const evaluate = (script) => api('/execute/async', {
   script: `const done = arguments[arguments.length - 1];
     (async () => {
+      const getBackups = () => import('/src/backups.ts');
       const getDB = () => import(performance.getEntriesByType('resource').find(r =>
         new URL(r.name).pathname === '/src/db.ts')?.name ?? '/src/db.ts');
       ${script}
@@ -86,6 +89,7 @@ async function saveSession() {
 const brewCards = async () => {
   await openBeans(); await openBrews();
   await waitFor(`document.querySelector('.session-form').hidden || document.querySelector('.session-form').getAttribute('aria-busy') === 'false'`);
+  await loadHistories();
   return sync(`return [...document.querySelectorAll('.session-card')].map(card => ({
   id: card.dataset.sessionId, name: card.querySelector('.session-name').textContent,
   date: card.querySelector('time').dateTime,
@@ -107,7 +111,17 @@ async function submitBean(name, roast = '', freeze = '') {
   `);
   await waitFor(`!document.querySelector('.bean-form fieldset').disabled`);
 }
-const beanCards = () => sync(`return [...document.querySelectorAll('.bean-card')].map(card => ({
+async function loadHistories() {
+  const ids=await sync(`return [...document.querySelectorAll('.bean-card')].map(c=>c.dataset.beanId);`);
+  for(const id of ids) {
+    const selector='.bean-card[data-bean-id="'+id+'"]';
+    const wasOpen=await sync(`return document.querySelector('${selector} details').open;`);
+    if(!wasOpen)await sync(`document.querySelector('${selector} summary').click();`);
+    await waitFor(`document.querySelector('${selector} .history-status').textContent !== 'Loading brew history…'`);
+    if(!wasOpen)await sync(`document.querySelector('${selector} summary').click();`);
+  }
+}
+const beanCards = async () => { await loadHistories(); return sync(`return [...document.querySelectorAll('.bean-card')].map(card => ({
   id: card.dataset.beanId, name: card.querySelector('h3').textContent,
   dates: [...card.querySelectorAll('.bean-dates time')].map(time => time.dateTime),
   empty: card.querySelector('.bean-empty')?.textContent,
@@ -116,12 +130,12 @@ const beanCards = () => sync(`return [...document.querySelectorAll('.bean-card')
     metrics: Object.fromEntries([...session.querySelectorAll('.session-metrics > div')].map(field =>
       [field.querySelector('dt').textContent, field.querySelector('dd').textContent])),
   })),
-}));`);
+}));`); };
 try {
   const created = await request('/session', { capabilities: { alwaysMatch: { browserName: 'safari' } } });
   session = created.sessionId;
   console.log('Safari:', created.capabilities.browserVersion, created.capabilities.platformName);
-  await api('/timeouts', { script: 45_000, pageLoad: 45_000 });
+  await api('/timeouts', { script: 120_000, pageLoad: 45_000 });
   await api('/url', { url: base });
   await ready();
   const initial = await sync(`return {
@@ -369,6 +383,7 @@ try {
     assert.deepEqual(await beanCards(), refreshed);
     assert.deepEqual(await sync(`return window.__safariErrors;`), []);
     console.log('PASS all brew summary fields, date order, bean filtering, zero/null metrics, safe multiline comments, tab refresh, and history persistence');
+    await checkSwipeRows({sync, evaluate, waitFor, api});
     const firstHandle = await api('/window');
     const second = await api('/window/new', { type: 'tab' });
     await api('/window', { handle: second.handle });
@@ -479,6 +494,9 @@ try {
     reload: async () => { await api('/refresh', {}); await ready(); } });
   assert.deepEqual(await sync(`return window.__safariErrors;`), []);
   console.log('PASS Safari smoke checks');
+  await checkReviewRemediation({sync,evaluate,waitFor,api,ready});
+  await checkHistoryScale({sync,evaluate,waitFor});
+  await checkRuntimeWorkerFailure({evaluate});
 } finally {
   if (session) await api('', undefined, 'DELETE');
 }

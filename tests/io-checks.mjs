@@ -155,35 +155,84 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
       const testStores = [];
       const expected = { beans: await db.getBeans(), sessions: await db.getBrewSessions() };
       const results = [];
+      const trace = [];
+      const failures = [];
+      let phase = 'setup';
+      const enter = next => {
+        phase = next;
+        trace.push({ phase, isolated: window.crossOriginIsolated, mockedIndexedDB: window.indexedDB !== realIDB });
+      };
+      const failed = error => failures.push({ phase, error: String(error), stack: error?.stack });
+      const cleanup = async (next, action) => {
+        enter(next);
+        try { await action(); return true; } catch (error) { failed(error); return false; }
+      };
+      trace.push({ phase, mode: db.getStorageMode() });
       try {
         for (const format of ['csv', 'parquet']) for (const combined of [false, true]) {
+          const label = format + '/' + (combined ? 'combined' : 'separate');
+          enter(label + '/export');
           const exported = await db.exportData(format, combined);
+          enter(label + '/close');
           await db.closeDB();
           const testName = 'coffeeos-import-test-' + crypto.randomUUID();
           testStores.push(testName);
-          Object.defineProperty(window, 'indexedDB', { configurable: true, value: {open: () => realIDB.open(testName, 1)} });
+          enter(label + '/override');
+          Object.defineProperty(window, 'indexedDB', { configurable: true, value: {open: () => {
+            trace.push({ phase, indexedDB: testName });
+            return realIDB.open(testName, 1);
+          }} });
           Object.defineProperty(window, 'crossOriginIsolated', {configurable:true, value:false});
-          Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: async () => ({getFileHandle: async () => {throw new DOMException('missing', 'NotFoundError');}}) });
+          Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: async () => {
+            trace.push({ phase, directory: 'mock' });
+            return {getFileHandle: async name => {
+              trace.push({ phase, missingFile: name });
+              throw new DOMException('missing', 'NotFoundError');
+            }};
+          } });
+          enter(label + '/init');
           await db.initDB();
+          trace.push({ phase, mode: db.getStorageMode() });
+          enter(label + '/read-empty');
           const initial = { beans: await db.getBeans(), sessions: await db.getBrewSessions() };
           const inputs = files => files.map((file, i) => ({ ...file,
             target: combined ? 'combined' : i ? 'brew_sessions' : 'beans' }));
+          enter(label + '/import-empty');
           const empty = await db.importData(inputs(await db.exportData(format, combined)));
+          enter(label + '/import-backup');
           const imported = await db.importData(inputs(exported));
+          enter(label + '/read-restored');
           results.push({ initial, empty, imported,
             equal: JSON.stringify({ beans: await db.getBeans(), sessions: await db.getBrewSessions() }) === JSON.stringify(expected) });
         }
+      } catch (error) {
+        failed(error);
       } finally {
-        await db.closeDB();
-        if (originalIndexedDB) Object.defineProperty(window, 'indexedDB', originalIndexedDB);
-        else delete window.indexedDB;
-        if (originalDirectory) Object.defineProperty(navigator.storage, 'getDirectory', originalDirectory);
-        else delete navigator.storage.getDirectory;
-        if (originalIsolation) Object.defineProperty(window, 'crossOriginIsolated', originalIsolation);
-        else delete window.crossOriginIsolated;
-        for (const name of testStores) realIDB.deleteDatabase(name);
-        await db.initDB();
+        // Restore each override even if closing fails; retain the body and every
+        // cleanup error separately so a failed reopen cannot hide the first fault.
+        const closed = await cleanup('cleanup/close', () => db.closeDB());
+        const restoredIndexedDB = await cleanup('cleanup/indexedDB', () => {
+          if (originalIndexedDB) Object.defineProperty(window, 'indexedDB', originalIndexedDB);
+          else delete window.indexedDB;
+        });
+        const restoredDirectory = await cleanup('cleanup/directory', () => {
+          if (originalDirectory) Object.defineProperty(navigator.storage, 'getDirectory', originalDirectory);
+          else delete navigator.storage.getDirectory;
+        });
+        const restoredIsolation = await cleanup('cleanup/isolation', () => {
+          if (originalIsolation) Object.defineProperty(window, 'crossOriginIsolated', originalIsolation);
+          else delete window.crossOriginIsolated;
+        });
+        if (closed && restoredIndexedDB && restoredDirectory && restoredIsolation) {
+          for (const name of testStores) {
+            await cleanup('cleanup/delete-test/' + name, () => { realIDB.deleteDatabase(name); });
+          }
+          await cleanup('cleanup/reopen', () => db.initDB());
+        } else {
+          trace.push({ phase: 'cleanup/reopen-skipped', reason: 'Close or override restoration failed' });
+        }
       }
+      if (failures.length) throw new Error('Isolated backup restore fixture failed: ' + JSON.stringify({ failures, trace }));
       return results;
     `);
     assert.equal(isolated.length, 4);

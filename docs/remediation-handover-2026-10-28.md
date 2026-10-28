@@ -1,5 +1,58 @@
 # Review remediation handover — 2026-10-28
 
+**Latest follow-up — Stage 51, 2026-10-28:** Permanent restore-fixture diagnostics
+now identify each format/layout and lifecycle phase, mock storage calls and
+isolation state. Body and cleanup errors retain separate messages/stacks; failed
+close or override restoration prevents reopening with incomplete cleanup. Seven
+injected fault/success scenarios, the full isolated desktop Safari 27.2 suite,
+production `/CoffeeOS/` checks, build and whitespace checks passed. Production
+storage/startup code and guards are unchanged. The original error did not recur;
+its cause remains unresolved. See
+[Stage 51](../PLAN.md#stage-51-preserve-safari-restore-fixture-failure-diagnostics)
+for evidence and environment gaps. The Stage 50 investigation below remains valid
+as historical evidence; its temporary diagnostics now have a tracked counterpart
+in `tests/io-checks.mjs`.
+
+**Latest investigation — Stage 50, 2026-10-28:** The failure below did not
+reproduce. A temporary instrumented full Safari 27.2 run and a separate unchanged
+`uv run npm run test:safari` both passed, including subsequent remediation checks.
+Diagnostics confirmed four fresh test IndexedDB stores, mocked OPFS inspection,
+isolation disabled during each restore case, successful cleanup reopening and
+unchanged original automation records. Build and diff checks passed. No application
+or tracked test code was changed; no root cause or fix is claimed. The historical
+stack cannot distinguish fixture initialization from cleanup reopening, which can
+also mask an earlier error. Retain both errors separately on the next reproduction.
+See [Stage 50](../PLAN.md#stage-50-investigate-the-reported-safari-restore-fixture-failure)
+for evidence and local diagnostic artifacts. The Stage 48/49 handoff below is
+preserved as historical context; its data-preservation constraints still apply.
+
+## Next worker: investigate Safari backup-fixture failure
+
+Stage 48 fixed vertical drift cancelling horizontal bean/session swipes in
+`src/views/swipeRow.ts`; preserve that change and its regression checks.
+Build, focused Safari 27.2 gestures and production `/CoffeeOS/` checks passed.
+Physical iPhone touch remains unverified.
+
+The full `uv run npm run test:safari` stopped at `tests/io-checks.mjs:149`, in
+the empty-database CSV/Parquet restore fixture, with:
+“Your saved coffee database needs OPFS and cross-origin isolation.”
+Earlier startup, writes/reloads, swipe and backup roundtrip checks passed;
+later remediation checks did not run. Log: `.cache/stage48-safari.log`
+(ignored/local; may be absent in another checkout).
+
+Suspect fixture isolation/setup, **not yet confirmed**. Inspect its overrides of
+`indexedDB`, `navigator.storage.getDirectory` and `crossOriginIsolated`, each loop
+iteration and cleanup/reopen. Trace whether the failure is in fixture startup or
+cleanup, and where OPFS detection/backend metadata comes from. Keep the production
+guard: never bypass it, clear real storage or silently open an empty replacement.
+
+Reproduce in isolated Safari, fix the confirmed cause and rerun the full suite
+plus `uv run npm run build`. Use the existing `.venv` and `uv run` commands;
+start Vite and `safaridriver -p 4444` first (both were stopped after Stage 48).
+Record the fix as the next stage after Stage 49 in `PLAN.md`. If production
+storage/startup changes are necessary, run the mandatory populated previous-build
+upgrade checks on both backends. Historical acceptance below remains unchanged.
+
 **Stage 47 follow-up:** the two P2 issues found in the independent review are
 complete, with desktop acceptance passed on Safari/IndexedDB and Firefox/OPFS.
 New legacy imports reject whitespace-only required fields; explicit

@@ -2132,3 +2132,171 @@ and pinch zoom.
   checks do not certify those environments.
 - Stopped the local dev/preview servers and Safari WebDriver after verification.
   Changes remain uncommitted.
+
+## Stage 49: Hand Off the Safari Backup-Fixture Investigation
+
+- [x] **Status:** Complete; documentation handoff prepared. The fixture failure
+  remains unresolved.
+
+### Goal
+
+Give the next worker a concise, actionable record of the Stage 48 suite failure
+without changing application behavior or historical verification claims.
+
+### Tasks
+
+1. [x] Add the failure location, error, available log and confirmed test results
+   to the existing remediation handover.
+2. [x] Distinguish the suspected fixture cause from confirmed facts; describe
+   investigation, data-preservation requirements and rerun acceptance.
+3. [x] Verify documentation changes and run the required build.
+
+### Acceptance Criteria (Stage 49 Gate)
+
+- The handover identifies the failing test, preserves uncertainty about its cause
+  and gives concrete investigation and verification steps.
+- The next worker is instructed to retain saved-data guards and existing swipe
+  fixes, use isolated Safari and record any fix in a new stage.
+- Documentation-only changes preserve earlier stages and application/storage code;
+  build and diff whitespace checks pass.
+
+### Verification — 2026-10-28
+
+- Reviewed Stage 48, its saved failure log and the backup fixture source. Added a
+  short handoff at the top of `docs/remediation-handover-2026-10-28.md`.
+- `uv run npm run build` and `git diff --check` passed. No browser tests were rerun; the
+  fixture cause, full-suite acceptance and physical iOS remain unverified.
+
+## Stage 50: Investigate the Reported Safari Restore-Fixture Failure
+
+- [x] **Status:** Investigation complete; both Safari runs passed. The historical
+  failure's cause remains unresolved and no fixture fix is claimed.
+
+### Goal
+
+Determine what the Stage 48 fixture error establishes and whether a safe fix has
+been identified, preserving the saved-data guard and earlier verification records.
+
+### Tasks
+
+1. [x] Read the handover, original failure log, fixture lifecycle and startup guard.
+2. [x] Trace all four restore cases and cleanup in an isolated Safari session.
+3. [x] Run the unchanged Safari suite, build and diff checks; record the outcome
+   and distinguish confirmed findings from unresolved hypotheses.
+
+### Acceptance Criteria (Stage 50 Gate)
+
+- Identify the conditions that produce the reported error and distinguish test
+  startup from cleanup where new evidence permits.
+- Exercise the fixture with diagnostics and without instrumentation in isolated
+  desktop Safari; retain logs and report failures honestly.
+- Do not claim a root cause or fix from passing reruns. Preserve production
+  guards, existing swipe behavior, storage identities and all user data.
+- Record build/whitespace results and remaining environment gaps. This is an
+  investigation gate, not a claim that the historical failure is resolved.
+
+### Verification — 2026-10-28
+
+- The historical stack identifies the entire browser-side evaluation at
+  `tests/io-checks.mjs:149`; it does not identify the loop iteration or distinguish
+  its initialization from the `finally` block's reopen. A cleanup exception can
+  also replace an earlier exception under the current fixture structure.
+- `src/db.ts` throws the reported error only when OPFS metadata or existing OPFS
+  files indicate saved data, but the engine has not opened OPFS. The fixture
+  intends to provide fresh IndexedDB metadata, report missing OPFS files and
+  disable isolation. With those overrides working, loop startup should not meet
+  the guard's saved-data condition. The original failure's source remains unknown.
+- A temporary instrumented copy of the complete Safari suite passed on Safari
+  27.2. Its trace confirms four distinct temporary IndexedDB databases, all four
+  mocked directory calls, isolation disabled for each case, and successful cleanup
+  reopening. Exact restored records and the original automation collection passed
+  the existing assertions; subsequent remediation/history/worker checks also passed.
+- Probe source and output are retained only under ignored `.cache/probe-io.mjs`,
+  `.cache/probe-safari.mjs` and `.cache/fixture-investigation.log`. No application
+  or tracked test code was edited. Node resolves inside the existing `.venv`.
+- The unchanged `uv run npm run test:safari` also passed in a separate isolated
+  Safari 27.2 session, including the reported fixture and all subsequent
+  remediation/history/worker checks. Its log is
+  `.cache/fixture-investigation-unmodified.log`. These two passes do not establish
+  why Stage 48 failed or prove it cannot recur. A future reproduction should
+  retain per-case initialization and cleanup errors separately before changing
+  fixture behavior; bypassing the production guard is not an appropriate fix.
+- `uv run npm run build` and `git diff --check` passed. Stopped the investigation's
+  Vite and Safari WebDriver processes; no deployment, commit, real account or
+  normal browser collection was used. Existing documentation edits are preserved.
+- Physical iOS/Home Screen, Safari OPFS, Firefox, live Google, deployed-host
+  behavior and populated previous-build upgrades were not tested in this
+  investigation. There is no production storage/startup/dependency/deployment
+  change requiring a new upgrade gate.
+
+## Stage 51: Preserve Safari Restore-Fixture Failure Diagnostics
+
+- [x] **Status:** Complete; diagnostics and desktop acceptance passed. The
+  historical Stage 48 failure remains unexplained.
+
+### Goal
+
+Make the next restore-fixture failure identify its case and lifecycle phase while
+retaining original and cleanup errors separately, following Stage 50's findings.
+
+### Tasks
+
+1. [x] Preserve Stage 50's evidence and unresolved root-cause finding; add tracked
+   diagnostics to the existing isolated CSV/Parquet restore fixture.
+2. [x] Attempt every override restoration even after cleanup failure; retain all
+   errors and avoid reopening with incomplete restoration or a failed close.
+3. [x] Verify injected body/cleanup failures, run the full isolated Safari suite,
+   build and local production subpath/header checks, and record results.
+
+### Acceptance Criteria (Stage 51 Gate)
+
+- Failure output identifies format/layout and lifecycle phase, isolation state,
+  mocked IndexedDB names, OPFS inspection calls and observed storage modes.
+- Body and cleanup exceptions retain separate messages/stacks. Failed close does
+  not prevent override restoration; incomplete cleanup prevents unsafe reopening.
+- All four restore cases retain exact record, empty-import and original-collection
+  assertions. The full desktop Safari suite, build and whitespace checks pass.
+- Local production `/CoffeeOS/` assets and isolation headers pass. Application
+  behavior, saved-data guards, storage identities, formats and dependencies remain
+  unchanged; the historical failure is not claimed fixed without reproduction.
+
+### Verification — 2026-10-28
+
+- Confirmed the existing Stage 50 logs contain instrumented and unchanged Safari
+  passes. The historical Stage 48 stack cannot distinguish startup from cleanup.
+- Added phase traces to `tests/io-checks.mjs` covering format/layout, export,
+  close, overrides, initialization, imports, record reads and cleanup. Errors
+  contain the trace plus separate messages/stacks for the body and cleanup. Every
+  override restoration is attempted after a close failure; failed close or
+  restoration skips test-store deletion and reopening rather than proceeding
+  with incomplete cleanup. Existing exact-record assertions are unchanged.
+- Seven injected scenarios executing the actual fixture body passed in a local
+  Node VM with mocked database/browser services: success with own and inherited
+  descriptors, initialization failure, reopen failure, simultaneous initialization
+  and reopen failures, close failure, and override-restoration failure. Checks
+  cover separate errors/stacks, trace context, restored descriptors, unchanged
+  original records and skipped reopening. This is fault-path verification with
+  mocks, not a reproduction of the historical Safari error. Source/output remain
+  in ignored `.cache/stage51-fixture-faults.mjs` and its `.log` file.
+- `uv run npm run test:safari` passed in an isolated desktop Safari 27.2 session
+  on IndexedDB, including all four empty restore cases, exact original automation
+  records, startup/navigation/writes/reload, swipe checks and all subsequent
+  remediation checks. Those include 32 commit fault cases, legacy compatibility,
+  stale drafts, recovery indexing, 1,000-session pagination and runtime-worker
+  failure/reopen. Log: `.cache/stage51-safari.log`. The original OPFS/isolation
+  error did not recur; no root cause or application fix is claimed.
+- `uv run node tests/drive-isolation.mjs` passed production `/CoffeeOS/` relative
+  assets/startup, previous service-worker update, isolated main/helper behavior,
+  BroadcastChannel communication and preview headers. Direct dev/preview requests
+  returned HTTP 200, COOP `same-origin` and COEP `require-corp`. Production log:
+  `.cache/stage51-production.log`.
+- Build, fixture syntax and `git diff --check` passed using the existing local
+  `.venv`. Changes are limited to test diagnostics and documentation; production
+  code, saved-data guards, schemas, formats, dependencies, storage identities and
+  origin are unchanged. Populated previous-build upgrade matrices were not rerun
+  for this test-only change. No deployment, commit, real account or normal browser
+  collection was used.
+- Physical iOS touch/Home Screen/storage lifecycle, Safari OPFS, Firefox, live
+  Google and deployed-host behavior remain unverified in this follow-up. Stopped
+  the local Vite/preview servers and Safari WebDriver after verification; changes
+  remain uncommitted.

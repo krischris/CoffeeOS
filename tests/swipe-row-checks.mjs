@@ -12,6 +12,11 @@ export async function checkSwipeRows({sync, evaluate, waitFor, api}) {
     await sync(`document.querySelector('#tab-${bean?'bean-manager':'brew-controller'}').click();`);
     await waitFor(`document.querySelector('.${bean?'bean':'session'}-list').getAttribute('aria-busy')==='false'`);
     const event=(type,x=0,y=0,extra='')=>sync(`document.querySelector('${surface}').dispatchEvent(new PointerEvent('${type}',{pointerId:71,pointerType:'touch',isPrimary:true,button:0,clientX:200+${x},clientY:200+${y},bubbles:true,cancelable:true,${extra}}));`);
+    // Test the scroll veto itself; synthetic pointer events cannot start native
+    // scrolling and therefore cannot reveal a missing touchmove preventDefault.
+    const touchMove=(x,y,count=1,cancelable=true)=>sync(`const event=new Event('touchmove',{bubbles:true,cancelable:${cancelable}});
+      Object.defineProperty(event,'touches',{value:Array.from({length:${count}},(_,identifier)=>({identifier,clientX:200+${x},clientY:200+${y}}))});
+      document.querySelector('${surface}').dispatchEvent(event);return event.defaultPrevented;`);
     const state=()=>sync(`const s=document.querySelector('${surface}'),r=document.querySelector('${selector}');return {
       x:new DOMMatrixReadOnly(getComputedStyle(s).transform).m41,pressed:s.classList.contains('is-pressed'),dragging:s.classList.contains('is-swiping'),
       duration:getComputedStyle(s).transitionDuration,inline:s.style.transform,remove:r.querySelector('.${bean?'bean':'session'}-delete').hidden,
@@ -19,6 +24,7 @@ export async function checkSwipeRows({sync, evaluate, waitFor, api}) {
     const settled=x=>waitFor(`Math.abs(new DOMMatrixReadOnly(getComputedStyle(document.querySelector('${surface}')).transform).m41-(${x}))<0.1`);
     await event('pointerdown');assert.equal((await state()).pressed,true,kind+' immediate contact feedback');
     await event('pointermove',-8,1);
+    assert.equal(await touchMove(-8,1),true,kind+' pointermove-first horizontal swipe blocks native scroll');
     let s=await state();assert.equal(s.x,-8,kind+' moves before release at 8px');
     assert.deepEqual([s.dragging,s.remove,s.inert,s.duration],[true,false,true,'0s']);
     await event('pointermove',-32,1);assert.equal((await state()).x,-32,kind+' follows finger without easing');
@@ -42,8 +48,31 @@ export async function checkSwipeRows({sync, evaluate, waitFor, api}) {
     if(bean) assert.equal(await sync(`return document.querySelector('${selector} .bean-edit').hidden;`),true);
     await event('pointerup',200,1);await settled(0);
     assert.equal((await state()).remove,true,'reverse drag closes without switching actions');
+    for(const direction of (bean?[-1,1]:[-1])) {
+      await event('pointerdown');
+      assert.equal(await touchMove(direction*2,1),false,'small undecided movement does not block scrolling');
+      // Exercise touchmove-first ordering as well as drift after pointer capture.
+      assert.equal(await touchMove(direction*8,1),true,kind+' horizontal intent blocks native scroll before pointermove');
+      await event('pointermove',direction*32,60);
+      assert.equal((await state()).x,direction*32,kind+' locked swipe ignores dominant vertical drift');
+      assert.equal(await touchMove(direction*32,60),true,kind+' vertical drift cannot hand swipe to native scroll');
+      assert.equal(await touchMove(direction*32,60,1,false),false,'non-cancelable touchmove is tolerated');
+      await event('pointermove',direction*60,-80);
+      assert.equal((await state()).x,direction*60,kind+' locked swipe follows horizontal movement through opposite vertical drift');
+      await event('pointerup',direction*60,-80);await settled(direction*96);
+      assert.equal(await touchMove(direction*60,-80),false,'scroll guard ends on release');
+      await sync(`document.querySelector('${menu}').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));`);await settled(0);
+    }
+    await event('pointerdown');
+    assert.equal(await touchMove(2,12),false,'vertical touch start stays native');
+    await event('pointermove',-70,15);await event('pointerup',-70,15);
+    assert.equal((await state()).dragging,false,'vertical touch start cannot become a horizontal swipe');
+    await event('pointerdown');await event('pointermove',-32,1);
+    assert.equal(await touchMove(-32,1,2),false,'second touch releases scroll guard for pinch zoom');await settled(0);
+    assert.equal((await state()).dragging,false,'multitouch ends horizontal lock');
     for(const cancel of ['pointercancel','lostpointercapture']) {
       await event('pointerdown');await event('pointermove',-60,1);await event(cancel,-60,1);await settled(0);
+      assert.equal(await touchMove(-60,30),false,'scroll guard ends on '+cancel);
       s=await state();assert.deepEqual([s.open,s.remove,s.inert,s.dragging,s.pressed,s.inline],[false,true,false,false,false,''],kind+' '+cancel+' restores clean state');
     }
     for (const interruption of ['outside-up', 'outside-cancel', 'blur', 'pagehide', 'hidden']) {
@@ -120,9 +149,12 @@ export async function checkSwipeRows({sync, evaluate, waitFor, api}) {
         assert.equal((await state()).pressed,false,'trusted off-row release clears contact '+kind);
         await actions([{type:'pointerMove',origin:'viewport',x:point.x,y:point.y,duration:0}]);
         await contact();
-        await actions([{type:'pointerMove',origin:'viewport',x:point.x-60,y:point.y,duration:120}]);
+        await actions([{type:'pointerMove',origin:'viewport',x:point.x-60,y:point.y+12,duration:120}]);
         assert.equal((await state()).dragging,true,'trusted pointer captured across move');
         assert.ok(Math.abs((await state()).x+60)<1,'trusted pointer tracks 60px before release');
+        await actions([{type:'pointerMove',origin:'viewport',x:point.x-60,y:point.y-70,duration:120}]);
+        assert.equal((await state()).dragging,true,'trusted horizontal capture survives vertical movement');
+        assert.ok(Math.abs((await state()).x+60)<1,'trusted vertical drift preserves horizontal offset');
         await actions([{type:'pointerUp',button:0}]);await settled(-96);
         assert.equal((await state()).open,true,'trusted release reveals action');
       } finally { await api('/actions',undefined,'DELETE');await sync(`window.__swipeTraceController.abort();delete window.__swipeTraceController;delete window.__swipeTrace;delete window.__swipeContacts;`); }

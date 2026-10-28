@@ -9,7 +9,7 @@ export function attachSwipeRow(surface: HTMLElement, options: {
   preview: (offset: number) => void;
   settle: (direction: 'left' | 'right' | null) => void;
 }): void {
-  let gesture: { id: number; x: number; y: number; origin: number; position: number; horizontal: boolean } | null = null;
+  let gesture: { id: number; type: string; x: number; y: number; origin: number; position: number; horizontal: boolean } | null = null;
   let suppressClick = false;
   let contactListeners: AbortController | null = null;
 
@@ -27,6 +27,19 @@ export function attachSwipeRow(surface: HTMLElement, options: {
     if (previous && surface.hasPointerCapture(previous.id)) surface.releasePointerCapture(previous.id);
   }
 
+  function horizontalIntent(x: number, y: number): boolean {
+    if (!gesture) return false;
+    if (gesture.horizontal) return true;
+    const dx = Math.abs(x - gesture.x), dy = Math.abs(y - gesture.y);
+    if (dy >= 5 && dy >= dx) { finish(null); return false; }
+    if (dx < 5 || dx < dy * 1.15) return false;
+    gesture.horizontal = true;
+    suppressClick = true;
+    surface.classList.remove('is-pressed');
+    surface.classList.add('is-swiping');
+    return true;
+  }
+
   surface.addEventListener('pointerdown', event => {
     if (gesture) {
       const samePointer = gesture.id === event.pointerId;
@@ -40,7 +53,7 @@ export function attachSwipeRow(surface: HTMLElement, options: {
     // not jump to the animation's endpoint. Moves only write compositor transforms.
     const transform = getComputedStyle(surface).transform;
     const origin = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41;
-    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, origin, position, horizontal: false };
+    gesture = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY, origin, position, horizontal: false };
     surface.classList.add('is-pressed');
     // Before horizontal capture, a mouse release can land outside the surface.
     // Scope document/window listeners to this contact; never retain detached rows.
@@ -59,17 +72,21 @@ export function attachSwipeRow(surface: HTMLElement, options: {
     window.addEventListener('pagehide', () => finish(null, true), listeners);
     document.addEventListener('visibilitychange', () => { if (document.hidden) finish(null, true); }, listeners);
   });
+  // Cancelling pointermove does not suppress native touch scrolling. Keep this
+  // non-passive listener on the surface so vertical drift cannot hand an active
+  // horizontal swipe back to Safari's scroller. Decide intent here too: browsers
+  // can deliver touchmove before pointermove. Vertical starts and pinch stay native.
+  surface.addEventListener('touchmove', event => {
+    if (!gesture || gesture.type !== 'touch') return;
+    if (event.touches.length !== 1) { finish(null, true); return; }
+    const touch = event.touches[0]!;
+    if (horizontalIntent(touch.clientX, touch.clientY) && event.cancelable) event.preventDefault();
+  }, { passive: false });
   surface.addEventListener('pointermove', event => {
     if (!gesture || gesture.id !== event.pointerId) return;
-    const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
-    if (!gesture.horizontal) {
-      if (Math.abs(dy) >= 5 && Math.abs(dy) >= Math.abs(dx)) { finish(null); return; }
-      if (Math.abs(dx) < 5 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
-      gesture.horizontal = true; suppressClick = true;
-      surface.classList.remove('is-pressed');
-      surface.classList.add('is-swiping');
-      if (event.isTrusted && !surface.hasPointerCapture(event.pointerId)) surface.setPointerCapture(event.pointerId);
-    }
+    if (!horizontalIntent(event.clientX, event.clientY) || !gesture) return;
+    const dx = event.clientX - gesture.x;
+    if (event.isTrusted && !surface.hasPointerCapture(event.pointerId)) surface.setPointerCapture(event.pointerId);
     event.preventDefault();
     const min = gesture.position > 0 ? 0 : -actionWidth;
     const max = gesture.position < 0 || !options.allowsRight ? 0 : actionWidth;

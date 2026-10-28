@@ -2060,3 +2060,75 @@ identities and the current gesture behavior for scrolling, selection and zoom.
   build and diff whitespace checks passed. Stopped the local dev/preview servers,
   Safari WebDriver and the isolated headless Firefox process. Existing user edits
   remain uncommitted; no outstanding local acceptance gate remains for this stage.
+
+## Stage 48: Keep Horizontal Swipes Stable Through Vertical Drift
+
+- [x] **Status:** Complete; focused desktop acceptance passed, with the broader
+  suite limitation and physical-device gaps recorded below.
+
+### Goal
+
+Keep bean/session action swipes under horizontal control until release so incidental
+vertical finger movement cannot reset the row, while retaining ordinary scrolling
+and pinch zoom.
+
+### Tasks
+
+1. [x] Share direction detection between pointer movement and a non-passive touch
+   movement listener; prevent native scrolling only for a horizontal gesture.
+2. [x] Extend gesture checks for touch/pointer event ordering, vertical drift in
+   both directions, vertical starts, multitouch, release and cancellation cleanup.
+3. [x] Run build, Safari browser acceptance and production subpath/header checks;
+   record results and physical-device limitations.
+
+### Acceptance Criteria (Stage 48 Gate)
+
+- Horizontal bean left/right and session left swipes continue tracking horizontal
+  displacement through vertical drift, and settle to the intended action.
+- Horizontal touch movement prevents the native scrolling default even when
+  touchmove precedes pointermove; vertical starts, undecided movement and pinch
+  zoom retain their native behavior. Release/cancellation removes the scroll veto.
+- Existing taps, menus, selection, pointer capture and interruption handling pass.
+  Exact records and exported CSV bytes remain unchanged by gesture checks.
+- Build, desktop Safari startup/navigation/writes/reload and local production
+  `/CoffeeOS/` assets/isolation checks pass. Physical iOS touch and Home Screen
+  behavior are explicitly distinguished from desktop/synthetic checks.
+- Storage, schemas, formats, dependencies, startup, service workers, deployment
+  configuration, storage identities and origin remain unchanged.
+
+### Verification — 2026-10-28
+
+- Confirmed Node resolves inside the existing project `.venv`. Changes are limited
+  to the shared gesture helper, its existing browser checks and this stage record.
+- `uv run npm run build`, syntax checks for the gesture tests and
+  `git diff --check` passed. Dev and preview returned HTTP 200 with COOP
+  `same-origin` and COEP `require-corp`.
+- Focused Safari 27.2 checks passed against the final source in a fresh isolated
+  automation session. Synthetic touch events verify native-scroll cancellation
+  for both event orders, bean left/right and session left movement through large
+  positive/negative vertical drift, vertical starts, undecided movement, pinch
+  handoff, non-cancelable events and release/cancellation cleanup. Trusted Safari
+  mouse drags also preserve capture and exact horizontal offset through vertical
+  movement. Existing menus, taps, keyboard, selection and interruption checks pass;
+  every record and exported CSV byte is identical before and after the gestures.
+- `uv run npm run test:safari` passed startup, navigation, narrow layout,
+  bean/session writes and reload persistence, the gesture checks, lock/backend
+  checks and save-failure cases. It then stopped in the existing empty-database
+  backup fixture (`tests/io-checks.mjs:149`) with “Your saved coffee database needs
+  OPFS and cross-origin isolation.” This is outside the changed gesture code;
+  the fixture failure was not remediated here, the later remediation checks did
+  not run, and no full-suite pass is claimed. Raw output is retained in ignored
+  `.cache/stage48-safari.log`; final focused gesture output is in
+  `.cache/stage48-swipe.log`.
+- `uv run node tests/drive-isolation.mjs` passed local production `/CoffeeOS/`
+  startup/relative assets, previous isolation-worker update, helper communication
+  and preview main/helper headers. Output is in `.cache/stage48-production.log`.
+- No storage, format, dependency, startup, service-worker or deployment source
+  changed; populated previous-build upgrade matrices were not rerun for this
+  gesture-only update. No deployment, real Google requests or normal user browser
+  collection was used.
+- Physical iPhone/iPad native touch scrolling/zoom, Home Screen behavior and
+  deployed-host behavior remain unverified; desktop mouse and synthetic touch
+  checks do not certify those environments.
+- Stopped the local dev/preview servers and Safari WebDriver after verification.
+  Changes remain uncommitted.

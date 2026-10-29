@@ -203,7 +203,7 @@ try {
   await sync(`document.querySelector('.drive-replace').click();document.querySelector('.drive-replace').click();`);
   await wait(`document.querySelector('.drive-status').textContent.includes('Replaced with') && document.querySelector('.io-drive').parentElement.getAttribute('aria-busy')==='false'`);
   assert.equal(await evaluate(`return (await (await getDB()).getBeans()).length;`),1);
-  assert.equal(await sync(`return document.querySelector('.io-recovery').hidden;`),false);
+  assert.equal(await sync(`return document.querySelector('.io-recovery');`),null);
   assert.equal(await sync(`return window.__uiPosts;`),2,'restore never uploads');
   await sync(`document.querySelector('.drive-switch').click();window.__uiAccount='other';document.querySelector('.drive-connect').click();`);
   await wait(`document.querySelector('.drive-sync').textContent.includes('Enable') && !document.querySelector('.drive-sync').disabled`);
@@ -213,7 +213,7 @@ try {
   assert.equal(await sync(`return window.__uiPosts;`),3,'restored older contents upload when latest differs');
   const gap=await sync(`const drive=document.querySelector('.io-drive').getBoundingClientRect(),local=document.querySelector('.io-export').getBoundingClientRect();return local.top-drive.bottom;`);
   assert.ok(gap>=24,'Drive and local cards have at least 24px separation: '+gap);
-  console.log('PASS history preserves previous snapshot selection, pinned preview, stale replacement reconfirmation, recovery visibility, no restore upload and account-switch confirmation');
+  console.log('PASS history preserves previous snapshot selection, pinned preview, stale replacement reconfirmation, clean IO, no restore upload and account-switch confirmation');
   await sync(`document.querySelector('.drive-disconnect').click();window.__uiDeny=true;document.querySelector('.drive-connect').click();`);
   await wait(`!document.querySelector('.drive-error').hidden`);
   assert.equal(await sync(`return document.querySelector('.drive-account').textContent`),'Not connected');

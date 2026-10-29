@@ -222,9 +222,11 @@ storage is also required for OPFS imports that overwrite records; it does not
 switch the selected backend. Existing `tables-v1`, `backend-v1`,
 `schema-v1-before-photos`, OPFS database/WAL files and ownership lock are unchanged.
 
-IO lists every recovery copy after reload. Click **Prepare recovery backup**, then
-**Download recovery backup** to get a `.coffeeos` archive. Review and merge it using
-the normal picker. No automatic reset or destructive rollback is provided.
+Recovery copies are internal safeguards and are not listed in IO. The internal
+`listImportRecoveries` and `readImportRecovery` APIs retain access to existing
+copies, which can still be packaged as standard `.coffeeos` archives. Routine
+backups use Google Drive or Save local backup. No automatic reset or destructive
+rollback is provided.
 
 ## Historical formats
 
@@ -293,8 +295,8 @@ photos only. Current schema 2 snapshots use format 4 below.
 Older readers reject format 3. If an old format 1/2 archive contains whitespace
 fields that its reader rejects, retain the original, extract both Parquet tables,
 and import using the explicit legacy text option (and photo option if needed).
-The next export produces readable format 3. Recovery downloads inspect the saved
-bytes, so older immutable copies work without rewriting their keys or payloads.
+The next export produces readable format 3. Internal recovery exports inspect the
+saved bytes, so older immutable copies work without rewriting their keys or payloads.
 Drive creates a new readable compatibility backup even when an unreadable older
 archive has the same content fingerprint; the original remote file is retained.
 
@@ -330,7 +332,7 @@ restriction. Bundled license notices cover jSquash, libwebp and wasm-feature-det
 
 Internal database schema v3 adds `photo_webp` while accepting existing v1/v2
 storage. Before an old schema changes, `schema-v2-before-webp` retains an immutable
-original snapshot. A separate downloadable import recovery is durable before
+original snapshot. A separate internal import recovery is durable before
 converting saved JPEGs. Conversion updates only the photo fields in one
 transaction: `photo_webp` receives the compressed result and `photo_jpeg` becomes
 null. All record IDs, relationships and non-photo values remain exact. Damaged

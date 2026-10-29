@@ -111,7 +111,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
       box.append(p);
     }
     const warning = document.createElement('p');
-    warning.textContent = 'Merge is recommended. Matching cloud IDs overwrite local edits, even if older. Replace adopts exactly this snapshot, including an empty snapshot. A durable recovery backup is kept before replacement or overwriting changed records; download it below under Recovery backups. Choose an action to confirm.';
+    warning.textContent = 'Merge is recommended. Matching cloud IDs overwrite local edits, even if older. Replace adopts exactly this snapshot, including an empty snapshot. Choose an action to confirm.';
     box.append(warning); box.hidden = false; find('.drive-confirm').hidden = false;
   }
   async function run(task: (client: DriveClient, signal: AbortSignal) => Promise<void>, authorize = false): Promise<void> {

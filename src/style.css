@@ -601,14 +601,12 @@ button:disabled { opacity: 0.65; cursor: wait; }
   .session-optional-hint { display: none; }
 }
 
-.io-legacy, .io-recovery { margin-top: 24px; min-width: 0; overflow-wrap: anywhere; }
+.io-legacy { margin-top: 24px; min-width: 0; overflow-wrap: anywhere; }
 .io-legacy summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--accent); }
-.io-legacy fieldset, .io-recovery fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.io-legacy fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .io-legacy label { display: block; margin: 12px 0 8px; }
 .io-legacy input { width: 100%; min-width: 0; margin-bottom: 12px; }
 .backup-preview { margin: 12px 0; }
-.io-recovery h2 { font-size: 20px; }
-.recovery-list > div { margin-top: 12px; }
 .startup-phase { color: var(--muted); font-size: 14px; }
 .startup-help { text-align: left; }
 .startup-help summary { min-height: 44px; padding: 12px 0; cursor: pointer; }

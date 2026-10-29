@@ -158,9 +158,8 @@ cloud/local counts, added/overwritten records and local-only records.
 - Local changes after preview require review of refreshed counts and another
   confirmation. Cancel leaves the collection unchanged. A post-commit storage
   warning means the change happened: export a backup, do not repeat the restore.
-- **Recovery backups** below the import controls prepares downloadable `.coffeeos`
-  copies. Import one to merge earlier records back. Recovery copies remain after
-  reload; neither successful restores nor Disconnect delete them.
+- Internal recovery copies remain after reload; neither successful restores nor
+  Disconnect delete them. IO does not expose recovery-copy controls.
 
 Restoring never immediately uploads its result. Use Sync now explicitly later.
 **Switch account** clears the old token, pending state and selections. Connect the
@@ -307,8 +306,8 @@ Historical whitespace-only names/IDs use CoffeeOS backup format 3, preserving
 original IDs and links exactly, including any damaged legacy photo bytes.
 Historical schema 1 recoveries retain formats 1/2/3. Current snapshots use
 format 4/schema 2 with WebP support and independent legacy text/photo contracts.
-JPEG-to-WebP conversion changes the photo representation once after retaining a
-downloadable original recovery. WebP content hashes use the additive
+JPEG-to-WebP conversion changes the photo representation once after retaining an
+internal copy of the original data. WebP content hashes use the additive
 `contentSha256V2` property; collections without non-null WebP retain the unchanged
 v1 algorithm and property. Existing cloud files are never rewritten or removed.
 Local/Drive previews disclose compatibility requirements. Sync retains an old

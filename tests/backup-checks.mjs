@@ -172,7 +172,7 @@ export async function checkBackups({sync,evaluate,waitFor,reload}) {
  await reload();
  const recoveryCount=await evaluate(`return(await(await getDB()).listImportRecoveries()).length;`);assert.ok(recoveryCount>=2);
  await sync(`document.querySelector('#tab-io').click();`);
- await waitFor(`document.querySelectorAll('.recovery-list button').length >= 2`);
+ assert.equal(await sync(`return document.querySelector('.io-recovery');`),null);
  await sync(`document.querySelector('.save-backup').click();document.querySelector('.save-backup').click();`);
  await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
  assert.equal(await sync(`return document.querySelector('.export-error').hidden;`),true,await sync(`return document.querySelector('.export-error').textContent;`));
@@ -189,9 +189,6 @@ export async function checkBackups({sync,evaluate,waitFor,reload}) {
  await sync(`document.querySelector('.io-import').requestSubmit();document.querySelector('.io-import').requestSubmit();`);
  await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
  assert.match(await sync(`return document.querySelector('.import-status').textContent;`),/Imported/);
- await sync(`document.querySelector('.recovery-list button').click();`);
- await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);
- assert.equal(await sync(`return document.querySelectorAll('.recovery-list .download-file').length;`),1);
  // iOS Share must come from its own click; exercise availability, cancel and failure.
  await sync(`Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,writable:true,value:async({files})=>{window.__shared=files.map(f=>f.name);}});document.querySelector('.save-backup').click();`);
  await waitFor(`document.querySelector('#io > div').getAttribute('aria-busy') === 'false'`);

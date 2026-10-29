@@ -2734,3 +2734,68 @@ manual local backups.
   local storage, and the recovery-only use case.
 - `uv run npm run build` and `git diff --check` passed. This copy change does not
   alter storage, backup contents, import behavior or recovery retention.
+
+## Stage 57: Remove Recovery Backup Controls from IO
+
+- [x] **Status:** Complete locally; build and delegated desktop Safari checks
+  passed. Physical-device and deployed-host checks remain unverified.
+
+### Goal
+
+Keep IO focused on ordinary Drive and local backup/import tasks by removing the
+recovery-copy section and its prepare/download interaction.
+
+### Tasks
+
+1. [x] Remove recovery markup, handlers, listing/refresh observer and unused styles.
+2. [x] Remove import/Drive help pointing to recovery downloads and update current
+   documentation and existing browser checks.
+3. [x] Preserve all internal pre-migration/import safeguards, existing recovery
+   records, storage identities, backup formats and normal backup operations.
+4. [x] Run build, Safari backup/Drive/application checks and production subpath
+   and isolation-header checks; record results and outstanding environments.
+
+### Acceptance Criteria (Stage 57 Gate)
+
+- IO contains no recovery section, prepare/download controls, recovery listing
+  observer or help directing users to the removed controls.
+- Local export/download/share, archive preview/merge, historical imports and
+  Drive restore continue to work; navigation and writes survive reload.
+- Existing internal recovery API/rollback checks pass. No stored records,
+  recovery keys/payloads, migrations, storage identifiers, dependencies,
+  service workers or backup formats change.
+- Build, desktop Safari regression checks, relative `/CoffeeOS/` production
+  assets, COOP/COEP headers and whitespace checks pass. Physical-device,
+  deployed-host and any untested upgrade paths are stated explicitly.
+
+### Verification — 2026-10-29
+
+- Removed the IO recovery card and listing/download handlers, related CSS and
+  obsolete local/Drive help. Internal recovery creation/access is unchanged;
+  no saved copies are deleted. Updated existing backup/Drive checks to accept
+  clean IO while retaining their internal recovery and rollback coverage.
+- `uv run npm run build` passed with Node inside the existing project `.venv`.
+  Following the user's request, remaining test execution was delegated to Luna;
+  the already-started Safari backup run completed with exit code 0.
+- Desktop Safari 27.2 `test:backups` passed archive/legacy compatibility, exact
+  photo/precision data, immutable recovery access, injected recovery failures,
+  atomic rollback, export/download/share, preview/merge/cancel/retry and reload.
+  `test:drive` passed helper authorization, 31 adapter checks, history, merge/
+  replacement, recovery/rollback and the cleaned IO assertions. Drive network
+  behavior was mocked; this does not establish live Google success. Logs:
+  `.cache/stage57-backups-safari.log`, `.cache/stage57-drive-safari.log`.
+- The full `uv run npm run test:safari` passed startup/navigation, bean/session
+  writes and reload persistence, responsive layouts/gestures, historical
+  CSV/Parquet imports, commit failures, stale drafts and runtime-worker checks.
+  `tests/drive-isolation.mjs` passed production `/CoffeeOS/` relative assets,
+  previous isolation-worker handling and main/helper header checks. Direct dev
+  `/` and preview `/CoffeeOS/` requests returned HTTP 200, COOP `same-origin`
+  and COEP `require-corp`. Logs: `.cache/stage57-safari.log`,
+  `.cache/stage57-production.log`.
+- Changed test-file syntax and whitespace checks passed. The backup suite's
+  generated example archive was restored byte-for-byte from HEAD. No normal
+  browser collection was used or deployment performed.
+- This is a UI-only change; database/startup/format/dependency/service-worker/
+  deployment implementations are unchanged. The previous-build populated OPFS/
+  IndexedDB upgrade matrix was not rerun. Physical iPhone/iPad touch, keyboard,
+  Home Screen/storage lifecycle and deployed-host headers remain unverified.

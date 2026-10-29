@@ -1,6 +1,6 @@
-import { CommittedWriteError, DatabaseRuntimeError, importData, ImportDataError, listImportRecoveries, readImportRecovery } from '../db';
+import { CommittedWriteError, DatabaseRuntimeError, importData, ImportDataError } from '../db';
 import type { DataTarget, ExportFile, ImportFile } from '../db';
-import { backupLimits, confirmBackup, packageBackup, prepareBackup, saveBackup } from '../backups';
+import { backupLimits, confirmBackup, prepareBackup, saveBackup } from '../backups';
 import type { PreparedBackup } from '../backups';
 import { createDriveView } from './driveView';
 import { createOfflineStatus } from '../offline';
@@ -21,7 +21,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
     </section>
     <form class="card io-import" aria-labelledby="import-heading">
       <h2 id="import-heading">Import local backup</h2>
-      <p class="field-hint" id="import-help">Adds new records and overwrites differing matching IDs, even from an older backup. Records absent from the backup stay in your collection. A recovery backup is kept before overwriting records.</p>
+      <p class="field-hint" id="import-help">Adds new records and overwrites differing matching IDs, even from an older backup. Records absent from the backup stay in your collection.</p>
       <fieldset aria-describedby="import-help">
         <label for="import-backup">CoffeeOS backup</label>
         <input id="import-backup" name="backup" type="file" accept=".coffeeos,.zip,application/zip">
@@ -34,11 +34,6 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
       <p class="import-status form-message" role="status" aria-live="polite">Choose a backup to preview it.</p>
       <p class="import-error form-error" role="alert" hidden></p>
     </form>
-    <section class="card io-recovery" aria-labelledby="recovery-heading" hidden>
-      <h2 id="recovery-heading">Recovery backups</h2>
-      <p class="field-hint">CoffeeOS keeps these copies on this device before an import overwrites records, a Drive restore replaces or overwrites data, or the one-time JPEG-to-WebP photo conversion. Download and import one only if you need to recover earlier data.</p>
-      <fieldset class="recovery-list"></fieldset>
-    </section>
     <details class="card io-legacy">
       <summary>Import an older backup</summary>
       <form class="legacy-import">
@@ -59,7 +54,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
   createOfflineStatus(container);
   const driveContainer = document.createElement('div');
   container.prepend(driveContainer);
-  createDriveView(driveContainer, async () => { await onImported(); await recoveries(); });
+  createDriveView(driveContainer, onImported);
   const find = <T extends HTMLElement>(selector: string) => container.querySelector<T>(selector)!;
   const form = find<HTMLFormElement>('.io-import');
   const input = find<HTMLInputElement>('#import-backup');
@@ -187,34 +182,9 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
           clearPreview(); uploaded = null; form.reset(); status.textContent = '';
           showError(error, failure.message); await refreshImported(error);
         } else { showError(error, failure instanceof DatabaseRuntimeError ? failure.message : `Import failed. Your file is still available for retry. ${detail(failure)}`); status.textContent = ''; }
-      } finally { await recoveries(); setBusy(false); }
+      } finally { setBusy(false); }
     })();
   });
-  async function recoveries(): Promise<void> {
-    try {
-      const copies = await listImportRecoveries();
-      const list = find('.recovery-list');
-      // Preserve prepared recovery downloads when refreshing the list.
-      for (const copy of copies) {
-        if ([...list.children].some(child => (child as HTMLElement).dataset.key === copy.key)) continue;
-        const row = document.createElement('div'); row.dataset.key = copy.key;
-        const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button';
-        button.textContent = `Prepare recovery backup · ${copy.created_at}`;
-        const download = document.createElement('div'), message = document.createElement('p'); message.setAttribute('role', 'status');
-        row.append(button, download, message); list.append(row);
-        button.addEventListener('click', () => {
-          if (busy) return;
-          setBusy(true); message.textContent = 'Preparing recovery backup…';
-          void readImportRecovery(copy.key).then(packageBackup).then(exported => {
-            linkFor(exported, download, copy.key, `Download recovery backup · ${copy.created_at}`);
-            message.textContent = 'Recovery backup ready.';
-          }).catch(failure => { message.textContent = `Recovery backup could not be prepared. ${detail(failure)}`; })
-            .finally(() => setBusy(false));
-        });
-      }
-      find('.io-recovery').hidden = !copies.length;
-    } catch { showError(error, 'Recovery backups could not be listed. Restore browser storage access and reload to try again.'); }
-  }
   legacy.addEventListener('submit', event => {
     event.preventDefault(); if (busy) return;
     const legacyError = find('.legacy-error'), legacyStatus = find('.legacy-status');
@@ -238,10 +208,6 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
     })();
   });
   setBusy(false);
-  // Recovery payloads from older builds can be large; list only when IO is visited.
-  const panel = container.closest<HTMLElement>('[role=tabpanel]');
-  if (panel) new MutationObserver(() => { if (!panel.hidden) void recoveries(); }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
-  else void recoveries();
   window.addEventListener('pagehide', event => { if (!event.persisted) releaseURLs(); });
   if (import.meta.hot) import.meta.hot.dispose(releaseURLs);
 }

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { inventory, findingsReport, runCommand } from '../scripts/test-harness-core.mjs';
+import { inventory, findingsReport, runCommand, selectSuites } from '../scripts/test-harness-core.mjs';
 import { registeredSuites, supportFiles } from './suites.mjs';
 
 function temporary(t) {
@@ -11,6 +11,34 @@ function temporary(t) {
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   return directory;
 }
+
+test('routine runs select Safari only; Firefox and profiling require explicit opt-in', () => {
+  const all = [{id:'build', file:'package.json'}, ...registeredSuites];
+  const defaults = selectSuites(all);
+  assert.ok(defaults.some(suite => suite.id === 'upgrade-legacy-safari'));
+  assert.ok(defaults.some(suite => suite.id === 'upgrade-jpeg-safari'));
+  assert.ok(defaults.some(suite => suite.id === 'offline-safari'));
+  assert.ok(defaults.some(suite => suite.id === 'python-roundtrip-safari'));
+  assert.ok(defaults.every(suite => !suite.browser || suite.browser === 'safari'));
+  assert.ok(defaults.every(suite => !suite.extended));
+  const extended = selectSuites(all, {extended:true});
+  assert.ok(extended.some(suite => suite.id === 'backup-memory-safari'));
+  assert.ok(extended.every(suite => !suite.browser || suite.browser === 'safari'));
+  const firefox = selectSuites(all, {browser:'firefox'});
+  assert.ok(firefox.some(suite => suite.id === 'motion-firefox'));
+  assert.ok(firefox.some(suite => suite.id === 'db-firefox-mvp'));
+  assert.ok(firefox.every(suite => !suite.browser || suite.browser === 'firefox'));
+  assert.equal(selectSuites(all, {browser:'all', extended:true}).length, all.length);
+  const selected = selectSuites(all, {selected:new Set(['python-roundtrip-firefox'])});
+  assert.deepEqual(selected.map(suite => suite.id), ['python-fixture', 'backups-firefox', 'python-roundtrip-firefox']);
+  assert.throws(() => selectSuites(all, {browser:'unknown'}), /Unknown browser/);
+  assert.throws(() => selectSuites(all, {selected:new Set(['unknown'])}), /Unknown suite/);
+  for (const optional of [{browser:'firefox'}, {extended:true}]) {
+    assert.throws(() => selectSuites([
+      {id:'local', depends:['optional']}, {id:'optional', ...optional},
+    ]), /requires explicit opt-in/, 'a mislabeled prerequisite cannot enable optional coverage');
+  }
+});
 
 test('all existing regression sources are reachable from registered suites', () => {
   const discovered = inventory(resolve('tests'), registeredSuites, supportFiles);
@@ -33,9 +61,9 @@ test('a missing registered entry is a coverage failure', t => {
   assert.throws(() => inventory(temporary(t), [{ file: '/missing/coffeeos-test.mjs' }]), /Missing registered test/);
 });
 
-test('full suite includes both persistence backends and historical/recent upgrades', () => {
+test('registered opt-in matrix retains both persistence backends and historical/recent upgrades', () => {
   for (const browser of ['safari', 'firefox']) {
-    for (const id of ['db', 'production', 'photos', 'backups', 'drive', 'authorization', 'diagnostics', 'isolation', 'offline', 'upgrade-legacy', 'upgrade-jpeg', 'upgrade-recent']) {
+    for (const id of ['db', 'production', 'review', 'photos', 'backups', 'drive', 'authorization', 'diagnostics', 'isolation', 'offline', 'upgrade-legacy', 'upgrade-jpeg', 'upgrade-recent']) {
       assert.ok(registeredSuites.some(suite => suite.id === `${id}-${browser}`), `${id}-${browser}`);
     }
   }
@@ -104,10 +132,13 @@ test('focused CLI isolates artifacts, reports failure, continues and leaves hand
   symlinkSync(resolve('node_modules'), join(root, 'node_modules'), 'dir');
   writeFileSync(join(root, 'tests/suites.mjs'), `export const supportFiles=['tests/suites.mjs']; export const registeredSuites=[
     {id:'broken',file:'tests/broken.mjs'}, {id:'next',file:'tests/next.mjs'},
-    {id:'blocked',file:'tests/next.mjs',depends:['broken']}
+    {id:'blocked',file:'tests/next.mjs',depends:['broken']},
+    {id:'optional-firefox',file:'tests/optional.mjs',browser:'firefox'},
+    {id:'optional-profile',file:'tests/optional.mjs',browser:'safari',extended:true}
   ];`);
   writeFileSync(join(root, 'tests/broken.mjs'), 'console.error("fixture failure");process.exit(4)');
   writeFileSync(join(root, 'tests/next.mjs'), 'if(process.env.TEST_REVIEW_ONLY || process.env.TEST_FIREFOX || process.env.TEST_MVP) throw Error("inherited narrowing flag"); console.log("fixture next")');
+  writeFileSync(join(root, 'tests/optional.mjs'), 'throw Error("opt-in suite executed")');
   writeFileSync(join(root, 'TESTS.md'), 'Existing finding\n');
   // Git is deliberately unavailable in the fixture; supply a tiny local executable.
   const bin = join(root, 'bin'); mkdirSync(bin);
@@ -142,6 +173,19 @@ test('focused CLI isolates artifacts, reports failure, continues and leaves hand
   writeFileSync(join(root, 'TESTS.md'), '');
   assert.equal((await runFull()).code, 0);
   assert.equal(readFileSync(join(root, 'TESTS.md'), 'utf8'), '', 'clean full run has zero-byte handoff');
+  const latest = (await import('node:fs')).readdirSync(join(root, '.cache/test-runs')).sort().at(-1);
+  const routine = JSON.parse(readFileSync(join(root, '.cache/test-runs', latest, 'summary.json')));
+  assert.deepEqual(routine.optedOut.map(suite => suite.id), ['optional-firefox', 'optional-profile']);
+  assert.ok(routine.results.every(suite => !suite.id.startsWith('optional-')), 'opted-out coverage is never reported as passed');
+  assert.equal(routine.profile.browser, 'safari');
+  for (const selection of [['--browser', 'firefox'], ['--extended'], ['--only', 'optional-firefox']]) {
+    const optional = await runCommand(process.execPath, ['scripts/test-harness.mjs', ...selection], {
+      cwd:root, env:{...process.env, PATH:`${bin}:${process.env.PATH}`}, log,
+    });
+    assert.equal(optional.code, 1, 'explicit opt-in executes the intentionally failing optional fixture');
+    assert.match(readFileSync(log, 'utf8'), /opt-in suite executed/);
+  }
+  writeFileSync(join(root, 'TESTS.md'), '');
   writeFileSync(join(root, 'tests/smoke.test.mjs'), "import test from 'node:test'; test.skip('unavailable fixture', () => {});");
   assert.equal((await runFull()).code, 1, 'skipped assertions cannot pass the full run');
   assert.match(readFileSync(join(root, 'TESTS.md'), 'utf8'), /BLOCKED node-tests/);

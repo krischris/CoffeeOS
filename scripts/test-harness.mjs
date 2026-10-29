@@ -3,17 +3,22 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, openSync, closeSync, readFileSync, realpathSync, writeFileSync, unlinkSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { relative, resolve } from 'node:path';
-import { inventory, findingsReport, runCommand, startProcess } from './test-harness-core.mjs';
+import { inventory, findingsReport, runCommand, startProcess, selectSuites } from './test-harness-core.mjs';
 import { registeredSuites, supportFiles } from '../tests/suites.mjs';
 
 const root = process.cwd();
 const options = process.argv.slice(2);
 const selectedIndex = options.indexOf('--only');
 const selected = selectedIndex < 0 ? null : new Set((options[selectedIndex + 1] ?? '').split(',').filter(Boolean));
+const browserIndex = options.indexOf('--browser');
+const browser = browserIndex < 0 ? 'safari' : options[browserIndex + 1];
+const extended = options.includes('--extended');
 const list = options.includes('--list');
 const checkInventory = options.includes('--inventory');
-if (options.some((arg, index) => !['--list', '--inventory', '--only'].includes(arg) && !(selectedIndex >= 0 && index === selectedIndex + 1)) || selected?.size === 0) {
-  throw Error('Usage: uv run npm test [-- --list | --inventory | --only id,id]');
+if (options.some((arg, index) => !['--list', '--inventory', '--only', '--browser', '--extended'].includes(arg)
+  && !(selectedIndex >= 0 && index === selectedIndex + 1) && !(browserIndex >= 0 && index === browserIndex + 1))
+  || selected?.size === 0 || !['safari', 'firefox', 'all'].includes(browser)) {
+  throw Error('Usage: uv run npm test [-- --list | --inventory | --only id,id] [--browser safari|firefox|all] [--extended]');
 }
 const allSuites = [
   { id: 'node-tests', file: 'tests', discovery: true },
@@ -21,7 +26,7 @@ const allSuites = [
   ...registeredSuites,
 ];
 if (new Set(allSuites.map(suite => suite.id)).size !== allSuites.length) throw Error('Duplicate suite IDs');
-if (selected) for (const id of selected) if (!allSuites.some(suite => suite.id === id)) throw Error(`Unknown suite: ${id}`);
+const suites = selectSuites(allSuites, {selected, browser, extended});
 
 let discovered;
 let inventoryError;
@@ -29,7 +34,7 @@ try { discovered = inventory(resolve('tests'), registeredSuites, supportFiles); 
 catch (error) { inventoryError = error; }
 if (list || checkInventory) {
   if (inventoryError) throw inventoryError;
-  if (list) for (const suite of allSuites) console.log(`${suite.id}\t${suite.browser ?? 'local'}\t${suite.file}${suite.env ? ' ' + JSON.stringify(suite.env) : ''}`);
+  if (list) for (const suite of suites) console.log(`${suite.id}\t${suite.browser ?? 'local'}\t${suite.file}${suite.env ? ' ' + JSON.stringify(suite.env) : ''}`);
   console.log(`Inventory passed: ${discovered.length} automatically discovered Node test files; all test sources registered.`);
 } else {
   await main();
@@ -72,22 +77,17 @@ async function main() {
   delete environment.NODE_TEST_CONTEXT;
   environment.TEST_BACKUP_DIR = resolve(directory, 'backups');
   mkdirSync(environment.TEST_BACKUP_DIR);
-  const summary = { startedAt, directory, scope: selected ? 'focused' : 'full automated suite',
+  const summary = { startedAt, directory, scope: selected ? 'focused' : `full automated suite (${browser}${extended ? ', extended' : ''})`,
+    profile: {browser:selected ? 'explicit selection' : browser,
+      browsers:[...new Set(suites.map(suite => suite.browser).filter(Boolean))],
+      extended:extended || suites.some(suite => suite.extended)},
+    optedOut: selected ? [] : allSuites.filter(suite => !suites.includes(suite)).map(suite => ({id:suite.id, browser:suite.browser,
+      reason: suite.browser && browser !== 'all' && suite.browser !== browser ? 'Browser requires explicit opt-in' : 'Extended profiling requires explicit opt-in'})),
     revision: 'unknown', dirty: true, results: [], node: process.version, platform: process.platform,
     manual: ['Physical iPhone/iPad touch, keyboard/viewport, Home Screen and storage lifecycle',
       'Live Google OAuth/Drive round trip (automated tests mock Google)', 'Deployed-host response headers'] };
   let active;
   const heartbeat = setInterval(() => console.log(`Running ${active ?? 'setup'}; logs: ${directory}`), 30000);
-  const suites = allSuites.filter(suite => !selected || selected.has(suite.id));
-  // Focused runs include declared dependencies, never the unrelated full matrix.
-  function includeDependencies(suite) {
-    for (const id of suite.depends ?? []) {
-      const dependency = allSuites.find(item => item.id === id);
-      if (!dependency) throw Error(`Unknown dependency ${id} in ${suite.id}`);
-      if (!suites.includes(dependency)) { suites.push(dependency); includeDependencies(dependency); }
-    }
-  }
-
   function save() { writeFileSync(`${directory}/summary.json`, JSON.stringify(summary, null, 2) + '\n'); }
   async function launch(command, args, name) {
     const log = `${directory}/${name}.log`;
@@ -143,8 +143,6 @@ async function main() {
     return promise;
   }
   try {
-    for (const suite of [...suites]) includeDependencies(suite);
-    suites.sort((a, b) => allSuites.indexOf(a) - allSuites.indexOf(b));
     summary.revision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
     const status = execFileSync('git', ['status', '--short'], { encoding: 'utf8' });
     summary.dirty = Boolean(status.trim());
@@ -234,6 +232,7 @@ async function main() {
   const issues = summary.results.filter(result => result.status !== 'passed');
   console.log(`${summary.results.length - issues.length} passed; ${issues.length} failed/blocked. Summary: ${directory}/summary.json`);
   console.log(selected ? 'Focused run; TESTS.md unchanged.' : 'Full run findings: TESTS.md (existing unresolved findings retained).');
+  if (summary.optedOut.length) console.log(`${summary.optedOut.length} opt-in suites excluded; see summary.optedOut. Use --browser all and/or --extended to include them.`);
   console.log('Unverified manual gates: ' + summary.manual.join('; '));
   process.exitCode = issues.length ? 1 : 0;
 }

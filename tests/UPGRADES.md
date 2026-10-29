@@ -1,8 +1,9 @@
 # Upgrade verification
 
-The full test runner uses `uv run npm test` and manages prerequisites and both
-backends automatically; see [the harness guide](README.md). The commands below
-remain available for focused runs and fixture maintenance.
+The full test runner uses `uv run npm test` and manages prerequisites and
+Safari automatically; Firefox requires `--browser firefox`, `--browser all` or
+an explicit Firefox `--only` selection. See [the harness guide](README.md).
+The commands below remain available for focused runs and fixture maintenance.
 
 Start `safaridriver -p 4444`, then run `uv run npm run test:upgrade`.
 For OPFS, start Firefox with an isolated profile containing `firefox-user.js`
@@ -34,15 +35,16 @@ failed-startup probes and reimport both original CSV and Parquet exports.
 The test seeds the old build and exports its historical CSV/Parquet backups,
 replaces the served build at the same origin and `/CoffeeOS/` path, updates a
 service worker with changed script bytes, and checks exact records after reload.
-It verifies old backups, new writes, failed startup recovery, stored byte digests,
-lock exclusion, bean deletion regressions, and direct session editing/deletion.
-Session checks cover swipe versus tap, dismissal and scrolling, keyboard actions,
-phone-width controls, exact sibling/bean preservation, failed-delete rollback,
-retry, history/count refresh, post-commit warnings, and reload persistence.
-Bean edit checks cover both swipe directions and menu actions, shared-form
-prefill/cancel/save, unchanged CSV fidelity, linked-session preservation,
-photo replacement/removal, failed-edit rollback/retry and committed-flush recovery.
-Safari also checks edit-form phone geometry and saves a screenshot in `.cache/`.
+Each baseline verifies exact records, immutable recoveries, original CSV/Parquet,
+archive round trips, failed migrations/opening, ownership locks and a short
+edit/write/delete/reload check. Extensive bean/session editing/deletion, rollback,
+gestures, history scale, startup/worker faults and backup controls run once per
+selected browser in `review-<browser>` on the current production fixture.
+`photos-<browser>` owns compression and WebP migration failure/retry checks.
+`drive-<browser>` owns Drive restore/recovery checks. The opt-in `motion-firefox`
+suite runs only swipe regressions with reduced motion; it never seeds an old build.
+Safari's current functional run also checks edit-form phone geometry and saves a
+screenshot in `.cache/`.
 Failure injection is confined
 to automation fixtures. Safari currently selects IndexedDB; Firefox covers OPFS.
 Service-worker replacement runs with host isolation headers; it is not proof of
@@ -64,7 +66,7 @@ those files, while v2 backups preserve explicit nulls and photo values.
 
 Upgrade checks inject failure saving the recovery copy and (OPFS) after ALTER,
 reopen the original build to compare all original records, then retry the upgrade.
-The photo checks cover resize, JPEG encoding, save/reset, expanded display,
+The current-production photo checks cover resize, JPEG encoding, save/reset, expanded display,
 all export/import variants, reload, invalid files, removal, and legacy imports.
 Recovery archives are Parquet table pairs, suitable for the existing IO importer
 once extracted from IndexedDB; there is no automatic destructive rollback UI.
@@ -86,7 +88,7 @@ compares lockfiles: equal packages may share the installed toolchain; differing
 packages install the previous lockfile with `npm ci --ignore-scripts` into the
 old fixture and build it with that installation. Candidate sources use the
 project's separately installed current dependencies. No equality guard is bypassed.
-The production `/CoffeeOS/` upgrade suite additionally prepares an archive,
+The current-production `/CoffeeOS/` functional suite additionally prepares an archive,
 previews an overwrite without applying it, confirms the atomic merge, reloads,
 and downloads/validates the additive pre-import recovery copy. Header assertions
 cover COOP/COEP on this isolated host; deployment headers remain a separate check.
@@ -100,8 +102,11 @@ Browser runs write candidate examples to `.cache/backups/example-v4.coffeeos`;
 pass that path as the Python command's argument to verify the generated example.
 It also creates a Python DEFLATE repack and malformed Parquet fixtures in
 `.cache/backups`; the next browser run verifies these optional generated fixtures.
-`uv run node tests/measure-backup-memory.mjs` runs a unique-photo Safari fixture
+`uv run npm test -- --extended` adds `backup-memory-safari` to the routine suite;
+`uv run npm test -- --only backup-memory-safari` runs just profiling. The sampler
+(`tests/measure-backup-memory.mjs`) runs a unique-photo Safari fixture
 and records coarse peak RSS for newly started Safari/WebKit processes. The
+functional unique-photo/DEFLATE stress also runs in the routine backup suite. The
 measurement includes shared/native process memory, not just archive buffers or
 JavaScript heap, and does not establish a safe physical iPhone memory budget.
 

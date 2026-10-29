@@ -19,8 +19,14 @@ uv run npm test
 
 This is the full maintained entry point. It validates coverage registration,
 automatically discovers `tests/**/*.test.mjs`, builds the app, starts owned local
-Vite/preview/Safari-driver processes and isolated Firefox profiles, and runs the
-registered matrix sequentially. Do not replace it with a handpicked subset or
+Vite/preview/Safari-driver processes, and runs the routine Safari matrix
+sequentially. Firefox and every non-Safari variant are strictly opt-in: use
+`--browser firefox` or `--browser all` only when the user explicitly requests that
+coverage. `--extended` adds Safari RSS profiling and never enables Firefox.
+`--only <firefox-id>` explicitly opts into that focused variant. Local Node and
+Python checks remain routine; browser-linked Python round trips follow their
+browser. Inventory always checks every registered source, including opt-in suites.
+Summaries list excluded optional coverage in `optedOut`; do not claim it passed. Do not replace it with a handpicked subset or
 parallelize browser suites: upgrade/offline fixtures and ports are shared.
 
 Run commands from the project root. Use the existing `.venv`; never recreate it.
@@ -43,7 +49,8 @@ set `UV_PYTHON_INSTALL_DIR` to an absolute path inside the project before instal
 Python with uv. Install the independent verifier into the same environment with
 `uv pip install -r tests/requirements.txt` if needed. Do not read
 `AGENTS_implementer.md` for test-runner setup. Installed Safari with Remote
-Automation enabled and Firefox are required for the complete browser matrix.
+Automation enabled is required for routine runs. Firefox is required only for an explicitly
+selected Firefox/all-browser matrix.
 `SAFARIDRIVER_BIN` and `FIREFOX_BIN` can select installed executables. The harness
 uses its own endpoints and profiles, never the user's normal browser profile.
 Do not launch Chrome or change system browser settings to make a run pass.

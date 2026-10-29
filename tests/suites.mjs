@@ -1,4 +1,5 @@
-// Existing entry points and variants. New *.test.mjs files need no registration.
+// All entry points, including opt-in Firefox and extended profiling variants.
+// The harness selects Safari by default. New *.test.mjs files need no registration.
 // Keep execution serial: upgrade/offline suites share fixture paths and ports.
 const node = (id, file, options = {}) => ({ id, file: `tests/${file}.mjs`, ...options });
 const browsers = ['safari', 'firefox'];
@@ -9,6 +10,7 @@ const suites = [
 ];
 for (const browser of browsers) {
   const dev = { browser, resources: ['dev', browser] };
+  const currentProduction = {browser, resources:[browser], port:5175};
   suites.push(node(`db-${browser}`, browser === 'safari' ? 'db-safari' : 'db-browser', dev));
   suites.push(node(`production-${browser}`, browser === 'safari' ? 'db-safari' : 'db-browser', {
     browser, resources: ['preview', browser], depends: ['build'], env: { TEST_PRODUCTION: '1' },
@@ -17,11 +19,11 @@ for (const browser of browsers) {
   for (const [id, file] of [
     ['review', 'review-browser'], ['photos', 'photo-browser'], ['backups', 'backups-browser'],
     ['drive', 'drive-browser'], ['authorization', 'drive-authorization'], ['diagnostics', 'drive-diagnostics'],
-  ]) suites.push(node(`${id}-${browser}`, file, { ...dev,
+  ]) suites.push(node(`${id}-${browser}`, file, { ...(['review', 'photos'].includes(id) ? currentProduction : dev),
     ...(id === 'drive' ? { includes: ['tests/driveChecks.ts'] } : {}),
     ...(id === 'backups' ? { depends: ['python-fixture'] } : {}),
   }));
-  suites.push({ id: `python-roundtrip-${browser}`, file: 'tests/backup-interoperability.py', python: true,
+  suites.push({ id: `python-roundtrip-${browser}`, browser, file: 'tests/backup-interoperability.py', python: true,
     args: ['$BACKUP_DIR/example-v4.coffeeos'], depends: [`backups-${browser}`] });
   suites.push(node(`isolation-${browser}`, 'drive-isolation', {
     browser, resources: ['preview', browser], depends: ['build'], port: 5176,
@@ -39,10 +41,10 @@ for (const browser of browsers) {
     browser, resources: [browser], port: 5177, env: { TEST_PREVIOUS_REF: '6ec3ef8' },
   }));
 }
-suites.push(node('backup-memory-safari', 'measure-backup-memory', { browser: 'safari', resources: ['dev', 'safari'] }));
-suites.push(node('upgrade-reduced-motion-firefox', 'bean-upgrade', {
+suites.push(node('backup-memory-safari', 'measure-backup-memory', { browser: 'safari', resources: ['dev', 'safari'], extended:true }));
+suites.push(node('motion-firefox', 'motion-browser', {
   browser: 'firefox', resources: ['firefox-reduced'], port: 5175,
-  env: { TEST_PREVIOUS_REF: 'HEAD', TEST_REDUCED_MOTION: '1' },
+  env: { TEST_REDUCED_MOTION: '1' },
 }));
 
 export const registeredSuites = suites;

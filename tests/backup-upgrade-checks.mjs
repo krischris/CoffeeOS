@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-/** Exercise final production backup controls after a populated old-build upgrade. */
+/** Exercise current production backup controls with a populated collection. */
 export async function checkBackupUpgrade({sync,evaluate,waitFor,api,ready,state}) {
  const before=await state();
  const originalHash=await evaluate(`const db=await getDB();return db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data);`);
@@ -23,5 +23,5 @@ export async function checkBackupUpgrade({sync,evaluate,waitFor,api,ready,state}
  assert.equal(await evaluate(`const db=await getDB();return db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data);`),originalHash,'logical hash survives production merge/reload');
  const recovery=await evaluate(`const db=await getDB(),b=await getBackups();const copies=await db.listImportRecoveries();const file=await b.packageBackup(await db.readImportRecovery(copies[0].key));const prepared=await b.prepareBackup(file.data);return {copies:copies.length,updated:prepared.preview.beans.updated};`);
  assert.ok(recovery.copies>=1);assert.equal(recovery.updated,1);
- console.log('PASS upgraded production /CoffeeOS/ archive download, preview-only selection, explicit atomic merge, recovery download and reload');
+ console.log('PASS current production /CoffeeOS/ archive download, preview-only selection, explicit atomic merge, recovery download and reload');
 }

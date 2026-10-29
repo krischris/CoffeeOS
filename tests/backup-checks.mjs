@@ -251,9 +251,10 @@ export async function checkBackups({sync,evaluate,waitFor,reload}) {
  return {example:runtime.example,roundtrip:runtime.roundtrip,measurements};
 }
 
-export async function checkBackupMemory(evaluate) {
+export async function checkBackupStress(evaluate) {
  return evaluate(String.raw`
  const db=await getDB(),b=await getBackups();
+ for(const bean of await db.getBeans())await db.deleteBean(bean.id);
  const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=1000;const ctx=canvas.getContext('2d');const pixels=ctx.createImageData(1000,1000);
  let seed=42;
  const rows=['id,name,roast_date,freeze_date,created_at,photo_jpeg'];

@@ -3,6 +3,37 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync }
 import { dirname, relative, resolve } from 'node:path';
 import { parseAst } from 'rolldown/parseAst';
 
+export function selectSuites(all, { selected = null, browser = 'safari', extended = false } = {}) {
+  if (!['safari', 'firefox', 'all'].includes(browser)) throw Error(`Unknown browser: ${browser}`);
+  const chosen = new Set();
+  function include(suite) {
+    if (chosen.has(suite)) return;
+    if (!selected && ((suite.browser && browser !== 'all' && suite.browser !== browser) || (suite.extended && !extended))) {
+      throw Error(`Prerequisite ${suite.id} requires explicit opt-in; label its dependent suite with the same browser/profile`);
+    }
+    chosen.add(suite);
+    for (const id of suite.depends ?? []) {
+      const dependency = all.find(item => item.id === id);
+      if (!dependency) throw Error(`Unknown dependency ${id} in ${suite.id}`);
+      include(dependency);
+    }
+  }
+  if (selected) {
+    for (const id of selected) {
+      const suite = all.find(item => item.id === id);
+      if (!suite) throw Error(`Unknown suite: ${id}`);
+      include(suite);
+    }
+  } else {
+    for (const suite of all) {
+      if (suite.browser && browser !== 'all' && suite.browser !== browser) continue;
+      if (suite.extended && !extended) continue;
+      include(suite);
+    }
+  }
+  return all.filter(suite => chosen.has(suite));
+}
+
 export function testFiles(root) {
   return readdirSync(root, { recursive: true, withFileTypes: true })
     .filter(entry => entry.isFile() && /\.(mjs|ts|py|js)$/.test(entry.name))

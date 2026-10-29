@@ -3077,3 +3077,93 @@ migration, JPEG conversion and recent-build data-preservation coverage.
   runner. Physical iPhone/iPad touch, keyboard/viewport, Home Screen/storage
   lifecycle, live Google and deployed-host checks remain unverified. No deployment
   or normal browser collection was used.
+
+## Stage 62: Streamline Regression Ownership and Make Firefox Opt-In
+
+- [x] **Status:** Complete; build, inventory, all 11 harness checks and affected
+  Safari functional, compatibility, offline and smoke suites passed.
+
+### Goal
+
+Shorten routine verification by testing current functional behavior once per
+selected browser, retaining historical compatibility checks, and making every
+Firefox/non-Safari variant and coarse memory profiling explicitly opt-in.
+
+### Tasks
+
+1. [x] Limit historical upgrade variants to migration, exact data/recovery and
+   backup compatibility, failure/lock safety and a short edit/write/delete/reload.
+2. [x] Move startup faults and extensive bean/session workflows to the current
+   production functional suite; run photo workflows once per selected browser.
+   Remove their duplicate calls from Safari dev/production smoke entry points.
+3. [x] Give Drive restore/recovery a single owner and reduced motion a small
+   dedicated suite without historical fixture preparation.
+4. [x] Keep functional unique-photo/DEFLATE backup stress routine; make process
+   RSS sampling an extended profiling option.
+5. [x] Default to Safari plus local Node/Python checks; require explicit browser
+   CLI selection for every Firefox variant, including its Python round trip.
+   Make the generic `test:db` script Safari-first with `test:db:firefox` opt-in.
+6. [x] Verify build, inventory, harness selection/reporting, affected Safari
+   workflows, all three Safari upgrade baselines and real offline behavior;
+   document coverage ownership, opt-in commands and remaining unverified paths.
+
+### Acceptance Criteria (Stage 62 Gate)
+
+- `uv run npm test` and its default `--list` contain no Firefox/non-Safari
+  browser resources, including via dependencies; `--extended` adds RSS only.
+  `--browser firefox`, `--browser all`, or named `--only` suites explicitly opt
+  in. Missing optional browsers cannot block a routine Safari run.
+- Every existing regression remains registered. Historical baselines retain
+  schema-v1, pre-WebP and recent populated migration, exact records and recovery
+  hashes, old CSV/Parquet and archive round trips, failed-open preservation,
+  ownership locking and post-upgrade editing/writes/deletion/reload.
+- Detailed editing/deletion rollback, startup/worker failures and durable-byte
+  guards, history scale, photos and Drive recovery each execute once per
+  selected browser/build condition. Reduced motion runs only swipe checks.
+- Routine backup suites retain unique-photo STORE/DEFLATE stress; coarse RSS is
+  explicitly extended. Opted-out suites are recorded separately from results.
+- Build, inventory, harness and affected Safari checks pass. Evidence and
+  timings are recorded without claiming an unexecuted complete run or optional
+  Firefox/profiling coverage passed. `TESTS.md` findings remain preserved.
+
+### Verification — 2026-10-29
+
+- Root `TESTS.md` was empty before changes; there were no pending findings.
+- Application code, dependencies, database/storage identities, formats, runtime
+  startup, service workers, deployment and origin are unchanged. Production
+  test hooks and injected workers remain confined to ignored fixtures.
+- `uv run npm run build` and `uv run npm run test:inventory` passed. All 11
+  harness tests passed, including default Safari filtering, explicit Firefox
+  and extended selection, prerequisite closure, coordinator opt-in execution,
+  inherited flag removal, findings preservation, timeouts and cleanup.
+- Initial sandboxed browser execution was blocked by localhost socket access:
+  `.cache/test-runs/2026-10-29T19-59-16.650Z-97518/summary.json`. The affected
+  focused checks were restarted with authorized local server/browser access;
+  original evidence is retained. Focused runs leave `TESTS.md` unchanged.
+- The affected Safari selection passed all 11 gates (inventory plus ten suites):
+  current production review/photo checks, backup/Python fixture and round trip,
+  Drive, all three populated historical/recent upgrades, and real offline
+  startup/update/write/backup checks. Evidence:
+  `.cache/test-runs/2026-10-29T19-59-25.073Z-97727/summary.json`.
+  Review took 101.1s, photos 66.7s, backups including unique-photo/DEFLATE stress
+  14.1s, Drive 15.0s and offline 34.8s. Schema-v1/pre-WebP/recent Safari upgrades
+  took 21.3/17.2/14.5s (53.0s combined), compared with 197.5/123.1/121.4s
+  (442.0s combined) in the prior recorded Stage 61 run. These are focused-run
+  measurements, not a benchmark of the complete routine matrix.
+- Final managed `--only node-tests,db-safari,production-safari,server-contracts`
+  passed all six gates including the build and inventory, after removing shared
+  helpers from smoke entry points. This retained Safari dev failure/ownership
+  checks and production UI, chart/editor, CSV import and reload checks; local
+  server checks verified main/helper isolation headers and relative subpath
+  assets. Evidence:
+  `.cache/test-runs/2026-10-29T20-04-57.991Z-98840/summary.json`.
+- Final `uv run npm run test:harness` passed all 11 tests after adding explicit
+  summary checks that opted-out coverage is neither executed nor reported as
+  passed. Default `--list` contains 19 Safari/local suites; all variants remain
+  visible via `--list --browser all --extended`. Dependency guards reject a
+  mislabeled prerequisite instead of silently launching an optional browser.
+  Final inventory and whitespace checks passed; `TESTS.md` remains zero bytes.
+- Full routine matrix, opt-in Firefox/OPFS/MVP/reduced-motion, extended RSS,
+  physical iPhone/iPad touch/keyboard/Home Screen/storage lifecycle, live Google
+  and deployed-host headers remain unverified. No normal browser collection or
+  deployment is used.

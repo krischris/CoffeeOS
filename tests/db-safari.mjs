@@ -1,10 +1,7 @@
-import { checkReviewRemediation, checkHistoryScale, checkRuntimeWorkerFailure } from './review-remediation-checks.mjs';
 import assert from 'node:assert/strict';
 import { checkIO } from './io-checks.mjs';
 import { checkBrewingChart } from './brewing-chart-checks.mjs';
 import { checkBrewEditor } from './brew-editor-checks.mjs';
-import { checkBeanManager } from './bean-manager-checks.mjs';
-import { checkSwipeRows } from './swipe-row-checks.mjs';
 // Start safaridriver and Vite first; Safari uses an isolated automation session.
 const endpoint = process.env.SAFARI_WEBDRIVER_URL ?? 'http://127.0.0.1:4444';
 const base = process.env.TEST_BASE_URL ?? 'http://127.0.0.1:5173/';
@@ -202,7 +199,6 @@ try {
   assert.ok(layout.fields.every(field => field.font === '16px' && field.height >= 44));
   assert.ok(layout.buttonHeight >= 44);
   console.log('PASS Safari narrow-window layout and iOS input/touch sizing', layout);
-  await checkBeanManager({ sync, api, waitFor, screenshotPath: process.env.BEAN_SCREENSHOT_PATH });
 
   await openSession();
   assert.deepEqual(await sync(`return [...document.querySelectorAll('.spec-table')].map(table => ({
@@ -383,7 +379,6 @@ try {
     assert.deepEqual(await beanCards(), refreshed);
     assert.deepEqual(await sync(`return window.__safariErrors;`), []);
     console.log('PASS all brew summary fields, date order, bean filtering, zero/null metrics, safe multiline comments, tab refresh, and history persistence');
-    await checkSwipeRows({sync, evaluate, waitFor, api});
     const firstHandle = await api('/window');
     const second = await api('/window/new', { type: 'tab' });
     await api('/window', { handle: second.handle });
@@ -494,13 +489,8 @@ try {
     reload: async () => { await api('/refresh', {}); await ready(); } });
   assert.deepEqual(await sync(`return window.__safariErrors;`), []);
   console.log('PASS Safari smoke checks');
-  // These inject faults through source-module imports, available in the dev run.
-  // The production variant above exercises the built UI and reload persistence.
-  if (!process.env.TEST_PRODUCTION) {
-    await checkReviewRemediation({sync,evaluate,waitFor,api,ready});
-    await checkHistoryScale({sync,evaluate,waitFor});
-    await checkRuntimeWorkerFailure({evaluate});
-  }
+  // Shared bean layout, swipe, transaction, history and worker regressions run
+  // once on the current production fixture in review-browser.mjs.
 } finally {
   if (session) await api('', undefined, 'DELETE');
 }

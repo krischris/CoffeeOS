@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { firefoxAdapter } from './firefox-upgrade-adapter.mjs';
-import { checkBackups, checkBackupMemory } from './backup-checks.mjs';
+import { checkBackups, checkBackupStress } from './backup-checks.mjs';
 const endpoint = process.env.SAFARI_WEBDRIVER_URL ?? 'http://127.0.0.1:4444';
 const base = process.env.TEST_BASE_URL ?? 'http://127.0.0.1:5173/';
 const output = process.env.TEST_BACKUP_DIR ?? '.cache/backups';
@@ -46,8 +46,13 @@ try {
    console.log('PASS 10 independent PyArrow invalid-value/schema archives rejected before mutation');
  }
  console.log('Browser storage:',await evaluate('return (await getDB()).getStorageMode();'));
- const result = process.env.TEST_MEMORY_ONLY ? {measurements:await checkBackupMemory(evaluate)} : await checkBackups({sync,evaluate,waitFor,reload:async()=>{await api('/refresh',{});await waitFor(`document.querySelector('#app')?.getAttribute('aria-busy') === 'false'`);}});
- if(!process.env.TEST_MEMORY_ONLY){assert.ok(result.example?.length>0,'Candidate archive was generated');assert.ok(result.roundtrip?.length>0,'Round-trip archive was generated');}
+ const result = process.env.TEST_MEMORY_ONLY ? {measurements:await checkBackupStress(evaluate)} : await checkBackups({sync,evaluate,waitFor,reload:async()=>{await api('/refresh',{});await waitFor(`document.querySelector('#app')?.getAttribute('aria-busy') === 'false'`);}});
+ if(!process.env.TEST_MEMORY_ONLY){
+   result.measurements.stress=await checkBackupStress(evaluate);
+   console.log('PASS unique-photo STORE/DEFLATE backup stress',result.measurements.stress);
+   assert.ok(result.example?.length>0,'Candidate archive was generated');
+   assert.ok(result.roundtrip?.length>0,'Round-trip archive was generated');
+ }
  mkdirSync(output,{recursive:true});
  if(result.example)writeFileSync(output+'/example-v4.coffeeos',new Uint8Array(result.example));
  console.log('Measurements:',result.measurements);

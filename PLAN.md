@@ -2533,7 +2533,9 @@ Let users take or select a photo and automatically prepare a JPEG of at most
 
 ## Stage 54: WebP Photos and One-Time JPEG Conversion
 
-- [ ] **Status:** In progress.
+- [x] **Status:** Complete locally; populated Safari and Firefox upgrades, offline
+  production checks and the build passed. Physical-device/deployed-host checks
+  remain unverified.
 
 ### Goal
 
@@ -2548,9 +2550,9 @@ existing readable JPEG photos once on the device, with recoverable original data
    retain original schema snapshots and a downloadable pre-conversion recovery.
 3. [x] Verify transactional JPEG conversion, retry after failure, unchanged
    WebP on subsequent reloads, and exact non-photo record preservation.
-4. [ ] Version WebP archives, keep historical CSV/Parquet/archive/recovery data
+4. [x] Version WebP archives, keep historical CSV/Parquet/archive/recovery data
    readable, and check local/Drive round trips and compatibility notices.
-5. [ ] Run build, Safari-first photo/upgrade/offline checks, Firefox/OPFS upgrade
+5. [x] Run build, Safari-first photo/upgrade/offline checks, Firefox/OPFS upgrade
    checks and production subpath/header verification; document remaining limits.
 
 ### Acceptance Criteria (Stage 54 Gate)
@@ -2564,7 +2566,8 @@ existing readable JPEG photos once on the device, with recoverable original data
   recovery-copy or storage commit preserves original data and permits retry.
 - Converted JPEG fields become null and the WebP field holds the measured result;
   existing WebP bytes are never recompressed on reload. Undecodable historical
-  damaged bytes remain intact with a visible replacement/recovery notice.
+  JPEGs failing marker validation remain intact with an IO notice; decode/encode
+  failures stop migration recoverably with original data intact.
 - Historical JPEG fields and old backups remain readable. Format 4/schema 2
   explicitly describes the additive WebP column; old formats 1/2/3 retain their
   contracts. New archives preserve declared legacy bytes/text independently.
@@ -2615,14 +2618,38 @@ existing readable JPEG photos once on the device, with recoverable original data
   phone form height; moved that notice into IO and rechecked the form gate.
   An initial focused harness imported a second Vite/HMR database URL; the test
   now uses the application's actual resource URL, preserving ownership locking.
-- Further populated upgrade, Safari, Drive, archive and production checks remain
-  in progress. No deployment or normal browser collection is used. Physical
-  iPhone/iPad camera/library, encoding latency, Home Screen and storage lifecycle
-  checks remain unverified.
+- Firefox `/CoffeeOS/` production and helper checks passed, including the
+  previous isolation-worker replacement, helper BroadcastChannel, helper-only
+  header exception and preview COOP/COEP headers. Safari's offline and populated
+  upgrade runs also passed the production subpath, generated worker/Wasm and
+  cold-offline gates. An additional standalone Safari helper run could not start
+  because a separate Safari WebDriver session was in use; the Firefox helper run
+  passed. Logs: `.cache/stage54-production-firefox.log`,
+  `.cache/stage54-offline-safari.log`, `.cache/stage54-offline-firefox.log`.
+- Versioned archive, backup interoperability, local/Drive compatibility and
+  populated previous-build upgrade checks passed. Safari and Firefox upgrade
+  runs exercised IndexedDB and OPFS respectively, retaining historical backups,
+  original recovery copies and every non-photo field across replacement/reload.
+  Injected startup, migration, recovery, snapshot and worker failures preserved
+  existing data. Logs: `.cache/stage54-backups-complete.log`,
+  `.cache/stage54-backup-interoperability-final.log`,
+  `.cache/stage54-upgrade-safari-complete.log`,
+  `.cache/stage54-upgrade-firefox-final.log`,
+  `.cache/stage54-drive-firefox.log`, `.cache/stage54-safari-complete.log`.
+- Final isolated Firefox rerun passed `TEST_FIREFOX=1 uv run npm run test:photos`:
+  OPFS migration rollback/retry, all six compression fixtures (largest source
+  32.5 MB, output 58 B; detailed fixture output 99,280 B), form save/reset,
+  expanded view, CSV/Parquet round trips, reload and invalid-image handling.
+  `uv run npm run build` and `git diff --check` passed. Production assets include
+  both scalar and SIMD WebP encoders. No deployment or normal browser collection
+  was used. Physical iPhone/iPad camera/library, visual readability, encoding
+  latency, Home Screen/storage lifecycle and deployed-host header checks remain
+  unverified.
 
 ## Stage 55: Centered Brew Editor and Phone Horizontal Scroll Containment
 
-- [ ] **Status:** In progress.
+- [x] **Status:** Complete locally; desktop Safari and `/CoffeeOS/` production
+  checks passed. Physical-device and deployed-host checks remain unverified.
 
 ### Goal
 
@@ -2633,9 +2660,9 @@ while retaining the existing phone layout without sideways page scrolling.
 
 1. [x] Cap and center the entire editor, including its pinned action row.
 2. [x] Contain scaled layout overflow and keep the editor body scrolling vertically.
-3. [ ] Verify desktop widths, phone/landscape geometry, safe areas, labels,
+3. [x] Verify desktop widths, phone/landscape geometry, safe areas, labels,
    pinned actions, smaller-screen scrolling, save/reload and production subpaths.
-4. [ ] Run the build and record checks and remaining device limitations.
+4. [x] Run the build and record checks and remaining device limitations.
 
 ### Acceptance Criteria (Stage 55 Gate)
 
@@ -2653,7 +2680,57 @@ while retaining the existing phone layout without sideways page scrolling.
 
 ### Verification — 2026-10-29
 
-- Initial build passed using the existing project `.venv`; Node resolves inside
-  that environment. Browser and production checks are pending.
+- `uv run npm run build`, JavaScript syntax checks, and scoped whitespace checks
+  passed with the existing project `.venv` and its local Node.
+- The complete `uv run npm run test:safari` suite passed in isolated desktop
+  Safari 27.2 on macOS. Brew create/edit/save/reload coverage passed. The editor
+  layout matrix passed at 320×568, 320×852, 375×667, 375×812, 393×680,
+  393×852, 430×932, 852×393, 1024×768, 1440×900 and 1920×1080, with and
+  without safe-area insets. It confirmed the panel and action row stay centered
+  and aligned, the page/body have no horizontal overflow, all input labels focus
+  their controls, short views retain vertical scrolling, and the chart/actions
+  keep their expected sizing. The phone viewport is an exact-size Safari iframe;
+  it does not substitute for a physical iPhone.
+- Built output passed isolated Safari startup and create/edit/save/reload at the
+  production `/CoffeeOS/` subpath. Generated application assets resolved under
+  that subpath on the same origin. The dev server and built `/CoffeeOS/` host
+  returned HTTP 200 with COOP `same-origin` and COEP `require-corp`. Reload preserved the
+  session ID, exact dose precision and comment. Screenshots:
+  `.cache/stage55-editor-desktop.png` and `.cache/stage55-editor-phone.png`.
 - The shared workspace contains a separate ongoing Stage 54 update. Its files
   and verification record are preserved; this stage records only the editor work.
+- Live deployed-host headers and physical iPhone/iPad touch, keyboard, Home
+  Screen and storage lifecycle behavior remain unverified. No data schema,
+  storage identity, dependency, backup format or deployment origin changed.
+
+## Stage 56: Explain Recovery Backup Sources
+
+- [x] **Status:** Complete locally; build and whitespace checks passed.
+
+### Goal
+
+Explain why on-device recovery copies appear in IO and how they differ from
+manual local backups.
+
+### Tasks
+
+1. [x] Describe the operations that create recovery copies and their on-device
+   storage location.
+2. [x] Explain that users only need to download/import a recovery copy when
+   restoring earlier data.
+3. [x] Build and check the documentation/code diff.
+
+### Acceptance Criteria (Stage 56 Gate)
+
+- IO recovery help mentions import overwrites, Drive restore changes, and the
+  one-time JPEG-to-WebP conversion as sources of recovery copies.
+- The text says copies stay on this device and are only needed to recover earlier
+  data, without implying a routine merge is necessary.
+- Build and whitespace checks pass; persistence behavior is unchanged.
+
+### Verification — 2026-10-29
+
+- Updated the recovery help in `src/views/ioView.ts` to name the three triggers,
+  local storage, and the recovery-only use case.
+- `uv run npm run build` and `git diff --check` passed. This copy change does not
+  alter storage, backup contents, import behavior or recovery retention.

@@ -36,7 +36,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
     </form>
     <section class="card io-recovery" aria-labelledby="recovery-heading" hidden>
       <h2 id="recovery-heading">Recovery backups</h2>
-      <p class="field-hint">Collections saved before imports overwrote or replaced records. Download a copy, then review it with Import local backup to merge it back.</p>
+      <p class="field-hint">CoffeeOS keeps these copies on this device before an import overwrites records, a Drive restore replaces or overwrites data, or the one-time JPEG-to-WebP photo conversion. Download and import one only if you need to recover earlier data.</p>
       <fieldset class="recovery-list"></fieldset>
     </section>
     <details class="card io-legacy">

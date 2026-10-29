@@ -7,7 +7,7 @@ import ehParquet from './vendor/duckdb/eh/parquet.duckdb_extension.wasm?url';
 import mvpParquet from './vendor/duckdb/mvp/parquet.duckdb_extension.wasm?url';
 import type { Bean, BrewSession } from './types';
 
-import { isBeanPhoto, isValidBeanPhoto } from './photos';
+import { compressBeanPhoto, isBeanPhoto, isValidJPEGPhoto, isValidWebPPhoto } from './photos';
 import { backupLimits } from './backupContract';
 import { sha256 } from './hash';
 
@@ -31,7 +31,7 @@ const snapshotKey = 'tables-v1';
 const tables = ['beans', 'brew_sessions'] as const;
 const beanColumns = `id, name, CAST(roast_date AS VARCHAR) AS roast_date,
   CAST(freeze_date AS VARCHAR) AS freeze_date,
-  strftime(created_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS created_at, photo_jpeg, CAST(beans AS VARCHAR) AS _record_version`;
+  strftime(created_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS created_at, photo_jpeg, photo_webp, CAST(beans AS VARCHAR) AS _record_version`;
 const sessionColumns = `s.id, s.bean_id, b.name AS bean_name,
   strftime(s.brewed_at, '%Y-%m-%dT%H:%M:%S.%gZ') AS brewed_at,
   s.dose_g, s.water_g, s.time_str, s.temp_c, s.grind_um, s.comment,
@@ -45,6 +45,8 @@ interface EngineHealth { interrupted: Promise<never>; failure?: Error }
 const engineHealth = new WeakMap<duckdb.AsyncDuckDB, EngineHealth>();
 let startupPhase = 'Waiting to open saved storage';
 export function getDatabaseStartupPhase(): string { return startupPhase; }
+let photoMigrationNotice: string | null = null;
+export function getPhotoMigrationNotice(): string | null { return photoMigrationNotice; }
 let releaseOwnership: (() => void) | null = null;
 
 // A second in-memory engine would overwrite the first engine's whole snapshot.
@@ -141,17 +143,20 @@ async function captureTables(state: Database): Promise<Snapshot> {
   return buffers;
 }
 
-async function validateStoredSchema(connection: duckdb.AsyncDuckDBConnection, table: typeof tables[number], source: string): Promise<void> {
+async function validateStoredSchema(connection: duckdb.AsyncDuckDBConnection, table: typeof tables[number], source: string): Promise<string[]> {
   const result = await connection.query(`DESCRIBE SELECT * FROM ${source}`);
   const columns = result.toArray().map(row => [row.column_name, row.column_type]);
   const expected = Object.entries(ioSchema[table]);
-  const legacy = table === 'beans' && JSON.stringify(columns) === JSON.stringify(expected.filter(([name]) => name !== 'photo_jpeg'));
+  const legacy = table === 'beans' && [expected.filter(([name]) => name !== 'photo_webp'),
+    expected.filter(([name]) => name !== 'photo_jpeg' && name !== 'photo_webp')].some(schema => JSON.stringify(columns) === JSON.stringify(schema));
   if (!legacy && JSON.stringify(columns) !== JSON.stringify(expected)) {
     throw new DatabaseStartupError('The saved database format is unsupported. Use a compatible CoffeeOS version; saved data has been kept.');
   }
+  return columns.map(([name]) => name as string);
 }
 
-async function restoreSnapshot(state: Database, snapshot: Snapshot): Promise<void> {
+async function restoreSnapshot(state: Database, snapshot: Snapshot): Promise<boolean> {
+  let needsWebPMigration = false;
   await state.connection.query('BEGIN TRANSACTION');
   try {
     // Restore parents first to satisfy the foreign key on brew_sessions.
@@ -159,13 +164,15 @@ async function restoreSnapshot(state: Database, snapshot: Snapshot): Promise<voi
       const path = `restore-${table}.parquet`;
       await state.db.registerFileBuffer(path, new Uint8Array(snapshot[table]));
       try {
-        await validateStoredSchema(state.connection, table, `read_parquet('${path}')`);
+        const columns = await validateStoredSchema(state.connection, table, `read_parquet('${path}')`);
+        if (table === 'beans') needsWebPMigration = !columns.includes('photo_webp');
         await state.connection.query(`INSERT INTO ${table} BY NAME SELECT * FROM read_parquet('${path}')`);
       } finally {
         await state.db.dropFile(path);
       }
     }
     await state.connection.query('COMMIT');
+    return needsWebPMigration;
   } catch (error) {
     await state.connection.query('ROLLBACK');
     throw error;
@@ -344,10 +351,11 @@ async function initializeEngine(snapshots: IDBDatabase | null, snapshot: Snapsho
     const url = new URL(parquetURL, window.location.href).href.replaceAll("'", "''");
     startupPhase = 'Loading local Parquet support';
     await connection.query(`LOAD '${url}'`);
+    let restoredLegacyWebP = false;
     if (storage === 'indexeddb' && snapshot) {
       startupPhase = 'Restoring the saved IndexedDB snapshot';
       // A damaged snapshot is an initialization error, never silently replaced by empty tables.
-      await restoreSnapshot(state, snapshot);
+      restoredLegacyWebP = await restoreSnapshot(state, snapshot);
     }
     // Schema v2: retain an immutable v1 recovery snapshot before the additive migration.
     // For IndexedDB the original Parquet record is retained before any future write.
@@ -370,11 +378,33 @@ async function initializeEngine(snapshots: IDBDatabase | null, snapshot: Snapsho
         throw error;
       }
     }
+    // Schema v3 adds WebP without changing the JPEG field's meaning.
+    // Retain the original snapshot before ALTER or any future IndexedDB write.
+    if (restoredLegacyWebP || !columns.some(column => column.name === 'photo_webp')) {
+      if (!snapshots) throw new DatabaseStartupError('WebP photo support needs a recovery copy. Restore storage access and reload; your saved data has been kept.');
+      const key = 'schema-v2-before-webp';
+      if (await readRecord(snapshots, key) === undefined) {
+        if (storage === 'indexeddb' && snapshot) await storeRecord(snapshots, key, snapshot);
+        else await snapshotTables({ ...state, snapshots }, key);
+      }
+      if (!columns.some(column => column.name === 'photo_webp')) {
+        await connection.query('BEGIN TRANSACTION');
+        try {
+          await connection.query('ALTER TABLE beans ADD COLUMN photo_webp VARCHAR');
+          await connection.query('COMMIT');
+        } catch (error) {
+          await connection.query('ROLLBACK');
+          throw error;
+        }
+      }
+    }
+    const migratedPhotos = await migrateJPEGPhotos(state, snapshots);
     // Establish even an empty first-use snapshot before remembering this backend.
     startupPhase = 'Confirming saved database durability';
     if (storage === 'indexeddb' && snapshot === undefined) await snapshotTables(state);
     await connection.query('CHECKPOINT');
     await db.flushFiles();
+    if (snapshots && migratedPhotos) await storeRecord(snapshots, 'photo-webp-migration-v1', { version: 1, damaged: Boolean(photoMigrationNotice) });
     if (snapshots) await storeRecord(snapshots, 'backend-v1', storage);
     if (storage === 'opfs') snapshots?.close();
     database = state;
@@ -388,6 +418,47 @@ async function initializeEngine(snapshots: IDBDatabase | null, snapshot: Snapsho
       await db.terminate();
     }
     throw error;
+  }
+}
+
+/** One versioned conversion of the existing collection; later launches skip it. */
+async function migrateJPEGPhotos(state: Database, metadata: IDBDatabase | null): Promise<boolean> {
+  photoMigrationNotice = null;
+  const damagedNotice = 'Some historical photo bytes are damaged and could not be converted to WebP. Their original bytes are preserved. You can replace those photos in Bean Manager.';
+  const marker = metadata ? await readRecord<{ version: number; damaged: boolean }>(metadata, 'photo-webp-migration-v1') : undefined;
+  if (marker !== undefined) {
+    if (marker.version !== 1 || typeof marker.damaged !== 'boolean') throw new DatabaseStartupError('The saved photo-upgrade metadata is unsupported. Your saved data has been kept.');
+    if (marker.damaged) {
+      const retained = await queryRows<{ photo_jpeg: string }>(state.connection, 'SELECT photo_jpeg FROM beans WHERE photo_jpeg IS NOT NULL');
+      if (retained.some(photo => !isValidJPEGPhoto(photo.photo_jpeg))) photoMigrationNotice = damagedNotice;
+    }
+    return false;
+  }
+  const photos = await queryRows<{ id: string; photo_jpeg: string }>(state.connection,
+    'SELECT id, photo_jpeg FROM beans WHERE photo_jpeg IS NOT NULL AND photo_webp IS NULL ORDER BY id');
+  const readable = photos.filter(photo => isValidJPEGPhoto(photo.photo_jpeg));
+  if (photos.length !== readable.length) photoMigrationNotice = damagedNotice;
+  if (!readable.length) return true;
+  // This immutable, downloadable recovery is durable before touching any photo.
+  startupPhase = 'Keeping a recovery copy before upgrading saved photos';
+  await retainImportRecovery(state);
+  await state.connection.query('BEGIN TRANSACTION');
+  try {
+    for (const [index, photo] of readable.entries()) {
+      startupPhase = `Converting saved photos to WebP (${index + 1}/${readable.length})`;
+      const binary = atob(photo.photo_jpeg.slice(photo.photo_jpeg.indexOf(',') + 1));
+      const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+      const webp = await compressBeanPhoto(new File([bytes], 'saved-photo.jpg', { type: 'image/jpeg' }));
+      const statement = await state.connection.prepare('UPDATE beans SET photo_webp = ?, photo_jpeg = NULL WHERE id = ?');
+      try { await statement.query(webp, photo.id); } finally { await statement.close(); }
+    }
+    await commitTransaction(state);
+    return true;
+  } catch (error) {
+    if (!(error instanceof CommittedWriteError) && !(error instanceof DatabaseRuntimeError)) {
+      try { await state.connection.query('ROLLBACK'); } catch { /* Keep the original failure. */ }
+    }
+    throw new DatabaseStartupError('The saved-photo upgrade did not finish. Your original photos are kept in the recovery backup. Reload to retry; no empty collection was created.', { cause: error });
   }
 }
 
@@ -445,7 +516,8 @@ const beanDefinition = `(
   roast_date DATE,
   freeze_date DATE,
   created_at TIMESTAMP NOT NULL,
-  photo_jpeg VARCHAR
+  photo_jpeg VARCHAR,
+  photo_webp VARCHAR
 )`;
 
 const brewSessionDefinition = `(
@@ -504,10 +576,11 @@ export function getBeans(): Promise<Bean[]> {
     `SELECT ${beanColumns} FROM beans ORDER BY created_at DESC, id DESC`));
 }
 
-type BeanInput = { name: string; roast_date?: string | null; freeze_date?: string | null; photo_jpeg?: string | null };
+type BeanInput = { name: string; roast_date?: string | null; freeze_date?: string | null; photo_jpeg?: string | null; photo_webp?: string | null };
 
 function validateBean(input: BeanInput): void {
-  if (input.photo_jpeg != null && !isValidBeanPhoto(input.photo_jpeg)) throw new Error('Invalid JPEG photo.');
+  if (input.photo_jpeg != null && !isValidJPEGPhoto(input.photo_jpeg)) throw new Error('Invalid JPEG photo.');
+  if (input.photo_webp != null && !isValidWebPPhoto(input.photo_webp)) throw new Error('Invalid WebP photo.');
   for (const date of [input.roast_date, input.freeze_date]) {
     if (date != null && (!/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(date))) {
       throw new Error('Dates must use years from 0001 to 9999.');
@@ -518,12 +591,12 @@ function validateBean(input: BeanInput): void {
 export async function addBean(input: BeanInput): Promise<Bean> {
   validateBean(input);
   return withDatabase((state) => write<Bean>(state,
-    `INSERT INTO beans (id, name, roast_date, freeze_date, created_at, photo_jpeg) VALUES (?, ?, ?, ?, ?, ?) RETURNING ${beanColumns}`,
-    [crypto.randomUUID(), input.name.trim(), input.roast_date ?? null, input.freeze_date ?? null, new Date().toISOString(), input.photo_jpeg ?? null]));
+    `INSERT INTO beans (id, name, roast_date, freeze_date, created_at, photo_jpeg, photo_webp) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING ${beanColumns}`,
+    [crypto.randomUUID(), input.name.trim(), input.roast_date ?? null, input.freeze_date ?? null, new Date().toISOString(), input.photo_jpeg ?? null, input.photo_webp ?? null]));
 }
 
 /** Edit only bean details; preserve identity, creation timestamp and linked sessions. */
-export async function updateBean(id: string, input: Pick<Bean, 'name' | 'roast_date' | 'freeze_date' | 'photo_jpeg'>, original?: Bean): Promise<Bean> {
+export async function updateBean(id: string, input: Pick<Bean, 'name' | 'roast_date' | 'freeze_date' | 'photo_jpeg' | 'photo_webp'>, original?: Bean): Promise<Bean> {
   if (!input.name.trim()) throw new Error('Enter a bean name.');
   return withDatabase(async state => {
     const [existing] = await queryRows<Bean>(state.connection, `SELECT ${beanColumns} FROM beans WHERE id = ?`, [id]);
@@ -536,9 +609,11 @@ export async function updateBean(id: string, input: Pick<Bean, 'name' | 'roast_d
     // then read the result while still holding the serialized database queue.
     await write(state,
       `UPDATE beans SET name = ?, roast_date = ?, freeze_date = ?,
-        photo_jpeg = CASE WHEN ? = 1 THEN ? ELSE photo_jpeg END
+        photo_jpeg = CASE WHEN ? = 1 THEN ? ELSE photo_jpeg END,
+        photo_webp = CASE WHEN ? = 1 THEN ? ELSE photo_webp END
         WHERE id = ?`,
-      [input.name, input.roast_date, input.freeze_date, input.photo_jpeg !== undefined ? 1 : 0, input.photo_jpeg ?? null, id]);
+      [input.name, input.roast_date, input.freeze_date, input.photo_jpeg !== undefined ? 1 : 0, input.photo_jpeg ?? null,
+        input.photo_webp !== undefined ? 1 : 0, input.photo_webp ?? null, id]);
     const [bean] = await queryRows<Bean>(state.connection, `SELECT ${beanColumns} FROM beans WHERE id = ?`, [id]);
     return bean;
   });
@@ -653,16 +728,16 @@ export class ImportDataError extends Error {}
 
 // One schema drives explicit projections and casts; uploaded column order is irrelevant.
 const ioSchema = {
-  beans: { id: 'VARCHAR', name: 'VARCHAR', roast_date: 'DATE', freeze_date: 'DATE', created_at: 'TIMESTAMP', photo_jpeg: 'VARCHAR' },
+  beans: { id: 'VARCHAR', name: 'VARCHAR', roast_date: 'DATE', freeze_date: 'DATE', created_at: 'TIMESTAMP', photo_jpeg: 'VARCHAR', photo_webp: 'VARCHAR' },
   brew_sessions: { id: 'VARCHAR', bean_id: 'VARCHAR', brewed_at: 'TIMESTAMP', dose_g: 'DOUBLE',
     water_g: 'DOUBLE', time_str: 'VARCHAR', temp_c: 'DOUBLE', grind_um: 'DOUBLE', comment: 'VARCHAR',
     yield_g: 'DOUBLE', tds_pct: 'DOUBLE', extraction_pct: 'DOUBLE' },
 } as const;
-const combinedBeanNames = ['bean_id', 'bean_name', 'bean_roast_date', 'bean_freeze_date', 'bean_created_at', 'bean_photo_jpeg'];
+const combinedBeanNames = ['bean_id', 'bean_name', 'bean_roast_date', 'bean_freeze_date', 'bean_created_at', 'bean_photo_jpeg', 'bean_photo_webp'];
 const combinedSessionNames = Object.keys(ioSchema.brew_sessions).filter(key => key !== 'bean_id')
   .map(key => key === 'id' ? 'session_id' : key);
 const combinedQuery = `SELECT b.id AS bean_id, b.name AS bean_name,
-  b.roast_date AS bean_roast_date, b.freeze_date AS bean_freeze_date, b.created_at AS bean_created_at, b.photo_jpeg AS bean_photo_jpeg,
+  b.roast_date AS bean_roast_date, b.freeze_date AS bean_freeze_date, b.created_at AS bean_created_at, b.photo_jpeg AS bean_photo_jpeg, b.photo_webp AS bean_photo_webp,
   s.id AS session_id, ${combinedSessionNames.slice(1).map(key => `s.${key}`).join(', ')}
   FROM beans b LEFT JOIN brew_sessions s ON s.bean_id = b.id
   ORDER BY b.created_at DESC, b.id, s.brewed_at DESC, s.id`;
@@ -692,9 +767,9 @@ export function exportData(format: DataFormat, combined = false): Promise<Export
 }
 
 export interface TableCounts { beans: number; brew_sessions: number }
-export interface BackupSnapshot { data: Snapshot; counts: TableCounts; exported_at: string; legacyPhotos?: boolean; legacyText?: boolean }
+export interface BackupSnapshot { data: Snapshot; counts: TableCounts; exported_at: string; webpPhotos?: boolean; legacyPhotos?: boolean; legacyText?: boolean }
 export interface MergeCounts { new: number; updated: number; unchanged: number; localOnly: number }
-export interface ImportPreview { legacyPhotos?: boolean; legacyText?: boolean; revision: number; beans: MergeCounts; brew_sessions: MergeCounts }
+export interface ImportPreview { webpSchema?: boolean; legacyPhotos?: boolean; legacyText?: boolean; revision: number; beans: MergeCounts; brew_sessions: MergeCounts }
 export interface RecoveryInfo { key: string; created_at: string }
 interface RecoveryRecord extends BackupSnapshot { version: 1 }
 const recoveryPrefix = 'import-recovery-v1:';
@@ -711,12 +786,13 @@ async function captureBackup(state: Database): Promise<BackupSnapshot> {
     (SELECT count(*)::INTEGER FROM beans) AS beans,
     (SELECT count(*)::INTEGER FROM brew_sessions) AS brew_sessions`);
   const photos = await queryRows<{ photo_jpeg: string }>(state.connection, 'SELECT photo_jpeg FROM beans WHERE photo_jpeg IS NOT NULL');
-  const legacyPhotos = photos.some(row => !isValidBeanPhoto(row.photo_jpeg));
+  const legacyPhotos = photos.some(row => !isValidJPEGPhoto(row.photo_jpeg));
+  const [webp] = await queryRows<{ present: boolean }>(state.connection, 'SELECT EXISTS (SELECT 1 FROM beans WHERE photo_webp IS NOT NULL) AS present');
   const [text] = await queryRows<{ legacy: boolean }>(state.connection, `SELECT
     EXISTS (SELECT 1 FROM beans WHERE ${blankRequiredText('beans')}) OR
     EXISTS (SELECT 1 FROM brew_sessions WHERE ${blankRequiredText('brew_sessions')}) AS legacy`);
   return { data: await captureTables(state), counts: counts!, exported_at: new Date().toISOString(),
-    ...(legacyPhotos ? { legacyPhotos: true } : {}), ...(text?.legacy ? { legacyText: true } : {}) };
+    ...(webp?.present ? { webpPhotos: true } : {}), ...(legacyPhotos ? { legacyPhotos: true } : {}), ...(text?.legacy ? { legacyText: true } : {}) };
 }
 
 /** The queue covers both COPYs and counts; hashing/ZIP runs after releasing it. */
@@ -727,9 +803,10 @@ export function captureDriveSnapshot(): Promise<{ snapshot: BackupSnapshot; revi
   return withDatabase(async state => ({ snapshot: await captureBackup(state), revision: collectionRevision }));
 }
 
-/** Version 1 logical fingerprint: independent of Parquet layout and archive metadata.
+/** Versioned logical fingerprint: independent of Parquet layout and archive metadata.
  * Read the captured bytes, never a later live revision. No storage writes occur.
- * Fixed 256-row blocks bound encoding allocations; changing this algorithm needs v2.
+ * Keep v1 for absent/all-null WebP; v2 includes non-null WebP photo bytes.
+ * Fixed 256-row blocks bound encoding allocations; timestamps/float bits are unchanged.
  */
 export function hashBackupContents(data: BackupSnapshot['data']): Promise<string> {
   return withDatabase(async state => {
@@ -747,7 +824,14 @@ export function hashBackupContents(data: BackupSnapshot['data']): Promise<string
       const path = `fingerprint-${crypto.randomUUID()}-${table}.parquet`;
       try {
         await state.db.registerFileBuffer(path, new Uint8Array(data[table]));
-        const columns = Object.entries(ioSchema[table]);
+        let columns = Object.entries(ioSchema[table]);
+        if (table === 'beans') {
+          const schema = await queryRows<{ column_name: string }>(state.connection, `DESCRIBE SELECT * FROM read_parquet('${path}')`);
+          const present = schema.some(column => column.column_name === 'photo_webp');
+          const [webp] = present ? await queryRows<{ count: number }>(state.connection, `SELECT count(*)::INTEGER AS count FROM read_parquet('${path}') WHERE photo_webp IS NOT NULL`) : [];
+          // Optional all-null fields do not change historical content hashes.
+          if (!webp?.count) columns = columns.filter(([name]) => name !== 'photo_webp');
+        }
         // Keep timestamps in DuckDB until converted to full microsecond strings.
         // DOUBLEs cross Arrow unchanged and are encoded as IEEE-754 bits, not JSON numbers.
         const projection = columns.map(([name, type]) => type === 'TIMESTAMP'
@@ -767,7 +851,8 @@ export function hashBackupContents(data: BackupSnapshot['data']): Promise<string
         result.push([table, columns, rows.numRows, blocks]);
       } finally { await state.db.dropFile(path); }
     }
-    return digest(['coffeeos-content-v1', result]);
+    const hasWebP = result.some(([table, columns]) => table === 'beans' && (columns as [string, string][]).some(([name]) => name === 'photo_webp'));
+    return digest([hasWebP ? 'coffeeos-content-v2' : 'coffeeos-content-v1', result]);
   });
 }
 
@@ -837,8 +922,8 @@ export function readImportRecovery(key: string): Promise<BackupSnapshot> {
   });
 }
 
-function archiveDifference(table: typeof tables[number], left: string, right: string): string {
-  return Object.keys(ioSchema[table]).filter(key => key !== 'id')
+function archiveDifference(table: typeof tables[number], left: string, right: string, skipWebP = false): string {
+  return Object.keys(ioSchema[table]).filter(key => key !== 'id' && !(skipWebP && key === 'photo_webp'))
     .map(key => `${left}."${key}" IS DISTINCT FROM ${right}."${key}"`).join(' OR ');
 }
 
@@ -936,7 +1021,8 @@ function processImport(files: ImportFile[], archive?: { legacyText?: boolean; le
     const paths: string[] = [];
     await connection.query('BEGIN TRANSACTION');
     let counts: ImportResult;
-    let importedPhotos = false;
+    const importedPhotos = new Set<string>();
+    let webpSchema = false;
     try {
       for (const table of tables) {
         await connection.query(`CREATE TEMP TABLE incoming_${table} AS SELECT * FROM ${table} WHERE false`);
@@ -956,15 +1042,20 @@ function processImport(files: ImportFile[], archive?: { legacyText?: boolean; le
         if (archive) {
           if (file.target === 'combined' || format !== 'parquet') throw new ImportDataError('A backup needs two Parquet tables.');
           const schema = await queryRows<{ column_name: string; column_type: string }>(connection, 'DESCRIBE incoming_file');
-          if (JSON.stringify(schema.map(c => [c.column_name, c.column_type])) !== JSON.stringify(Object.entries(ioSchema[file.target]))) {
+          const expectedSchema = Object.entries(ioSchema[file.target]);
+          const actual = JSON.stringify(schema.map(c => [c.column_name, c.column_type]));
+          if (actual !== JSON.stringify(expectedSchema) && !(file.target === 'beans' && actual === JSON.stringify(expectedSchema.filter(([name]) => name !== 'photo_webp')))) {
             throw new ImportDataError(`The ${file.target} Parquet schema does not match backup version 1.`);
           }
         }
         const expected = file.target === 'combined' ? [...combinedBeanNames, ...combinedSessionNames]
           : Object.keys(ioSchema[file.target]);
-        const photoColumn = file.target === 'combined' ? 'bean_photo_jpeg' : 'photo_jpeg';
-        if (file.target !== 'brew_sessions') importedPhotos = columns.some(column => column.name === photoColumn);
-        const requiredColumns = expected.filter(key => key !== photoColumn);
+        const photoColumns = file.target === 'combined' ? ['bean_photo_jpeg', 'bean_photo_webp'] : ['photo_jpeg', 'photo_webp'];
+        if (file.target !== 'brew_sessions') for (const [index, name] of photoColumns.entries()) {
+          if (columns.some(column => column.name === name)) importedPhotos.add(index ? 'photo_webp' : 'photo_jpeg');
+        }
+        if (file.target !== 'brew_sessions') webpSchema = importedPhotos.has('photo_webp');
+        const requiredColumns = expected.filter(key => !photoColumns.includes(key));
         if (requiredColumns.some(key => !columns.some(column => column.name === key)) || columns.some(column => !expected.includes(column.name))) {
           throw new ImportDataError(`The ${file.target} file has unexpected columns. Use a CoffeeOS export with its original headers.`);
         }
@@ -979,8 +1070,8 @@ function processImport(files: ImportFile[], archive?: { legacyText?: boolean; le
           const projection = Object.entries(ioSchema[table]).map(([key, type], index) => {
             const source = file.target !== 'combined' ? key : table === 'beans'
               ? combinedBeanNames[index]! : key === 'id' ? 'session_id' : key;
-            return key === 'photo_jpeg' && !columns.some(column => column.name === source)
-              ? 'NULL::VARCHAR AS photo_jpeg' : `CAST("${source}" AS ${type}) AS "${key}"`;
+            return (key === 'photo_jpeg' || key === 'photo_webp') && !columns.some(column => column.name === source)
+              ? `NULL::VARCHAR AS "${key}"` : `CAST("${source}" AS ${type}) AS "${key}"`;
           }).join(', ');
           const filter = file.target === 'combined' && table === 'brew_sessions' ? 'WHERE session_id IS NOT NULL' : '';
           const distinct = file.target === 'combined' && table === 'beans' ? 'DISTINCT ' : '';
@@ -1008,8 +1099,10 @@ function processImport(files: ImportFile[], archive?: { legacyText?: boolean; le
         throw new ImportDataError('Required names and IDs cannot contain only whitespace. For a historical CSV/Parquet backup, enable preservation of legacy whitespace fields to retain their original values.');
       }
       const photos = await queryRows<{ photo_jpeg: string }>(connection, 'SELECT photo_jpeg FROM incoming_beans WHERE photo_jpeg IS NOT NULL');
-      const legacyPhotos = photos.some(row => !isValidBeanPhoto(row.photo_jpeg));
-      if (photos.some(row => !isBeanPhoto(row.photo_jpeg)) || (legacyPhotos && !(archive?.legacyPhotos || preserveLegacyPhotos))) throw new ImportDataError('The beans file contains an invalid JPEG photo. For a historical CSV/Parquet backup, enable preservation of damaged legacy photos to retain the original bytes.');
+      const webpPhotos = await queryRows<{ photo_webp: string }>(connection, 'SELECT photo_webp FROM incoming_beans WHERE photo_webp IS NOT NULL');
+      if (webpPhotos.some(row => !isValidWebPPhoto(row.photo_webp))) throw new ImportDataError('The beans file contains an invalid WebP photo.');
+      const legacyPhotos = photos.some(row => !isValidJPEGPhoto(row.photo_jpeg));
+      if (photos.some(row => !row.photo_jpeg.startsWith('data:image/jpeg;base64,') || !isBeanPhoto(row.photo_jpeg)) || (legacyPhotos && !(archive?.legacyPhotos || preserveLegacyPhotos))) throw new ImportDataError('The beans file contains an invalid JPEG photo. For a historical CSV/Parquet backup, enable preservation of damaged legacy photos to retain the original bytes.');
       const [orphans] = await queryRows<{ count: number }>(connection,
         `SELECT CAST(count(*) AS INTEGER) AS count FROM incoming_brew_sessions s
           WHERE ${archive ? '' : 'NOT EXISTS (SELECT 1 FROM beans b WHERE b.id = s.bean_id) AND '}NOT EXISTS (SELECT 1 FROM incoming_beans b WHERE b.id = s.bean_id)`);
@@ -1021,9 +1114,9 @@ function processImport(files: ImportFile[], archive?: { legacyText?: boolean; le
 
       if (archive) {
         if (tables.some(table => counts[table] !== archive.counts[table])) throw new ImportDataError('Backup row counts do not match its tables.');
-        const preview = { revision: collectionRevision, ...(legacyText ? { legacyText: true } : {}), ...(legacyPhotos ? { legacyPhotos: true } : {}) } as ImportPreview;
+        const preview = { revision: collectionRevision, ...(webpSchema ? { webpSchema: true } : {}), ...(legacyText ? { legacyText: true } : {}), ...(legacyPhotos ? { legacyPhotos: true } : {}) } as ImportPreview;
         for (const table of tables) {
-          const differs = archiveDifference(table, 'i', 'e');
+          const differs = archiveDifference(table, 'i', 'e', !webpSchema);
           const [comparison] = await queryRows<MergeCounts>(connection, `SELECT
             count(*) FILTER (WHERE e.id IS NULL)::INTEGER AS new,
             count(*) FILTER (WHERE e.id IS NOT NULL AND (${differs}))::INTEGER AS updated,
@@ -1072,8 +1165,8 @@ function processImport(files: ImportFile[], archive?: { legacyText?: boolean; le
       } else for (const table of tables) {
         const columns = Object.keys(ioSchema[table]);
         // Update non-key fields in place: REPLACE can delete parents referenced by sessions.
-        await connection.query(`UPDATE ${table} SET ${columns.filter(key => key !== 'id' && (key !== 'photo_jpeg' || importedPhotos))
-          .map(key => `"${key}" = i."${key}"`).join(', ')} FROM incoming_${table} i WHERE ${table}.id = i.id${archive ? ` AND (${archiveDifference(table, table, 'i')})` : ''}`);
+        await connection.query(`UPDATE ${table} SET ${columns.filter(key => key !== 'id' && (!['photo_jpeg', 'photo_webp'].includes(key) || importedPhotos.has(key)))
+          .map(key => `"${key}" = i."${key}"`).join(', ')} FROM incoming_${table} i WHERE ${table}.id = i.id${archive ? ` AND (${archiveDifference(table, table, 'i', !webpSchema)})` : ''}`);
         await connection.query(`INSERT INTO ${table} SELECT i.* FROM incoming_${table} i
           WHERE NOT EXISTS (SELECT 1 FROM ${table} existing WHERE existing.id = i.id)`);
       }

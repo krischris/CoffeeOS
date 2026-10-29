@@ -33,7 +33,7 @@ export async function checkDriveFingerprints(evaluate) {
     check(await hash(many)===await hash(reordered),'257+ rows cross a stable block boundary');
     let changed=0;
     const variants={
-      beans:["id || 'x' AS id","name || 'x' AS name","DATE '2001-01-02' AS roast_date","DATE '2001-02-03' AS freeze_date","TIMESTAMP '2026-10-27 12:34:56.123456' AS created_at","'photo-content' AS photo_jpeg"],
+      beans:["id || 'x' AS id","name || 'x' AS name","DATE '2001-01-02' AS roast_date","DATE '2001-02-03' AS freeze_date","TIMESTAMP '2026-10-27 12:34:56.123456' AS created_at","'photo-content' AS photo_jpeg","'webp-content' AS photo_webp"],
       brew_sessions:["id || 'x' AS id","bean_id || 'x' AS bean_id","TIMESTAMP '2026-10-27 12:34:56.123456' AS brewed_at","18.1234567890124::DOUBLE AS dose_g","1::DOUBLE AS water_g","'text' AS time_str","0::DOUBLE AS temp_c","700.1234567890124::DOUBLE AS grind_um","'quotes,\"\n精度 ☕' AS comment","0::DOUBLE AS yield_g","1.4300000000000004::DOUBLE AS tds_pct","0::DOUBLE AS extraction_pct"]
     };
     for(const [table,values]of Object.entries(variants))for(const value of values){
@@ -56,6 +56,6 @@ export async function checkDriveFingerprints(evaluate) {
     check(JSON.stringify((await db.exportData('csv')).map(f=>Array.from(f.data)))===before,'fingerprints never mutate records');
     return {changed,rows:257,negativeZeroSurvivesParquet:plus!==minus,hash:expected};
   `);
-  assert.equal(result.changed,18);
+  assert.equal(result.changed,19);
   console.log('PASS canonical Drive fingerprints, all columns, float precision, microseconds, nulls, Unicode, reordered/compressed Parquet, block boundary and failed-read retry',result);
 }

@@ -142,7 +142,7 @@ export async function checkReviewRemediation({sync, evaluate, waitFor, api, read
     const legacyCSV=(await db.exportData('csv'))[0].data;
     const legacyParquet=(await db.exportData('parquet'))[0].data;
     const archive=await b.saveBackup(),prepared=await b.prepareBackup(archive.data);
-    check(prepared.manifest.format_version===2 && prepared.manifest.photo_encoding==='legacy-opaque-v1','explicit versioned compatibility archive');
+    check(prepared.manifest.format_version===4 && prepared.manifest.legacy_photo_encoding==='legacy-opaque-v1','explicit versioned compatibility archive');
     check(prepared.preview.legacyPhotos===true,'compatibility preview');
     await db.closeDB();await db.initDB();
     check((await db.getBeans()).find(v=>v.id===bean.id).photo_jpeg===bean.photo_jpeg,'startup preserves original bytes');
@@ -153,7 +153,7 @@ export async function checkReviewRemediation({sync, evaluate, waitFor, api, read
       check((await db.getBeans()).find(v=>v.id===bean.id).photo_jpeg===bean.photo_jpeg,'historical '+name+' bytes');
     }
     await b.replaceBackup(await b.prepareBackup(before.data));
-    check((await b.prepareBackup((await b.saveBackup()).data)).manifest.format_version===1,'healthy collection keeps v1');
+    check((await b.prepareBackup((await b.saveBackup()).data)).manifest.format_version===4,'healthy collection uses WebP-capable v4');
     // Profile several photo-heavy immutable recoveries against the old value cursor.
     const canvas=document.createElement('canvas');canvas.width=canvas.height=768;
     const ctx=canvas.getContext('2d'),image=ctx.createImageData(768,768);let noise=123456789;

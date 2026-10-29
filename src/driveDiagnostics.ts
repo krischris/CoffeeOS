@@ -1,5 +1,5 @@
 import { captureDriveSnapshot, getStorageMode, verifyDriveRoundTrip } from './db';
-import { packageBackup, prepareBackup } from './backups';
+import { packageBackup, prepareBackup, preservesLegacyPhotos, preservesLegacyText } from './backups';
 
 export type DriveStep = 'Authorize Google' | 'Read cloud history' | 'Capture local snapshot' | 'Package local snapshot'
   | 'Validate packaged snapshot' | 'Discover backup folder' | 'Upload snapshot' | 'Download snapshot'
@@ -58,7 +58,7 @@ async function runLocalChecks(): Promise<string> {
     const { snapshot, revision } = await driveStep('Capture local snapshot', captureDriveSnapshot);
     const file = await driveStep('Package local snapshot', () => packageBackup(snapshot));
     const prepared = await driveStep('Validate packaged snapshot', () => prepareBackup(file.data));
-    await driveStep('Check exact local round trip', () => verifyDriveRoundTrip(prepared.files, snapshot.counts, revision, new AbortController().signal, prepared.manifest.format_version >= 2, prepared.manifest.format_version === 3));
+    await driveStep('Check exact local round trip', () => verifyDriveRoundTrip(prepared.files, snapshot.counts, revision, new AbortController().signal, preservesLegacyPhotos(prepared.manifest), preservesLegacyText(prepared.manifest)));
   } catch { /* Sanitized failure is recorded; original record values never enter the report. */ }
   finally { checking = false; }
   const value = report(); console.info('[CoffeeOS Drive report]', value); return value;

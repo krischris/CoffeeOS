@@ -57,3 +57,10 @@ are kept. Disconnecting keeps your local records and cloud files. Backup files
 are not password-protected or encrypted by CoffeeOS.
 
 See **About & privacy** in the app for the full privacy policy.
+
+Bean photos are prepared on the device as WebP at or below 100 kB. On the first
+upgrade, existing readable JPEG photos convert automatically after CoffeeOS saves
+a downloadable recovery under IO. Later launches keep the converted bytes.
+Historical damaged photo bytes remain preserved with an IO notice, and old
+JPEG backups remain importable. New backups require WebP-capable CoffeeOS
+(archive format 4); keep your original backups when updating.

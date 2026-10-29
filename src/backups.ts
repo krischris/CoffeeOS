@@ -1,5 +1,5 @@
 import { Inflate, zipSync } from 'fflate';
-import { backupColumns, backupLimits, backupTables, sessionForeignKeys } from './backupContract';
+import { backupColumns, webpBackupColumns, backupLimits, backupTables, sessionForeignKeys } from './backupContract';
 import type { BackupTable } from './backupContract';
 import { exportBackupSnapshot, previewBackupData, mergeBackupData, replaceBackupData, ImportDataError } from './db';
 import type { BackupSnapshot, ExportFile, ImportFile, ImportPreview, ImportResult } from './db';
@@ -12,10 +12,14 @@ interface TableDescriptor {
   primary_key: string[]; columns: typeof backupColumns.beans; foreign_keys?: typeof sessionForeignKeys;
 }
 export interface BackupManifest {
-  format: 'coffeeos-backup'; format_version: 1 | 2 | 3; text_encoding?: 'legacy-whitespace-v1'; data_schema_version: 1; photo_encoding?: 'legacy-opaque-v1';
+  format: 'coffeeos-backup'; format_version: 1 | 2 | 3 | 4; text_encoding?: 'legacy-whitespace-v1'; data_schema_version: 1 | 2;
+  photo_encoding?: 'legacy-opaque-v1' | 'jpeg-webp-v1'; legacy_photo_encoding?: 'legacy-opaque-v1';
   backup_id: string; exported_at: string; producer: { name: 'CoffeeOS'; version: string }; tables: TableDescriptor[];
 }
 export interface PreparedBackup { manifest: BackupManifest; files: ImportFile[]; preview: ImportPreview }
+export const preservesLegacyPhotos = (manifest: BackupManifest): boolean => manifest.format_version === 4
+  ? manifest.legacy_photo_encoding === 'legacy-opaque-v1' : manifest.photo_encoding === 'legacy-opaque-v1';
+export const preservesLegacyText = (manifest: BackupManifest): boolean => manifest.text_encoding === 'legacy-whitespace-v1';
 const names = ['manifest.json', 'beans.parquet', 'brew_sessions.parquet'];
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -30,9 +34,13 @@ const matches = (actual: unknown, expected: unknown): boolean => {
 };
 export function validateManifest(value: unknown): BackupManifest {
   if (!object(value) || value.format !== 'coffeeos-backup') fail('This is not a CoffeeOS backup. Choose the original .coffeeos file.');
-  if (![1, 2, 3].includes(value.format_version as number) || value.data_schema_version !== 1 ||
-    (value.format_version !== 1 ? value.photo_encoding !== 'legacy-opaque-v1' : value.photo_encoding !== undefined) ||
-    (value.format_version === 3 ? value.text_encoding !== 'legacy-whitespace-v1' : value.text_encoding !== undefined)) fail('This backup needs a different CoffeeOS version. Keep the original and open it in a compatible version.');
+  const webp = value.format_version === 4;
+  if (![1, 2, 3, 4].includes(value.format_version as number) || value.data_schema_version !== (webp ? 2 : 1) ||
+    (webp ? value.photo_encoding !== 'jpeg-webp-v1' || (value.legacy_photo_encoding !== undefined && value.legacy_photo_encoding !== 'legacy-opaque-v1')
+      : value.format_version !== 1 ? value.photo_encoding !== 'legacy-opaque-v1' : value.photo_encoding !== undefined) ||
+    (webp ? value.text_encoding !== undefined && value.text_encoding !== 'legacy-whitespace-v1'
+      : value.format_version === 3 ? value.text_encoding !== 'legacy-whitespace-v1' : value.text_encoding !== undefined)) fail('This backup needs a different CoffeeOS version. Keep the original and open it in a compatible version.');
+  const schema = webp ? webpBackupColumns : backupColumns;
   if (typeof value.backup_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.backup_id) ||
     typeof value.exported_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/.test(value.exported_at) ||
     !Number.isFinite(Date.parse(value.exported_at)) ||
@@ -46,12 +54,12 @@ export function validateManifest(value: unknown): BackupManifest {
     const t = entries[0];
     if (entries.length !== 1 || !object(t) || t.path !== `${name}.parquet` || !safeCount(t.row_count) || !safeCount(t.byte_length) ||
       typeof t.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(t.sha256) || !matches(t.primary_key, ['id']) ||
-      !matches(t.columns, backupColumns[name]) ||
+      !matches(t.columns, schema[name]) ||
       (name === 'brew_sessions' ? !matches(t.foreign_keys, sessionForeignKeys) : t.foreign_keys !== undefined && !matches(t.foreign_keys, []))) {
-      fail(`The ${name} table information does not match CoffeeOS backup version 1.`);
+      fail(`The ${name} table information does not match this CoffeeOS backup version.`);
     }
     const columns = t.columns as Record<string, unknown>[];
-    if (columns.some((c, i) => c.unit !== backupColumns[name][i].unit)) fail('The backup uses unsupported field units.');
+    if (columns.some((c, i) => c.unit !== schema[name][i].unit)) fail('The backup uses unsupported field units.');
   }
   return value as unknown as BackupManifest;
 }
@@ -63,12 +71,14 @@ export async function packageBackup(snapshot: BackupSnapshot): Promise<ExportFil
   // Validate logical readability before offering any archive, including retained old recoveries.
   const preview = await previewBackupData(backupTables.map(target => ({ target, name: `${target}.parquet`, data: snapshot.data[target] })), snapshot.counts, true, true);
   const descriptors: TableDescriptor[] = [];
+  const schema = preview.webpSchema ? webpBackupColumns : backupColumns;
   for (const name of backupTables) descriptors.push({ name, path: `${name}.parquet`, row_count: snapshot.counts[name],
-    byte_length: snapshot.data[name].length, sha256: await sha256(snapshot.data[name]), primary_key: ['id'], columns: backupColumns[name],
+    byte_length: snapshot.data[name].length, sha256: await sha256(snapshot.data[name]), primary_key: ['id'], columns: schema[name],
     ...(name === 'brew_sessions' ? { foreign_keys: sessionForeignKeys } : {}) });
-  const manifest: BackupManifest = { format: 'coffeeos-backup', format_version: preview.legacyText ? 3 : preview.legacyPhotos ? 2 : 1, data_schema_version: 1,
+  const manifest: BackupManifest = { format: 'coffeeos-backup', format_version: preview.webpSchema ? 4 : preview.legacyText ? 3 : preview.legacyPhotos ? 2 : 1, data_schema_version: preview.webpSchema ? 2 : 1,
     ...(preview.legacyText ? { text_encoding: 'legacy-whitespace-v1' as const } : {}),
-    ...(preview.legacyPhotos || preview.legacyText ? { photo_encoding: 'legacy-opaque-v1' as const } : {}),
+    ...(preview.webpSchema ? { photo_encoding: 'jpeg-webp-v1' as const, ...(preview.legacyPhotos ? { legacy_photo_encoding: 'legacy-opaque-v1' as const } : {}) }
+      : preview.legacyPhotos || preview.legacyText ? { photo_encoding: 'legacy-opaque-v1' as const } : {}),
     backup_id: crypto.randomUUID(), exported_at: snapshot.exported_at,
     producer: { name: 'CoffeeOS', version: '0.0.0' }, tables: descriptors };
   validateManifest(manifest);
@@ -79,7 +89,7 @@ export async function packageBackup(snapshot: BackupSnapshot): Promise<ExportFil
   // Verify ZIP32 sizes/offsets before offering a download; ZIP64 is unsupported.
   inspectArchive(data);
   const stamp = snapshot.exported_at.replace(/:/g, '').replace(/\.\d+Z$/, 'Z');
-  return { name: `CoffeeOS-${stamp}${preview.legacyText ? '-legacy-fields-v3' : preview.legacyPhotos ? '-legacy-photos-v2' : ''}.coffeeos`, type: 'application/zip', data };
+  return { name: `CoffeeOS-${stamp}${preview.webpSchema ? '-webp-v4' : ''}${preview.legacyText ? '-legacy-fields-v3' : preview.legacyPhotos ? '-legacy-photos-v2' : ''}.coffeeos`, type: 'application/zip', data };
 }
 export async function saveBackup(): Promise<ExportFile> { return packageBackup(await exportBackupSnapshot()); }
 
@@ -196,12 +206,14 @@ function counts(manifest: BackupManifest) {
 }
 export async function prepareBackup(data: Uint8Array): Promise<PreparedBackup> {
   const { manifest, files } = await unpackBackup(data);
-  return { manifest, files, preview: await previewBackupData(files, counts(manifest), manifest.format_version >= 2, manifest.format_version === 3) };
+  const preview = await previewBackupData(files, counts(manifest), preservesLegacyPhotos(manifest), preservesLegacyText(manifest));
+  if (Boolean(preview.webpSchema) !== (manifest.data_schema_version === 2)) fail('The photo schema does not match this backup version. Keep the original and choose an intact backup.');
+  return { manifest, files, preview };
 }
 export async function confirmBackup(prepared: PreparedBackup): Promise<ImportResult | ImportPreview> {
-  return mergeBackupData(prepared.files, counts(prepared.manifest), prepared.preview, prepared.manifest.format_version >= 2, prepared.manifest.format_version === 3);
+  return mergeBackupData(prepared.files, counts(prepared.manifest), prepared.preview, preservesLegacyPhotos(prepared.manifest), preservesLegacyText(prepared.manifest));
 }
 
 export async function replaceBackup(prepared: PreparedBackup): Promise<ImportResult | ImportPreview> {
-  return replaceBackupData(prepared.files, counts(prepared.manifest), prepared.preview, prepared.manifest.format_version >= 2, prepared.manifest.format_version === 3);
+  return replaceBackupData(prepared.files, counts(prepared.manifest), prepared.preview, preservesLegacyPhotos(prepared.manifest), preservesLegacyText(prepared.manifest));
 }

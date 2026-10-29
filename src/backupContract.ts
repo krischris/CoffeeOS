@@ -15,4 +15,8 @@ export const backupColumns: Record<BackupTable, BackupColumn[]> = {
     column('yield_g', 'binary64', true, 'g'), column('tds_pct', 'binary64', true, 'percentage_points'),
     column('extraction_pct', 'binary64', true, 'percentage_points')],
 };
+/** Schema 2 is additive; schema 1 remains the unchanged historical contract. */
+export const webpBackupColumns: Record<BackupTable, BackupColumn[]> = {
+  ...backupColumns, beans: [...backupColumns.beans, column('photo_webp', 'webp_data_url')],
+};
 export const sessionForeignKeys = [{ columns: ['bean_id'], references: { table: 'beans', columns: ['id'] } }];

@@ -48,8 +48,8 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
           <label for="import-beans">Beans file</label><input id="import-beans" name="beans" type="file" accept=".parquet,.csv">
           <label for="import-sessions">Brew sessions file</label><input id="import-sessions" name="brew_sessions" type="file" accept=".parquet,.csv">
           <label for="import-combined">Or one combined file</label><input id="import-combined" name="combined" type="file" accept=".parquet,.csv">
-          <label><input type="checkbox" name="preserve_legacy_photos"> Preserve damaged legacy photo bytes (photos may not display; backups require CoffeeOS format 2)</label>
-          <label><input type="checkbox" name="preserve_legacy_text"> Preserve legacy whitespace-only names and IDs exactly (backups require CoffeeOS format 3)</label>
+          <label><input type="checkbox" name="preserve_legacy_photos"> Preserve damaged legacy photo bytes (photos may not display)</label>
+          <label><input type="checkbox" name="preserve_legacy_text"> Preserve legacy whitespace-only names and IDs exactly</label>
           <button class="primary-button" type="submit">Import older files</button>
         </fieldset>
         <p class="legacy-status form-message" role="status" aria-live="polite"></p>
@@ -105,7 +105,7 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
       let canShare = false;
       try { canShare = typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] }); } catch { /* Download remains available. */ }
       share.hidden = !canShare;
-      exportStatus.textContent = exported.name.includes('-legacy-fields-v3') ? 'Backup ready. Legacy fields and photo bytes are preserved; restoring requires CoffeeOS backup format 3 support. Choose Download or Share.' : exported.name.includes('-legacy-photos-v2') ? 'Backup ready. Damaged legacy photos are preserved; restoring requires CoffeeOS backup format 2 support. Choose Download or Share.' : 'Backup ready. Choose Download or Share.';
+      exportStatus.textContent = exported.name.includes('-webp-v4') ? 'Backup ready. WebP photos and any declared legacy bytes are preserved. Restore with a current CoffeeOS version. Choose Download or Share.' : exported.name.includes('-legacy-fields-v3') ? 'Backup ready. Legacy fields and photo bytes are preserved; restoring requires CoffeeOS backup format 3 support. Choose Download or Share.' : exported.name.includes('-legacy-photos-v2') ? 'Backup ready. Damaged legacy photos are preserved; restoring requires CoffeeOS backup format 2 support. Choose Download or Share.' : 'Backup ready. Choose Download or Share.';
     }).catch(failure => {
       showError(exportError, `Backup could not be prepared. ${detail(failure)}`);
       exportStatus.textContent = file ? 'Your earlier prepared backup is still available.' : '';
@@ -135,7 +135,9 @@ export function createIOView(container: HTMLElement, onImported: () => Promise<v
     info.textContent = `${manifest.exported_at} · ${manifest.producer.name} ${manifest.producer.version}`;
     preview.append(info);
     if (manifest.format_version >= 2) {
-      const note = document.createElement('p'); note.textContent = manifest.format_version === 3 ? 'Legacy whitespace-only names and IDs, and any damaged photo bytes, will be preserved exactly. Future backups require CoffeeOS backup format 3 support.' : 'Damaged legacy photo bytes will be preserved. Some photos may not display. Future backups require CoffeeOS backup format 2 support.'; preview.append(note);
+      const note = document.createElement('p'); note.textContent = manifest.format_version === 4
+        ? 'This backup supports WebP photos. Restore with a current CoffeeOS version. Any declared legacy fields and photo bytes are preserved exactly.'
+        : manifest.format_version === 3 ? 'Legacy whitespace-only names and IDs, and any damaged photo bytes, will be preserved exactly. Future backups require CoffeeOS backup format 3 support.' : 'Damaged legacy photo bytes will be preserved. Some photos may not display. Future backups require CoffeeOS backup format 2 support.'; preview.append(note);
     }
     for (const table of ['beans', 'brew_sessions'] as const) {
       const p = document.createElement('p'), c = comparison[table];

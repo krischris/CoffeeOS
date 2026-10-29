@@ -27,6 +27,7 @@ for (const entry of ['src', 'public', 'vite.config.ts', 'index.html', 'package.j
 symlinkSync(resolve('node_modules'), `${candidate}/node_modules`, 'dir');
 cpSync(`${root}/test-db.ts`, `${candidate}/test-db.ts`);
 writeFileSync(`${candidate}/test-db.ts`, readFileSync(`${candidate}/test-db.ts`, 'utf8') + "\nimport * as backups from './src/backups'; import * as zip from 'fflate'; import { createStartupView } from './src/startupView'; import { createDriveView } from './src/views/driveView'; Object.assign(window,{__testCreateDriveView:createDriveView,__testBackups:backups,__testZIP:zip,__testStartupView:createStartupView});");
+writeFileSync(`${candidate}/test-db.ts`, readFileSync(`${candidate}/test-db.ts`, 'utf8') + "\nimport { encodeWebP } from './src/webpEncoder'; Object.assign(window,{__testEncodeWebP:encodeWebP});");
 const candidateIndex = `${candidate}/index.html`;
 writeFileSync(candidateIndex, readFileSync(candidateIndex, 'utf8').replace('<head>', '<head><script>window.__startupDocument=crypto.randomUUID();window.__startupErrors=[];const originalError=console.error;console.error=(...args)=>{window.__startupErrors.push(args.map(String));originalError(...args);};</script>').replace('</head>', '<script type="module" src="/test-db.ts"></script></head>'));
 build(candidate, '../candidate');

@@ -1,5 +1,5 @@
 import { driveStep, driveResponse, driveFailure } from './driveDiagnostics';
-import { backupLimits, packageBackup, prepareBackup, sha256, unpackBackup } from './backups';
+import { backupLimits, packageBackup, prepareBackup, preservesLegacyPhotos, preservesLegacyText, sha256, unpackBackup } from './backups';
 import { captureDriveSnapshot, hashBackupContents, recoverEmptyBackup } from './db';
 
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -140,18 +140,18 @@ export class DriveClient {
     return files;
   }
   async latest(_folder?: string): Promise<RemoteFile | null> { return (await this.history())[0] ?? null; }
-  private verify(file: RemoteFile, id: string, hash: string, size: number, contentHash?: string): void {
+  private verify(file: RemoteFile, id: string, hash: string, size: number, contentHash?: string, contentVersion: 1 | 2 = 1): void {
     if (file.size !== String(size) || file.sha256Checksum?.toLowerCase() !== hash || file.appProperties?.backupId !== id ||
       file.appProperties?.archiveSha256 !== hash || file.appProperties?.coffeeosKind !== 'snapshot-v1' ||
-      (contentHash !== undefined && file.appProperties?.contentSha256V1 !== contentHash)) {
+      (contentHash !== undefined && file.appProperties?.[`contentSha256V${contentVersion}`] !== contentHash)) {
       throw new DriveError('Drive backup completion could not be verified. Keep your local backup; no second upload was attempted.');
     }
   }
-  async upload(folder: string, data: Uint8Array, backupId: string, name: string, contentHash?: string): Promise<RemoteFile> {
+  async upload(folder: string, data: Uint8Array, backupId: string, name: string, contentHash?: string, contentVersion: 1 | 2 = 1): Promise<RemoteFile> {
     const hash = await sha256(data);
     const metadata = { name: name.replace('.coffeeos', `-${backupId}.coffeeos`), parents: [folder], mimeType: 'application/zip',
       appProperties: { coffeeosKind: 'snapshot-v1', backupId, archiveSha256: hash,
-        ...(contentHash ? { contentSha256V1: contentHash } : {}) } };
+        ...(contentHash ? { [`contentSha256V${contentVersion}`]: contentHash } : {}) } };
     if (data.length > backupLimits.archive) throw new DriveError('This backup exceeds the supported archive size.');
     try {
       const start = await this.request(`upload/drive/v3/files?uploadType=resumable&fields=${fields}`, { method: 'POST',
@@ -179,7 +179,7 @@ export class DriveClient {
           const result = await response.json();
           if (typeof result.id !== 'string' || !/^[\w-]+$/.test(result.id)) throw new DriveError('Invalid completed file identity.');
           const remote = await (await this.request(`drive/v3/files/${result.id}?fields=${fields}`)).json();
-          this.verify(remote, backupId, hash, data.length, contentHash);
+          this.verify(remote, backupId, hash, data.length, contentHash, contentVersion);
           return remote;
         }
         const range = response.headers.get('Range');
@@ -195,7 +195,7 @@ export class DriveClient {
       // Reconcile the SAME immutable backup ID. Never POST a second archive on an uncertain result.
       try {
         const matches = await this.list(`${marker('snapshot-v1')} and appProperties has { key='backupId' and value='${escapeQuery(backupId)}' }`);
-        if (matches.length === 1) { this.verify(matches[0], backupId, hash, data.length, contentHash); return matches[0]; }
+        if (matches.length === 1) { this.verify(matches[0], backupId, hash, data.length, contentHash, contentVersion); return matches[0]; }
       } catch { /* Preserve the unconfirmed outcome, including auth failures during lookup. */ }
       const message = 'Upload result is unconfirmed. No second upload was attempted. Keep a local backup and inspect CoffeeOS Backups in Drive before another Sync now.';
       if (error instanceof DriveAuthError) throw new DriveAuthError(`${message} Reconnect to authorize again.`);
@@ -249,7 +249,8 @@ export async function syncDrive(client: DriveClient, signal: AbortSignal, onReco
   if (snapshot.counts.beans + snapshot.counts.brew_sessions > 0) {
     const hash = await driveStep('Fingerprint local snapshot', () => hashBackupContents(snapshot.data));
     const latest = await driveStep('Read cloud history', () => client.latest());
-    let cloudHash = latest?.appProperties?.contentSha256V1;
+    const contentVersion = snapshot.webpPhotos ? 2 : 1;
+    let cloudHash = latest?.appProperties?.[`contentSha256V${contentVersion}`];
     let needsPreservingBackup = false;
     if (latest) {
       if (latest.sha256Checksum?.toLowerCase() !== latest.appProperties?.archiveSha256) {
@@ -261,7 +262,7 @@ export async function syncDrive(client: DriveClient, signal: AbortSignal, onReco
         const bytes = await driveStep('Download snapshot for comparison', () => client.download(latest));
         const { manifest } = await driveStep('Validate comparison snapshot', () => unpackBackup(bytes));
         if (manifest.backup_id !== latest.appProperties?.backupId) throw new DriveError('Drive backup identity does not match the archive. Keep the original file.');
-        needsPreservingBackup = manifest.format_version < (snapshot.legacyText ? 3 : 2);
+        needsPreservingBackup = Boolean(snapshot.legacyText && !preservesLegacyText(manifest) || snapshot.legacyPhotos && !preservesLegacyPhotos(manifest));
         if (!needsPreservingBackup) await driveStep('Validate comparison snapshot', () => prepareBackup(bytes));
       }
       if (!needsPreservingBackup && (!cloudHash || !/^[a-f0-9]{64}$/.test(cloudHash))) {
@@ -283,7 +284,7 @@ export async function syncDrive(client: DriveClient, signal: AbortSignal, onReco
     const { manifest } = await driveStep('Validate packaged snapshot', () => unpackBackup(file.data));
     const folder = await driveStep('Discover backup folder', () => client.folder(true));
     signal.throwIfAborted();
-    await driveStep('Upload snapshot', () => client.upload(folder!, file.data, manifest.backup_id, file.name, hash));
+    await driveStep('Upload snapshot', () => client.upload(folder!, file.data, manifest.backup_id, file.name, hash, contentVersion));
     return { imported: false, message: `Uploaded backup captured ${snapshot.exported_at}: ${snapshot.counts.beans} beans and ${snapshot.counts.brew_sessions} brew sessions (${formatBackupSize(file.data.length)}). Later edits wait for Sync now.` };
   }
   const latest = await driveStep('Read cloud history', () => client.latest());
@@ -292,6 +293,6 @@ export async function syncDrive(client: DriveClient, signal: AbortSignal, onReco
   const prepared = await driveStep('Validate downloaded snapshot', () => prepareBackup(downloaded));
   if (prepared.manifest.backup_id !== latest.appProperties?.backupId) throw new DriveError('The latest Drive backup identity does not match its archive. Recovery stopped; keep the original file.');
   const counts = Object.fromEntries(prepared.manifest.tables.map(t => [t.name, t.row_count])) as { beans: number; brew_sessions: number };
-  await driveStep('Recover empty collection', () => recoverEmptyBackup(prepared.files, counts, revision, signal, onRecoveryCommit, prepared.manifest.format_version >= 2, prepared.manifest.format_version === 3));
+  await driveStep('Recover empty collection', () => recoverEmptyBackup(prepared.files, counts, revision, signal, onRecoveryCommit, preservesLegacyPhotos(prepared.manifest), preservesLegacyText(prepared.manifest)));
   return { imported: true, message: `Recovered ${counts.beans} beans and ${counts.brew_sessions} brew sessions from the most recently uploaded backup (${latest.createdTime}).` };
 }

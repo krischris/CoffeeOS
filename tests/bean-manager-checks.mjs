@@ -33,7 +33,7 @@ export async function checkBeanManager({ sync, api, waitFor, screenshotPath }) {
           const preview = doc.querySelector('.photo-preview');
           preview.hidden = false; preview.src = doc.createElement('canvas').toDataURL();
           doc.querySelector('.remove-photo').hidden = false;
-          doc.querySelector('.photo-status').textContent = 'JPEG ready · 123 KB';
+          doc.querySelector('.photo-status').textContent = 'WebP ready · 99.9 kB';
           const bounds = selector => { const r = doc.querySelector(selector).getBoundingClientRect(); return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}; };
           return { horizontal: doc.querySelector('.app-content').scrollWidth > doc.querySelector('.app-content').clientWidth,
             toggle:bounds('.add-bean-toggle'), form:bounds('.bean-form'), submit:bounds('.bean-form button[type=submit]'),

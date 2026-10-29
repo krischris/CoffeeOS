@@ -7,6 +7,12 @@ export async function checkBackups({sync,evaluate,waitFor,reload}) {
  const state=async()=>({beans:await db.getBeans(),sessions:await db.getBrewSessions()});
  const rejected=async(fn,label)=>{let failed=false;try{await fn();}catch{failed=true;}check(failed,label);};
  const initial=await state();
+ const historical=zip.unzipSync(new Uint8Array(await (await fetch('/docs/fixtures/example-v1.coffeeos')).arrayBuffer()));
+ const oldManifest=JSON.parse(new TextDecoder().decode(historical['manifest.json']));
+ oldManifest.legacy_photo_encoding='legacy-opaque-v1';
+ historical['manifest.json']=new TextEncoder().encode(JSON.stringify(oldManifest));
+ const oldPrepared=await backups.prepareBackup(zip.zipSync(historical,{level:0}));
+ check(oldPrepared.manifest.format_version===1&&!backups.preservesLegacyPhotos(oldPrepared.manifest),'historical unknown metadata stays informational');
  const empty=await backups.saveBackup();
  let prepared=await backups.prepareBackup(empty.data);
  check(prepared.preview.beans.new===0,'empty preview');
@@ -15,7 +21,9 @@ export async function checkBackups({sync,evaluate,waitFor,reload}) {
  const sessionCSV='id,bean_id,brewed_at,dose_g,water_g,time_str,temp_c,grind_um,comment,yield_g,tds_pct,extraction_pct\n"precise","portable","2026-10-25T10:21:30.654321Z",18.123456789012345,0,"",\\N,700.1234567890123,"Line 1\n行 2 ☕",250,1.4300000000000002,19.999999999999996\n"sparse","portable","2026-10-25T10:21:30.000001Z",\\N,\\N,\\N,\\N,\\N,"",\\N,\\N,\\N\n';
  await db.importData([{target:'beans',name:'beans.csv',data:new TextEncoder().encode(beanCSV)},{target:'brew_sessions',name:'sessions.csv',data:new TextEncoder().encode(sessionCSV)}]);
  const canvas=document.createElement('canvas');canvas.width=32;canvas.height=32;canvas.getContext('2d').fillRect(0,0,32,32);
- await db.addBean({name:'Photo',photo_jpeg:canvas.toDataURL('image/jpeg')});
+ const source=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+ const photo=await (await import('/src/photos.ts')).compressBeanPhoto(new File([source],'photo.png',{type:'image/png'}));
+ await db.addBean({name:'Photo',photo_webp:photo});
  const expected=await state();
  const exported=await backups.saveBackup();window.__archive=exported;
  const unzipped=zip.unzipSync(exported.data);
@@ -32,7 +40,7 @@ export async function checkBackups({sync,evaluate,waitFor,reload}) {
  const changedManifest=(fn)=>{const m=structuredClone(manifest);fn(m);return pack({...unzipped,'manifest.json':new TextEncoder().encode(JSON.stringify(m))});};
  const invalid=[
  ['truncated',exported.data.subarray(0,exported.data.length-4)],['junk',new Uint8Array([1,2,3])],
- ['version',changedManifest(m=>m.format_version=2)],['schema version',changedManifest(m=>m.data_schema_version=2)],
+ ['version',changedManifest(m=>m.format_version=2)],['schema version',changedManifest(m=>m.data_schema_version=3)],
  ['hash',changedManifest(m=>m.tables[0].sha256='0'.repeat(64))],['count',changedManifest(m=>m.tables[0].row_count=999)],
  ['unit',changedManifest(m=>m.tables[1].columns[3].unit='kg')],['columns',changedManifest(m=>m.tables[0].columns.reverse())],
  ['negative',changedManifest(m=>m.tables[0].byte_length=-1)],['unsafe',changedManifest(m=>m.tables[0].row_count=Number.MAX_SAFE_INTEGER+1)],

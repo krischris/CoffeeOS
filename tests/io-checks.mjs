@@ -85,7 +85,7 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
   if (!production) {
     const state = () => evaluate(`const db = await getDB(); return { beans: await db.getBeans(), sessions: await db.getBrewSessions() };`);
     let stored = await state();
-    assert.deepEqual(stored.beans.find(item => item.id === bean.id), { ...updatedBean, photo_jpeg: null });
+    assert.deepEqual(stored.beans.find(item => item.id === bean.id), { ...updatedBean, photo_jpeg: null, photo_webp: null });
     assert.deepEqual(stored.sessions.find(item => item.id === brew.id), { ...updatedBrew, bean_name: emptyBean.name });
     // Import a literal null marker, an empty string, and a NULL in separate string fields.
     result = await importFiles([encoded('brew_sessions', sessionKeys, [brew])]);

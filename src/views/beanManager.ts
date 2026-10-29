@@ -1,5 +1,5 @@
 import { CommittedWriteError, EditConflictError, DatabaseRuntimeError, addBean, updateBean, deleteBean, getBeans, getBrewSessions, getBeanSessionCounts } from '../db';
-import { compressBeanPhoto, isBeanPhoto } from '../photos';
+import { beanPhotoByteLength, compressBeanPhoto, isBeanPhoto } from '../photos';
 import type { Bean, BrewSession } from '../types';
 import { renderSessionMetrics } from './sessionMetrics';
 import { attachSwipeRow } from './swipeRow';
@@ -58,10 +58,11 @@ function renderBean(bean: Bean, sessionCount: number, onEdit: () => void, onDele
   history.tabIndex = 0;
   history.setAttribute('role', 'region');
   history.setAttribute('aria-label', `Brew sessions for ${bean.name}`);
-  if (bean.photo_jpeg && isBeanPhoto(bean.photo_jpeg)) {
+  const beanPhoto = bean.photo_webp ?? bean.photo_jpeg;
+  if (beanPhoto && isBeanPhoto(beanPhoto)) {
     const photo = document.createElement('img');
     photo.className = 'bean-photo';
-    photo.src = bean.photo_jpeg;
+    photo.src = beanPhoto;
     photo.alt = `Photo of ${bean.name}`;
     photo.loading = 'lazy';
     history.append(photo);
@@ -231,7 +232,7 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
         </div>
         <label for="bean-photo">Photo <span class="field-hint">(optional)</span></label>
         <input id="bean-photo" type="file" accept="image/*">
-        <p class="field-hint photo-hint">Camera or library · saved as JPEG</p>
+        <p class="field-hint photo-hint">Camera or library · WebP up to 100 kB</p>
         <div class="bean-photo-selection">
           <img class="bean-photo photo-preview" alt="Selected bean photo" hidden>
           <button class="secondary-button remove-photo" type="button" hidden>Remove photo</button>
@@ -334,7 +335,7 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
     else roastDate.valueAsDate = null;
     if (bean.freeze_date) freezeDate.value = bean.freeze_date;
     else freezeDate.valueAsDate = null;
-    photo = bean.photo_jpeg ?? null;
+    photo = bean.photo_webp ?? bean.photo_jpeg ?? null;
     if (photo) {
       preview.src = photo;
       preview.hidden = removePhoto.hidden = false;
@@ -362,12 +363,12 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
     photoInput.disabled = removePhoto.disabled = submit.disabled = true;
     photoStatus.textContent = 'Preparing photo…';
     error.hidden = true;
-    void compressBeanPhoto(file).then(jpeg => {
+    void compressBeanPhoto(file).then(preparedPhoto => {
       if (version !== photoVersion) return;
-      photo = jpeg;
-      preview.src = jpeg;
+      photo = preparedPhoto;
+      preview.src = preparedPhoto;
       preview.hidden = removePhoto.hidden = false;
-      photoStatus.textContent = `JPEG ready · ${Math.round(jpeg.length * 0.75 / 1024)} KB`;
+      photoStatus.textContent = `WebP ready · ${(beanPhotoByteLength(preparedPhoto) / 1000).toFixed(1)} kB`;
     }).catch(failure => {
       if (version !== photoVersion) return;
       photoInput.value = '';
@@ -440,7 +441,10 @@ export function createBeanManager(container: HTMLElement): { refresh: () => Prom
     message.textContent = '';
     error.hidden = true;
     try {
-      const input = { name: original && name.value === original.name ? original.name : name.value.trim(), roast_date: roastDate.value || null, freeze_date: freezeDate.value || null, photo_jpeg: photo };
+      const unchangedPhoto = original && photo === (original.photo_webp ?? original.photo_jpeg ?? null);
+      const input = { name: original && name.value === original.name ? original.name : name.value.trim(), roast_date: roastDate.value || null, freeze_date: freezeDate.value || null,
+        photo_jpeg: unchangedPhoto ? original.photo_jpeg : photo?.startsWith('data:image/jpeg;') ? photo : null,
+        photo_webp: unchangedPhoto ? original.photo_webp : photo?.startsWith('data:image/webp;') ? photo : null };
       const bean = await (original ? updateBean(original.id, input, original) : addBean(input));
       resetEditor();
       if (original) setFormOpen(false);

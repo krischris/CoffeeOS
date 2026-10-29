@@ -2437,3 +2437,223 @@ connection and use the same saved collection to log brews and manage backups.
 - Stopped the completion run's Safari WebDriver; no local dev/preview/browser
   automation endpoints remain listening. Completion notes and baseline pin remain
   uncommitted; the existing offline WIP commit is preserved.
+
+## Stage 53: Automatically Compress Bean Photos to 100 kB
+
+- [x] **Status:** Complete locally; Safari/IndexedDB and Firefox/OPFS checks
+  passed. Physical-device and deployed-host checks remain unverified.
+
+### Goal
+
+Let users take or select a photo and automatically prepare a JPEG of at most
+100,000 bytes without requiring the source photo to meet an upload size limit.
+
+### Tasks
+
+1. [x] Measure exact JPEG byte length, search JPEG quality and reduce dimensions
+   as needed; only accept a verified result at or below 100 kB.
+2. [x] Remove the source-file size rejection, retain aspect ratio and white
+   transparency handling, and show the actual compressed size in decimal kB.
+3. [x] Check detailed, small, portrait, panoramic, transparent and large source
+   photos in Safari; verify save/reload and historical photo compatibility.
+4. [x] Run build and local production subpath/header checks; record results and
+   any unverified environments or upgrade paths.
+
+### Acceptance Criteria (Stage 53 Gate)
+
+- New selections always produce a valid JPEG of at most 100,000 decoded bytes,
+  or show a recoverable processing error. Input size is not compared with the
+  output limit or rejected solely for exceeding the former 30 MB source cap.
+- Detailed images exercise dimension reduction; moderate images retain their
+  dimensions through quality adjustment. Small images are not enlarged,
+  transparency becomes white, and portrait/panoramic proportions survive.
+- Form preparation prevents saving an unfinished photo; preview, actual size,
+  save/reset/remove/error and reload behavior pass. Existing photos and historical
+  CSV/Parquet backups remain readable without recompression or tighter validation.
+- Build, desktop Safari checks, production `/CoffeeOS/` assets/isolation headers
+  and whitespace checks pass. Existing records, storage identities, schemas,
+  backup formats, dependencies and origin remain unchanged.
+
+### Verification — 2026-10-29
+
+- Build, test syntax and whitespace checks passed with the existing local
+  `.venv`. No dependency, storage identity, schema, backup format or origin
+  changed. Only newly selected photos are compressed; saved/imported photo
+  validation retains its historical limits and existing photos are not rewritten.
+- Focused isolated desktop Safari and headless Firefox checks passed all six
+  compression fixtures, form preparation/save/reset/remove/error, expanded
+  preview, reload and combined/separate CSV/Parquet round trips. Independent
+  decoded-byte measurements confirmed every result at or below 100,000 bytes.
+  Detailed 2400×1800 PNG sources (~15 MB) produced 99,736-byte Safari and
+  99,785-byte Firefox JPEGs. Browser-adapted moderate-detail fixtures produced
+  99,350/99,231-byte JPEGs while retaining dimensions through quality adjustment.
+  Small transparent images retained dimensions and rendered opaque white;
+  portrait/panoramic proportions survived. Synthetic 32×24 PNGs padded beyond
+  30 MB processed successfully; this verifies source byte-size acceptance, not
+  physical iOS decoding capacity for very large pixel dimensions. Logs:
+  `.cache/stage53-photo-safari.log`, `.cache/stage53-photo-firefox.log`.
+- Additional checks of the actual compressor with a mocked encoder passed exact
+  99,998/99,999/100,000-byte outputs and base64 padding, 100,001-byte rejection
+  followed by quality adjustment, quality-ignoring encoders, >2 MB intermediate
+  data URLs, bounded failure at one pixel, malformed JPEG/MIME fallback, decode
+  failure and source-URL cleanup. These are boundary/fault checks with mocks,
+  not additional browser capacity measurements. Source and output are retained
+  in ignored `.cache/stage53-photo-boundaries.mjs` and its `.log` file.
+- The upgrade fixture requires a historical permissive writer to seed damaged
+  photos/whitespace fields; a `HEAD` baseline rejected that seeding as designed.
+  Used the previously verified `35ab417` baseline instead. An initial Safari
+  run found the test's fixed quality-only source also needed resizing in Safari;
+  the fixture now independently finds a source between that browser's quality
+  thresholds. The compressor already kept its output below the limit. Focused
+  Safari and Firefox reruns passed.
+- Populated `35ab417` → candidate production `/CoffeeOS/` upgrade matrices
+  passed in isolated Safari/IndexedDB and Firefox/OPFS at the same profile and
+  origin. Exact records, relationships, nulls/dates/comments/numeric precision,
+  historical damaged-photo/text bytes, old CSV/Parquet imports and immutable
+  recoveries survived replacement/startup/reload. Injected worker, schema,
+  metadata, permission and snapshot failures retained durable bytes and
+  recoverable original collections. All new compression fixtures also passed in
+  the production build. Logs: `.cache/stage53-upgrade-safari-final.log` and
+  `.cache/stage53-upgrade-firefox.log`. The matrix uses its isolation-only worker
+  fixture for network faults; the generated offline-worker lifecycle was not
+  rerun because its implementation and asset packaging are unchanged.
+- Full `uv run npm run test:safari` passed startup/navigation, phone layouts,
+  database writes/reload, gestures, old backup fidelity, empty-database restores,
+  legacy compatibility, commit fault cases, stale drafts, history pagination and
+  runtime-worker failure/reopen. Production `drive-isolation.mjs` passed relative
+  `/CoffeeOS/` assets/startup, prior isolation-worker replacement, helper
+  BroadcastChannel and main/helper isolation policy. Direct dev and production
+  preview requests returned HTTP 200, COOP `same-origin`, COEP `require-corp`.
+  Logs: `.cache/stage53-safari.log`, `.cache/stage53-production.log` and
+  `.cache/stage53-headers.log`. Final build, test syntax and whitespace checks
+  passed; no local acceptance gate remains.
+- Physical iPhone/iPad camera/library, Home Screen, memory/storage lifecycle,
+  older Safari and deployed-host behavior remain unverified. No deployment or
+  normal browser collection was used.
+
+## Stage 54: WebP Photos and One-Time JPEG Conversion
+
+- [ ] **Status:** In progress.
+
+### Goal
+
+Automatically store new photos as WebP at or below 100,000 bytes and convert
+existing readable JPEG photos once on the device, with recoverable original data.
+
+### Tasks
+
+1. [x] Bundle a local WebP encoder, retain the measured 100 kB cap, and include
+   encoder assets in production/offline output.
+2. [x] Add optional `photo_webp` in schema v3 without repurposing `photo_jpeg`;
+   retain original schema snapshots and a downloadable pre-conversion recovery.
+3. [x] Verify transactional JPEG conversion, retry after failure, unchanged
+   WebP on subsequent reloads, and exact non-photo record preservation.
+4. [ ] Version WebP archives, keep historical CSV/Parquet/archive/recovery data
+   readable, and check local/Drive round trips and compatibility notices.
+5. [ ] Run build, Safari-first photo/upgrade/offline checks, Firefox/OPFS upgrade
+   checks and production subpath/header verification; document remaining limits.
+
+### Acceptance Criteria (Stage 54 Gate)
+
+- Taking/selecting a photo produces a valid WebP of at most 100,000 decoded
+  bytes. Source file size is not an upload restriction; dimensions/proportions,
+  transparency, preparation state and recoverable processing errors work.
+- Before converting any saved JPEG, persist an immutable downloadable recovery.
+  Conversion updates only photo fields in one transaction; IDs, relationships,
+  timestamps, nulls, comments and binary64 values remain exact. Failed encoding,
+  recovery-copy or storage commit preserves original data and permits retry.
+- Converted JPEG fields become null and the WebP field holds the measured result;
+  existing WebP bytes are never recompressed on reload. Undecodable historical
+  damaged bytes remain intact with a visible replacement/recovery notice.
+- Historical JPEG fields and old backups remain readable. Format 4/schema 2
+  explicitly describes the additive WebP column; old formats 1/2/3 retain their
+  contracts. New archives preserve declared legacy bytes/text independently.
+- Populated previous-build OPFS and IndexedDB collections survive same-profile,
+  same-origin replacement/reload and injected failures. Offline cold selection
+  uses bundled encoder assets. Local build/assets/isolation checks pass.
+
+### Verification — 2026-10-29
+
+- Added `@jsquash/webp` 1.5.0 and its locked wasm-feature-detect dependency using
+  the existing project `.venv`. Same-origin, Vite-managed scalar/SIMD Wasm and
+  glue code enter the generated offline manifest. Added the distributed jSquash,
+  libwebp and wasm-feature-detect license notices. New selections use WebP;
+  quality/dimension trials accept only measured outputs at or below 100,000 bytes.
+- Database schema v3 adds nullable `photo_webp`. Original v1/v2 schemas remain
+  readable; `schema-v2-before-webp` retains the pre-ALTER snapshot. Before photo
+  conversion, the existing immutable import recovery mechanism records a
+  downloadable original collection. Photo updates and IndexedDB publication use
+  the existing transaction protocol. The additive `photo-webp-migration-v1`
+  marker is saved after durability and skips subsequent conversion. Historical
+  imports and old recovery payloads keep their original JPEG bytes.
+- `test:photos` passed in isolated desktop Safari/IndexedDB and headless
+  Firefox/OPFS. Both verify recovery-write failure, rollback after a first JPEG
+  update, original input bytes on retry, every non-photo exported CSV value
+  including microseconds/binary64 precision, preserved damaged legacy bytes,
+  downloadable pre-conversion copies and exact WebP/no extra copies on reopen.
+  Safari additionally verifies failed IndexedDB snapshot publication preserves
+  the exact original snapshot bytes. Logs:
+  `.cache/stage54-photo-faults-safari.log`,
+  `.cache/stage54-photo-faults-firefox.log`.
+- Six real browser-encoder fixtures passed on both browsers: high detail,
+  quality-only adjustment, portrait, panorama, transparent small source and a
+  small PNG padded beyond 30 MB. Detailed output was 99,234 bytes in Safari and
+  99,280 bytes in Firefox; moderate fixtures were 98,768/98,710 bytes with their
+  dimensions retained. This establishes the byte cap with these synthetic inputs,
+  not physical iPhone decoding capacity or visual label readability for all bags.
+- Actual generated-worker `test:offline` passed in Firefox/OPFS against
+  `6ec3ef8`: original collection/non-photo fields, historical backups and old
+  immutable recoveries survive the same-profile/origin replacement. A cold
+  document selects, encodes and saves a new WebP with all origin traffic
+  disconnected; subsequent reload/backup/recovery retains its exact bytes.
+  Missing/corrupt/interrupted/quota-failed updates and failed startup preserve
+  data and the previous coherent shell. Log: `.cache/stage54-offline-firefox.log`.
+- Earlier full-suite attempts exposed outdated assertions for the JPEG label,
+  nullable bean shape and legacy archive version. Updated those expectations for
+  WebP/schema 2/format 4 while retaining the underlying fidelity/rollback checks.
+  The first populated Safari run also found the damaged-photo notice consumed
+  phone form height; moved that notice into IO and rechecked the form gate.
+  An initial focused harness imported a second Vite/HMR database URL; the test
+  now uses the application's actual resource URL, preserving ownership locking.
+- Further populated upgrade, Safari, Drive, archive and production checks remain
+  in progress. No deployment or normal browser collection is used. Physical
+  iPhone/iPad camera/library, encoding latency, Home Screen and storage lifecycle
+  checks remain unverified.
+
+## Stage 55: Centered Brew Editor and Phone Horizontal Scroll Containment
+
+- [ ] **Status:** In progress.
+
+### Goal
+
+Keep the brew session editor centered and comfortably sized on larger screens,
+while retaining the existing phone layout without sideways page scrolling.
+
+### Tasks
+
+1. [x] Cap and center the entire editor, including its pinned action row.
+2. [x] Contain scaled layout overflow and keep the editor body scrolling vertically.
+3. [ ] Verify desktop widths, phone/landscape geometry, safe areas, labels,
+   pinned actions, smaller-screen scrolling, save/reload and production subpaths.
+4. [ ] Run the build and record checks and remaining device limitations.
+
+### Acceptance Criteria (Stage 55 Gate)
+
+- At 1024, 1440 and 1920 CSS pixels wide, the editor is centered and no wider
+  than 712 CSS pixels; actions align with the measurement fields.
+- Phone layouts, including 393×852 for iPhone 15 Pro, have no horizontal page
+  or editor-body overflow. Existing scaling, safe-area spacing and pinned
+  actions remain intact; short/landscape layouts can still scroll to all fields.
+- Build and isolated desktop Safari checks pass, including existing editor
+  interactions and write/reload coverage. Relative production assets and local
+  isolation headers remain valid. Physical iPhone checks are explicitly recorded
+  as unverified if no device is available.
+- This change touches styling and layout verification only; record formats,
+  storage identities, persistence, dependencies and deployment origin are unchanged.
+
+### Verification — 2026-10-29
+
+- Initial build passed using the existing project `.venv`; Node resolves inside
+  that environment. Browser and production checks are pending.
+- The shared workspace contains a separate ongoing Stage 54 update. Its files
+  and verification record are preserved; this stage records only the editor work.

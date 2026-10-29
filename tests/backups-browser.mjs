@@ -46,7 +46,7 @@ try {
  }
  console.log('Browser storage:',await evaluate('return (await getDB()).getStorageMode();'));
  const result = process.env.TEST_MEMORY_ONLY ? {measurements:await checkBackupMemory(evaluate)} : await checkBackups({sync,evaluate,waitFor,reload:async()=>{await api('/refresh',{});await waitFor(`document.querySelector('#app')?.getAttribute('aria-busy') === 'false'`);}});
- if(result.example){mkdirSync('docs/fixtures',{recursive:true});writeFileSync('docs/fixtures/example-v1.coffeeos',new Uint8Array(result.example));}
+ if(result.example){mkdirSync('docs/fixtures',{recursive:true});writeFileSync('docs/fixtures/example-v4.coffeeos',new Uint8Array(result.example));}
  console.log('Measurements:',result.measurements);
  mkdirSync('.cache/backups',{recursive:true});
  if(result.roundtrip)writeFileSync('.cache/backups/roundtrip.coffeeos',new Uint8Array(result.roundtrip));

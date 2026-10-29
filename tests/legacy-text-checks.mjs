@@ -26,10 +26,10 @@ export async function checkLegacyText({evaluate}) {
       const expected=await hash();
       check((await db.getBeans()).find(v=>v.id===beanId).name===name,'exact whitespace bytes');
       const archive=await b.saveBackup(),prepared=await b.prepareBackup(archive.data);
-      check(prepared.manifest.format_version===3&&prepared.manifest.text_encoding==='legacy-whitespace-v1'&&prepared.preview.legacyText,'explicit format 3');
+      check(prepared.manifest.format_version===4&&prepared.manifest.text_encoding==='legacy-whitespace-v1'&&prepared.preview.legacyText,'explicit format 4 text contract');
       check(archive.name.includes('legacy-fields-v3'),'compatibility filename');
       for(const manifest of [{...prepared.manifest,text_encoding:undefined},{...prepared.manifest,format_version:2},{...prepared.manifest,text_encoding:'unknown'}]) {
-        let invalid=false;try{b.validateManifest(manifest);}catch{invalid=true;}check(invalid,'unsupported text contract rejected');
+        let invalid=false;try{const changed={...prepared,manifest};b.validateManifest(manifest);if(!manifest.text_encoding)await db.previewBackupData(changed.files,Object.fromEntries(manifest.tables.map(t=>[t.name,t.row_count])),false,false);}catch{invalid=true;}check(invalid,'unsupported text contract rejected');
       }
       const oldParquet=(await db.exportData('parquet')).map((f,i)=>({...f,target:i?'brew_sessions':'beans'}));
       await db.closeDB();await db.initDB();check(await hash()===expected,'reopen preserves exact values');
@@ -41,7 +41,7 @@ export async function checkLegacyText({evaluate}) {
         const recovered=await db.readImportRecovery(copy.key);
         if(await db.hashBackupContents(recovered.data)!==expected)continue;
         const downloadable=await b.packageBackup(recovered);
-        check((await b.prepareBackup(downloadable.data)).manifest.format_version===3,'recovery exports readable format 3');
+        check((await b.prepareBackup(downloadable.data)).manifest.format_version===4,'recovery exports readable format 4');
         preservedRecovery=true;break;
       }
       check(preservedRecovery,'immutable pre-replacement recovery preserved');
@@ -68,15 +68,15 @@ export async function checkLegacyText({evaluate}) {
     form.querySelector('[name=preserve_legacy_text]').checked=true;form.requestSubmit();await idle();
     check((await db.getBeans()).some(v=>v.id==='ui-legacy-text'&&v.name==='\t'),'UI opt-in preserves exact field');
     document.querySelector('.save-backup').click();await idle();
-    check(document.querySelector('.export-status').textContent.includes('format 3'),'local export compatibility disclosed');
+    check(document.querySelector('.export-status').textContent.includes('current CoffeeOS version'),'local export compatibility disclosed');
     const uiArchive=await b.saveBackup(),upload=new DataTransfer();upload.items.add(new File([uiArchive.data],'fields.coffeeos'));
     document.querySelector('#import-backup').files=upload.files;document.querySelector('.io-import').requestSubmit();await idle();
-    check(document.querySelector('.backup-preview').textContent.includes('format 3'),'restore preview compatibility disclosed');
+    check(document.querySelector('.backup-preview').textContent.includes('current CoffeeOS version'),'restore preview compatibility disclosed');
     document.querySelector('.cancel-backup').click();
     await b.replaceBackup(await b.prepareBackup(original.data));
     check(await hash()===originalHash,'test restores original collection');
     return {cases,mode:db.getStorageMode()};
   `);
   assert.equal(result.cases,4);
-  console.log('PASS legacy text defaults reject, explicit CSV/Parquet preservation, v3 contracts, exact merge/recovery/reopen and immutable recovery downloads',result);
+  console.log('PASS legacy text defaults reject, explicit CSV/Parquet preservation, v4 text contracts, exact merge/recovery/reopen and immutable recovery downloads',result);
 }

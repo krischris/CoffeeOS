@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { resolve, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { firefoxAdapter } from './firefox-upgrade-adapter.mjs';
+const firefox=process.env.TEST_FIREFOX?await firefoxAdapter():null;
 let legacyWorker=true, session;
 const oldWorker=execFileSync('git',['show','HEAD:public/coi-serviceworker.js']);
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css','.wasm':'application/wasm'};
@@ -20,6 +22,7 @@ const server=createServer(async(req,res)=>{
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(5176,'127.0.0.1',resolve);});
 const endpoint=process.env.SAFARI_WEBDRIVER_URL??'http://127.0.0.1:4444';
 async function request(path,body,method=body===undefined?'GET':'POST'){
+ if(firefox)return firefox(path,body,method);
  const response=await fetch(endpoint+path,{method,headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
  const {value}=await response.json();if(!response.ok||value?.error)throw new Error(JSON.stringify(value));return value;
 }

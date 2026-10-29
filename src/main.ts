@@ -1,6 +1,6 @@
 import './style.css';
 import { installDriveDiagnostics } from './driveDiagnostics';
-import { initDB, DatabaseStartupError, getStorageMode, getDatabaseStartupPhase } from './db';
+import { initDB, DatabaseStartupError, getStorageMode, getDatabaseStartupPhase, getPhotoMigrationNotice } from './db';
 import { createStartupView } from './startupView';
 import { createBeanManager } from './views/beanManager';
 import { createBrewController } from './views/brewController';
@@ -78,6 +78,7 @@ function renderShell(app: HTMLDivElement): void {
           <p class="eyebrow">${view.label}</p>
           <h1>${view.title}</h1>
           <p class="view-description">${view.description}</p>
+          ${view.id === 'io' && getPhotoMigrationNotice() ? '<p class="storage-warning photo-migration-warning" role="status"></p>' : ''}
           <div class="empty-state">
             <span class="empty-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24">${view.icon}</svg>
@@ -101,6 +102,8 @@ function renderShell(app: HTMLDivElement): void {
     </nav>
   `;
 
+  const photoWarning = app.querySelector('.photo-migration-warning');
+  if (photoWarning) photoWarning.textContent = getPhotoMigrationNotice();
   window.addEventListener('coffeeos-database-failed', event => {
     const warning = document.createElement('p'); warning.className = 'storage-warning'; warning.setAttribute('role', 'alert');
     warning.textContent = (event as CustomEvent<string>).detail;

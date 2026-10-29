@@ -1,4 +1,4 @@
-# CoffeeOS backup formats 1, 2 and 3
+# CoffeeOS backup formats 1, 2, 3 and 4
 
 This is the normative archive and logical data schema contract. The generated
 [example-v1.coffeeos](fixtures/example-v1.coffeeos) includes three beans (one with
@@ -38,8 +38,8 @@ limits are deliberately narrowed by this reader. The distributed license is
 | Property | Type and rule |
 | --- | --- |
 | `format` | String, exactly `coffeeos-backup` |
-| `format_version` | Integer, 1 normally; 2 for legacy photos; 3 for historical whitespace fields (contracts below) |
-| `data_schema_version` | Integer, exactly 1 (logical backup schema, independent of internal database schema) |
+| `format_version` | Integer: 1 for historical healthy archives, 2 for legacy photos, 3 for legacy text, 4 for WebP-capable archives (contracts below) |
+| `data_schema_version` | Integer: 1 for formats 1–3, 2 for format 4; independent of internal database schema |
 | `backup_id` | UUID with standard hyphens, RFC variant and version 1–8; identifies this export, never database or record identity |
 | `exported_at` | UTC ISO 8601 `YYYY-MM-DDTHH:mm:ss[.fraction]Z`, 1–6 fractional digits when present, valid calendar date/time |
 | `producer` | Object: `name` exactly `CoffeeOS`, `version` nonblank string, informational |
@@ -73,7 +73,8 @@ encryption. Opening it requires no account, password or network service.
 
 ## Logical tables and Parquet representation
 
-The ordered columns are:
+The ordered schema 1 columns (formats 1–3) are below. Format 4/schema 2 appends
+`beans.photo_webp`, as specified in the format 4 contract at the end.
 
 | Table | Column | `logical_type` | `nullable` | `unit` |
 | --- | --- | --- | --- | --- |
@@ -287,7 +288,8 @@ Every original string is preserved, including IDs and foreign keys; no trimming,
 replacement labels or reassigned IDs occur. The filename includes
 `-legacy-fields-v3`, and local/Drive previews disclose the required reader version.
 
-Healthy exports still use format 1; damaged-photo-only exports still use format 2.
+Schema 1 recovery exports still use format 1 when healthy, or format 2 for damaged
+photos only. Current schema 2 snapshots use format 4 below.
 Older readers reject format 3. If an old format 1/2 archive contains whitespace
 fields that its reader rejects, retain the original, extract both Parquet tables,
 and import using the explicit legacy text option (and photo option if needed).
@@ -295,3 +297,60 @@ The next export produces readable format 3. Recovery downloads inspect the saved
 bytes, so older immutable copies work without rewriting their keys or payloads.
 Drive creates a new readable compatibility backup even when an unreadable older
 archive has the same content fingerprint; the original remote file is retained.
+
+## Format 4: WebP photos and additive schema 2
+
+[example-v4.coffeeos](fixtures/example-v4.coffeeos) is a separate WebP example;
+the historical format 1 example remains unchanged.
+
+New database snapshots use format 4, `data_schema_version: 2` and
+`photo_encoding: "jpeg-webp-v1"`. The schema 1 columns above retain their names,
+types, units, ordering and meanings. Schema 2 appends one nullable VARCHAR column
+to `beans`: `photo_webp`, logical type `webp_data_url`, with no unit. Its value is
+a canonical `data:image/webp;base64,...` URL with a consistent RIFF/WEBP container
+and VP8/VP8L image chunk. JPEGs remain in `photo_jpeg`; WebP is never disguised as
+JPEG or written into that column. Sessions are unchanged.
+
+Format 4 independently declares historical exceptions when needed:
+`legacy_photo_encoding: "legacy-opaque-v1"` permits the original damaged JPEG
+bytes; `text_encoding: "legacy-whitespace-v1"` permits historical whitespace
+fields. Neither flag is implied by format 4. WebP structure remains validated
+even when legacy JPEG preservation is enabled. Missing/unknown encoding or schema
+contracts, manifest/payload schema mismatches, and undeclared damaged JPEG/text
+values fail before live mutation. Older readers reject format 4 rather than
+loading a partial collection. Retained schema 1 recoveries still package as
+formats 1/2/3 without rewriting the original bytes.
+
+New photo selections are encoded locally with bundled `@jsquash/webp` 1.5.0 and
+its libwebp encoder, including Safari. Both Wasm variants and their JavaScript
+are Vite-managed, same-origin assets in the offline manifest. No photo leaves the
+device. Quality and dimensions adapt until the measured encoded WebP is at most
+100,000 bytes, excluding data-URL/base64 overhead. Source size is not an upload
+restriction. Bundled license notices cover jSquash, libwebp and wasm-feature-detect.
+
+Internal database schema v3 adds `photo_webp` while accepting existing v1/v2
+storage. Before an old schema changes, `schema-v2-before-webp` retains an immutable
+original snapshot. A separate downloadable import recovery is durable before
+converting saved JPEGs. Conversion updates only the photo fields in one
+transaction: `photo_webp` receives the compressed result and `photo_jpeg` becomes
+null. All record IDs, relationships and non-photo values remain exact. Damaged
+historical JPEG bytes that cannot pass the existing JPEG marker contract remain
+intact, with an IO notice. Other encoding failures roll back and show a
+recoverable startup error. IndexedDB snapshot publication uses the existing
+SQL/snapshot commit protocol; originals are not replaced by an empty database.
+
+The `photo-webp-migration-v1` completion marker is saved only after durability is
+confirmed. It prevents re-encoding or creating additional migration recoveries
+on later launches. Historical backups remain importable with their original
+JPEG bytes; the one-time upgrade does not rewrite retained recovery archives or
+future historical imports. Normal new selections always use WebP. The existing
+OPFS/WAL names, IndexedDB names, snapshot/backend keys, ownership lock and origin
+are unchanged. The two migration keys are additive metadata, never storage identity.
+
+Logical hashes retain the unchanged `coffeeos-content-v1` calculation when WebP
+is absent or entirely null. Snapshots containing non-null WebP use
+`coffeeos-content-v2`, including the WebP column/bytes with the existing ordering,
+256-row blocks, microseconds and IEEE-754 bit encoding. Drive publishes and verifies
+these under the additive `contentSha256V2` property; v1 continues to use
+`contentSha256V1`. Old files and properties remain intact. Missing compatible
+metadata triggers validated content comparison, never an assumed match.

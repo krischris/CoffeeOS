@@ -479,6 +479,9 @@ button:disabled { opacity: 0.65; cursor: wait; }
 #app:has(#brew-controller:not([hidden]) .session-form:not([hidden])) .app-header,
 #app:has(#brew-controller:not([hidden]) .session-form:not([hidden])) .tab-bar,
 #brew-controller:has(.session-form:not([hidden])) > :is(.eyebrow, h1, .view-description) { display: none; }
+/* Scaled phone layouts have a larger untransformed box. Keep that box from
+   creating a second, horizontal scroll area behind the editor. */
+.app-content:has(#brew-controller:not([hidden]) .session-form:not([hidden])) { overflow: hidden; }
 .session-form.card {
   --editor-safe-top: env(safe-area-inset-top, 0px);
   --editor-safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -489,14 +492,15 @@ button:disabled { opacity: 0.65; cursor: wait; }
   position: fixed;
   z-index: 20;
   top: 0;
-  left: 0;
+  left: 50%;
   display: flex;
   flex-direction: column;
-  width: calc(100% / var(--editor-scale));
+  width: min(calc(100% / var(--editor-scale)), 712px);
   height: calc(var(--editor-viewport-height) / var(--editor-scale));
-  transform: scale(var(--editor-scale));
-  transform-origin: top left;
+  transform: translateX(-50%) scale(var(--editor-scale));
+  transform-origin: top center;
   overflow: hidden;
+  overscroll-behavior-x: none;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -521,7 +525,10 @@ button:disabled { opacity: 0.65; cursor: wait; }
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-x: none;
   padding: calc(12px + var(--editor-safe-top) / var(--editor-scale)) max(16px, calc(var(--editor-safe-right) / var(--editor-scale))) 12px max(16px, calc(var(--editor-safe-left) / var(--editor-scale)));
 }
 .session-body > * {

@@ -92,19 +92,19 @@ export async function runDriveSelfTests(): Promise<DriveCheck[]> {
       .upload('folder', bytes, 'test-backup', 'test.coffeeos'); assert(posts === 1);
   });
   await test('Logical hash is stored and verified with upload completion', async () => {
-    for (const kept of [true, false]) {
+    for (const version of [1, 2] as const) for (const kept of [true, false]) {
       let posts = 0;
       const api = client(async (_url, init) => {
         if (init?.method === 'POST') {
           posts++;
-          assert(JSON.parse(String(init.body)).appProperties.contentSha256V1 === hash);
+          assert(JSON.parse(String(init.body)).appProperties[`contentSha256V${version}`] === hash);
           return new Response(null, { headers: { Location: 'https://www.googleapis.com/upload/drive/v3/files?upload_id=hash' } });
         }
-        const file = { ...remote, appProperties: { ...remote.appProperties, ...(kept ? { contentSha256V1: hash } : {}) } };
+        const file = { ...remote, appProperties: { ...remote.appProperties, ...(kept ? { [`contentSha256V${version}`]: hash } : {}) } };
         return json(init?.method === 'PUT' ? file : new URL(_url).searchParams.has('q') ? { files: [file] } : file);
       });
-      if (kept) await api.upload('folder', bytes, 'test-backup', 'test.coffeeos', hash);
-      else await rejects(() => api.upload('folder', bytes, 'test-backup', 'test.coffeeos', hash), 'unconfirmed');
+      if (kept) await api.upload('folder', bytes, 'test-backup', 'test.coffeeos', hash, version);
+      else await rejects(() => api.upload('folder', bytes, 'test-backup', 'test.coffeeos', hash, version), 'unconfirmed');
       assert(posts === 1);
     }
   });

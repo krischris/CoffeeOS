@@ -186,13 +186,15 @@ export async function checkBeanEditing({sync, evaluate, waitFor, api, ready}) {
     canvas.getContext('2d').fillRect(0,0,6,6);
     const transfer=new DataTransfer();transfer.items.add(new File([await new Promise(resolve=>canvas.toBlob(resolve,'image/png'))],'replacement.png',{type:'image/png'}));
     const input=document.querySelector('#bean-photo');input.files=transfer.files;input.dispatchEvent(new Event('change'));`);
-  await waitFor(`document.querySelector('.photo-status').textContent.includes('JPEG ready')`);
+  await waitFor(`document.querySelector('.photo-status').textContent.includes('WebP ready')`);
   const replacement = await sync(`return document.querySelector('.photo-preview').src;`);
   assert.notEqual(replacement,seeded.bean.photo_jpeg);
   await save();
-  assert.equal((await read()).beans.find(bean=>bean.id===seeded.bean.id).photo_jpeg,replacement);
+  assert.equal((await read()).beans.find(bean=>bean.id===seeded.bean.id).photo_webp,replacement);
+  assert.equal((await read()).beans.find(bean=>bean.id===seeded.bean.id).photo_jpeg,null);
   await edit();await sync(`document.querySelector('.remove-photo').click();`);await save();
   assert.equal((await read()).beans.find(bean=>bean.id===seeded.bean.id).photo_jpeg,null);
+  assert.equal((await read()).beans.find(bean=>bean.id===seeded.bean.id).photo_webp,null);
   // A flush error after commit must not leave an edit that can be submitted as a new bean.
   await edit();
   await sync(`document.querySelector('#bean-name').value='Committed bean edit';

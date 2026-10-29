@@ -179,30 +179,44 @@ try {
       if (worker && worker.state !== 'activated') await new Promise(resolve => worker.addEventListener('statechange', () => {if(worker.state === 'activated') resolve();}));`);
     await api('/refresh', {}); await ready();
     const state = () => evaluate(`const db = await getDB(); return {beans:await db.getBeans(), sessions:await db.getBrewSessions()};`);
-    const expected = {beans:seeded.beans.map(bean => ({photo_jpeg:null, ...bean})), sessions:seeded.sessions};
+    const migrated = await state();
+    const migratedById = new Map(migrated.beans.map(bean=>[bean.id,bean]));
+    const expected = {beans:seeded.beans.map(bean => ({photo_jpeg:null, photo_webp:null, ...bean,
+      ...(migratedById.get(bean.id)?.photo_webp ? {photo_jpeg:null,photo_webp:migratedById.get(bean.id).photo_webp} : {})})), sessions:seeded.sessions};
+    assert.ok(expected.beans.find(bean=>bean.id===seeded.bean.id).photo_webp,'old readable JPEG was converted');
+    for(const bean of expected.beans)if(bean.photo_webp){
+      assert.ok(bean.photo_webp.startsWith('data:image/webp;base64,'));
+      assert.ok(Buffer.from(bean.photo_webp.split(',')[1],'base64').length<=100000);
+    }
     assert.deepEqual(await state(), expected);
     const recoveryUpgrade=await evaluate(`const db=await getDB();
       const copies=await db.listImportRecoveries(),hashes=[];
       for(const copy of copies)hashes.push(await db.hashBackupContents((await db.readImportRecovery(copy.key)).data));
       return {copies,hashes};`);
-    assert.deepEqual(recoveryUpgrade,{copies:seeded.recoveries,hashes:seeded.recoveryHashes},'old immutable recovery keys/dates/bytes survive additive metadata indexing');
+    for(const [index,copy]of seeded.recoveries.entries()){
+      const found=recoveryUpgrade.copies.findIndex(value=>value.key===copy.key);
+      assert.deepEqual(recoveryUpgrade.copies[found],copy,'original recovery metadata');
+      assert.equal(recoveryUpgrade.hashes[found],seeded.recoveryHashes[index],'original recovery bytes');
+    }
+    assert.ok(recoveryUpgrade.copies.length>seeded.recoveries.length,'downloadable pre-conversion recovery retained');
     await api('/refresh', {}); await ready(); assert.deepEqual(await state(), expected);
     if(seeded.beans.every(bean=>'photo_jpeg' in bean)) {
       const hashes=await evaluate(`const db=await getDB();const files=${JSON.stringify(seeded.backups[1])};
         return [await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data),await db.hashBackupContents({beans:new Uint8Array(files[0].data),brew_sessions:new Uint8Array(files[1].data)})];`);
-      assert.equal(hashes[0],hashes[1],'previous-build Parquet hashes match upgraded records');
+      assert.notEqual(hashes[0],hashes[1],'explicit JPEG conversion changes only photo representation');
     }
     for (const backup of seeded.backups) {
       await evaluate(`await (await getDB()).importData(${JSON.stringify(backup)}.map(f => ({...f, data:new Uint8Array(f.data)})),{preserveLegacyPhotos:true,preserveLegacyText:true});`);
+      expected.beans=expected.beans.map(bean=>({...bean,photo_jpeg:seeded.beans.find(old=>old.id===bean.id).photo_jpeg??null}));
       assert.deepEqual(await state(), expected);
     }
     const legacyExport=await evaluate(`const b=await getBackups();return (await b.prepareBackup((await b.saveBackup()).data)).manifest.format_version;`);
-    assert.equal(legacyExport,3,'previous-build whitespace fields and damaged photo export readable format 3');
+    assert.equal(legacyExport,4,'previous-build whitespace fields and damaged photos export readable format 4');
     await evaluate(`const b=await getBackups(),db=await getDB();const saved=await b.saveBackup(),hash=await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data);await b.replaceBackup(await b.prepareBackup(saved.data));if(await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data)!==hash)throw Error('v3 upgrade roundtrip changed records');`);
     await evaluate(`await (await getDB()).deleteBean('${seeded.legacyPhoto.id}');`);
     expected.beans=expected.beans.filter(bean=>bean.id!==seeded.legacyPhoto.id);
     seeded.beans=seeded.beans.filter(bean=>bean.id!==seeded.legacyPhoto.id);
-    console.log('PASS previously accepted damaged photo survives build replacement/reload, old CSV/Parquet opt-in import and readable format 3 export');
+    console.log('PASS one-time JPEG conversion and damaged-photo preservation survive replacement/reload, old CSV/Parquet imports and format 4 export');
     // Storage loss on the candidate must reject opening the previous data.
     const blocked = await evaluate(`const db = await getDB(); await db.closeDB();
       const original = ${mode === 'opfs' ? 'navigator.storage.getDirectory' : 'IDBObjectStore.prototype.get'};

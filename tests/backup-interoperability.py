@@ -8,7 +8,7 @@ from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-path = Path('docs/fixtures/example-v1.coffeeos')
+path = Path('docs/fixtures/example-v4.coffeeos')
 with ZipFile(path) as archive:
     assert sorted(archive.namelist()) == ['beans.parquet', 'brew_sessions.parquet', 'manifest.json']
     assert all(info.compress_type == ZIP_STORED for info in archive.infolist())
@@ -40,8 +40,12 @@ assert beans['portable']['created_at'] == datetime(2026, 10, 25, 10, 20, 30, 123
 assert beans['no-sessions']['created_at'] == datetime(2026, 9, 1, 0, 0, 0, 1)
 assert beans['portable']['name'] == '咖啡 ☕'
 assert beans['portable']['photo_jpeg'] is None
-photo = next(b['photo_jpeg'] for b in beans.values() if b['name'] == 'Photo')
-assert photo.startswith('data:image/jpeg;base64,/9j/')
+photo = next(b['photo_webp'] for b in beans.values() if b['name'] == 'Photo')
+assert photo.startswith('data:image/webp;base64,')
+assert manifest['format_version'] == 4 and manifest['data_schema_version'] == 2
+import base64
+image = base64.b64decode(photo.split(',')[1], validate=True)
+assert len(image) <= 100_000 and image[:4] == b'RIFF' and image[8:12] == b'WEBP'
 precise = sessions['precise']
 assert precise['brewed_at'] == datetime(2026, 10, 25, 10, 21, 30, 654321)
 assert precise['dose_g'] == 18.123456789012345
@@ -104,7 +108,8 @@ invalid_archive('null-time', 'brew_sessions', lambda t: replace_first(t, 'brewed
 invalid_archive('nan', 'brew_sessions', lambda t: replace_first(t, 'dose_g', float('nan')))
 invalid_archive('infinity', 'brew_sessions', lambda t: replace_first(t, 'water_g', float('inf')))
 invalid_archive('bad-photo', 'beans', lambda t: replace_first(t, 'photo_jpeg', 'data:image/jpeg;base64,/9j/aaaa'))
+invalid_archive('bad-webp', 'beans', lambda t: replace_first(t, 'photo_webp', 'data:image/webp;base64,AAAA'))
 invalid_archive('wrong-actual-type', 'brew_sessions', lambda t: t.set_column(t.schema.get_field_index('dose_g'), 'dose_g', t['dose_g'].cast(pa.float32())))
 invalid_archive('year-10000', 'brew_sessions', lambda t: t.set_column(t.schema.get_field_index('brewed_at'), 'brewed_at', pa.array([253402300800000000] + [0] * (t.num_rows - 1), type=pa.timestamp('us'))))
-print('Generated 10 independently written invalid Parquet archives for browser staging checks')
+print('Generated independently written invalid Parquet archives for browser staging checks')
 

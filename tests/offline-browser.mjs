@@ -155,7 +155,14 @@ try {
   await api('/url', { url: 'about:blank' });
   served = 'candidate';
   await api('/url', { url: base }); await ready();
-  assert.deepEqual(await state(), expected);
+  const upgraded=await state();
+  const withoutPhotos=beans=>beans.map(({photo_jpeg,photo_webp,...bean})=>bean);
+  assert.deepEqual(withoutPhotos(upgraded.beans),withoutPhotos(seeded.beans));
+  assert.deepEqual(upgraded.sessions,seeded.sessions);
+  const converted=upgraded.beans.find(bean=>bean.id===seeded.beans.find(bean=>bean.photo_jpeg).id);
+  assert.equal(converted.photo_jpeg,null);assert.ok(converted.photo_webp.startsWith('data:image/webp;base64,'));
+  assert.ok(Buffer.from(converted.photo_webp.split(',')[1],'base64').length<=100000);
+  expected=upgraded;
   await evaluate('const reg=await navigator.serviceWorker.getRegistration();await reg.update();');
   const installed = await updateState();
   assert.equal(installed.state, 'installed');
@@ -174,10 +181,16 @@ try {
   assert.ok(new TextDecoder().decode(new Uint8Array(seeded.backups[0][0].data)).includes('.654321'));
   assert.ok(new TextDecoder().decode(new Uint8Array(seeded.backups[0][1].data)).includes('.123456'));
   const recoveryState=await evaluate(`const db=window.__testDB,recoveries=await db.listImportRecoveries(),recoveryHashes=[];for(const recovery of recoveries)recoveryHashes.push(await db.hashBackupContents((await db.readImportRecovery(recovery.key)).data));return {recoveries,recoveryHashes};`);
-  assert.deepEqual(recoveryState,{recoveries:seeded.recoveries,recoveryHashes:seeded.recoveryHashes});
+  for(const [index,copy]of seeded.recoveries.entries()){
+    const found=recoveryState.recoveries.findIndex(value=>value.key===copy.key);
+    assert.deepEqual(recoveryState.recoveries[found],copy);assert.equal(recoveryState.recoveryHashes[found],seeded.recoveryHashes[index]);
+  }
+  assert.ok(recoveryState.recoveries.length>seeded.recoveries.length,'pre-conversion recovery added');
   for (const backup of seeded.backups) {
     await evaluate(`await window.__testDB.importData(${JSON.stringify(backup)}.map(file=>({...file,data:new Uint8Array(file.data)})));`);
-    assert.deepEqual(await state(), expected);
+    const imported=await state();
+    assert.deepEqual(imported.beans,expected.beans.map(bean=>({...bean,photo_jpeg:seeded.beans.find(old=>old.id===bean.id).photo_jpeg??null})));
+    assert.deepEqual(imported.sessions,expected.sessions);expected=imported;
   }
   const cacheManifest = await evaluate(`const names=await caches.keys(),name=names.find(name=>name.endsWith('${manifests.candidate.id}'));const cache=await caches.open(name);return (await cache.keys()).map(r=>new URL(r.url).pathname);`);
   assert.equal(cacheManifest.length, manifests.candidate.files.length + 1);
@@ -187,6 +200,19 @@ try {
   offline = true;
   await coldLaunch(base + '?offline=1');
   assert.deepEqual(await state(), expected);
+  await sync(`document.querySelector('#tab-bean-manager').click();`);
+  await wait(`document.querySelector('.bean-list')?.getAttribute('aria-busy')==='false'`);
+  await sync(`document.querySelector('.add-bean-toggle').click();document.querySelector('#bean-name').value='Offline WebP';`);
+  await evaluate(`const canvas=document.createElement('canvas');canvas.width=64;canvas.height=48;canvas.getContext('2d').fillRect(0,0,64,48);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));const transfer=new DataTransfer();transfer.items.add(new File([blob],'offline.png',{type:'image/png'}));
+    const input=document.querySelector('#bean-photo');input.files=transfer.files;input.dispatchEvent(new Event('change'));`);
+  await wait(`document.querySelector('.photo-status').textContent.includes('WebP ready')`);
+  await sync(`document.querySelector('.bean-form').requestSubmit();`);
+  await wait(`document.querySelector('.bean-form .form-message').textContent==='Added Offline WebP.'`);
+  const offlinePhoto=(await state()).beans.find(bean=>bean.name==='Offline WebP');
+  assert.ok(offlinePhoto.photo_webp.startsWith('data:image/webp;base64,'));assert.equal(offlinePhoto.photo_jpeg,null);
+  assert.ok(Buffer.from(offlinePhoto.photo_webp.split(',')[1],'base64').length<=100000);
+  console.log('PASS cold offline selection/encoding/save uses bundled WebP JavaScript/Wasm with all origin traffic disconnected');
   await sync(`document.querySelector('#tab-brew-controller').click();document.querySelector('.new-session').click();`);
   await wait(`document.querySelector('.session-form')?.getAttribute('aria-busy')==='false'`);
   await sync(`const form=document.querySelector('.session-form');for(const [key,value]of Object.entries({bean_id:${JSON.stringify(seeded.beans.find(b => b.name === 'Before offline ☕').id)},dose_g:'17.5',water_g:'250',comment:'Brewed offline ☕'})){form.elements[key].value=value;form.elements[key].dispatchEvent(new Event('input',{bubbles:true}));}form.requestSubmit();`);
@@ -197,7 +223,7 @@ try {
   await sync(`document.querySelector('#tab-io').click();document.querySelector('.save-backup').click();`);
   await wait(`!document.querySelector('.export-files').hidden`);
   const archive = await evaluate(`const b=window.__testBackups;const file=await b.saveBackup();const prepared=await b.prepareBackup(file.data);return {size:file.data.length,version:prepared.manifest.format_version};`);
-  assert.ok(archive.size > 0); assert.equal(archive.version, 1);
+  assert.ok(archive.size > 0); assert.equal(archive.version, 4);
   await coldLaunch(base + 'index.html');
   assert.deepEqual(await state(), expected);
   await sync(`document.querySelector('#tab-bean-manager').click();`);

@@ -101,7 +101,9 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     intro.textContent = `Selected snapshot ${pinned.id}, uploaded ${pinned.createdTime}; captured ${prepared.manifest.exported_at}.`;
     box.append(intro);
     if (prepared.manifest.format_version >= 2) {
-      const note = document.createElement('p'); note.textContent = prepared.manifest.format_version === 3 ? 'This backup preserves legacy whitespace-only names and IDs, and any damaged photo bytes. Restoring requires CoffeeOS backup format 3 support.' : 'This backup preserves damaged legacy photo bytes. Some photos may not display; restoring requires CoffeeOS backup format 2 support.'; box.append(note);
+      const note = document.createElement('p'); note.textContent = prepared.manifest.format_version === 4
+        ? 'This backup supports WebP photos. Restore with a current CoffeeOS version. Any declared legacy fields and photo bytes are preserved exactly.'
+        : prepared.manifest.format_version === 3 ? 'This backup preserves legacy whitespace-only names and IDs, and any damaged photo bytes. Restoring requires CoffeeOS backup format 3 support.' : 'This backup preserves damaged legacy photo bytes. Some photos may not display; restoring requires CoffeeOS backup format 2 support.'; box.append(note);
     }
     for (const table of ['beans', 'brew_sessions'] as const) {
       const c = prepared.preview[table], p = document.createElement('p');

@@ -84,7 +84,7 @@ ascending for ties; this is upload order, not proof of latest edits.
 
 Uploads use Google's [resumable protocol](https://developers.google.com/workspace/drive/api/guides/manage-uploads)
 with 1 MiB chunks and app properties `coffeeosKind=snapshot-v1`, `backupId`,
-`archiveSha256` and optional `contentSha256V1` (see Google's
+`archiveSha256` and optional `contentSha256V1` / `contentSha256V2` (see Google's
 [private app properties](https://developers.google.com/workspace/drive/api/guides/properties)). The folder retains
 `coffeeosKind=backups-folder-v1`. Success
 requires server size and SHA-256 verification. Interrupted chunks query the same
@@ -305,7 +305,12 @@ usable decision storage retain their connect-and-sync behavior.
 
 Historical whitespace-only names/IDs use CoffeeOS backup format 3, preserving
 original IDs and links exactly, including any damaged legacy photo bytes.
-Healthy backups remain format 1; photo-only compatibility remains format 2.
+Historical schema 1 recoveries retain formats 1/2/3. Current snapshots use
+format 4/schema 2 with WebP support and independent legacy text/photo contracts.
+JPEG-to-WebP conversion changes the photo representation once after retaining a
+downloadable original recovery. WebP content hashes use the additive
+`contentSha256V2` property; collections without non-null WebP retain the unchanged
+v1 algorithm and property. Existing cloud files are never rewritten or removed.
 Local/Drive previews disclose compatibility requirements. Sync retains an old
 unreadable file and uploads a new preserving snapshot even if its content hash
 matches. Format 3 supports normal merge, replacement, empty-collection recovery

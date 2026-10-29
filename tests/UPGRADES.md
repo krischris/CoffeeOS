@@ -20,6 +20,17 @@ Both versions use the installed dependencies only when their lockfile packages
 match; a dependency upgrade deliberately fails this prerequisite and requires
 separate old/candidate installations. Do not bypass that check.
 
+The maintained matrix also pins pre-WebP revision
+`3046c70175be042f50d15facda44a4c9191b95f9` (`upgrade-jpeg-safari` and
+`upgrade-jpeg-firefox`) and selects `HEAD` for recent-build upgrades. Fixture
+setup uses each previous build's public APIs: schema-v1 has no photo/recovery
+support, historical whitespace/damaged-photo imports use explicit preservation
+options, and overwriting a valid archive creates the prior immutable recovery.
+Only the pre-WebP build must convert JPEGs and add a conversion recovery; recent
+builds must preserve photo fields and content fingerprints without rerunning
+the completed migration. All baselines retain linked whitespace records through
+failed-startup probes and reimport both original CSV and Parquet exports.
+
 The test seeds the old build and exports its historical CSV/Parquet backups,
 replaces the served build at the same origin and `/CoffeeOS/` path, updates a
 service worker with changed script bytes, and checks exact records after reload.
@@ -36,7 +47,8 @@ Failure injection is confined
 to automation fixtures. Safari currently selects IndexedDB; Firefox covers OPFS.
 Service-worker replacement runs with host isolation headers; it is not proof of
 GitHub Pages or physical iOS Home Screen behavior.
-The original fault-injection matrix uses the isolation-only worker template;
+The original fault-injection matrix serves the isolation-only worker template
+for both previous and candidate builds, and asserts that policy before use;
 its deliberately changing HTML/worker responses cannot be served from an
 immutable offline shell. Stage 52's separate offline suite tests the actual
 generated production worker and update lifecycle on a headerless host.

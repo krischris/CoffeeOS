@@ -35,7 +35,7 @@ test('a missing registered entry is a coverage failure', t => {
 
 test('full suite includes both persistence backends and historical/recent upgrades', () => {
   for (const browser of ['safari', 'firefox']) {
-    for (const id of ['db', 'production', 'photos', 'backups', 'drive', 'authorization', 'diagnostics', 'isolation', 'offline', 'upgrade-legacy', 'upgrade-recent']) {
+    for (const id of ['db', 'production', 'photos', 'backups', 'drive', 'authorization', 'diagnostics', 'isolation', 'offline', 'upgrade-legacy', 'upgrade-jpeg', 'upgrade-recent']) {
       assert.ok(registeredSuites.some(suite => suite.id === `${id}-${browser}`), `${id}-${browser}`);
     }
   }

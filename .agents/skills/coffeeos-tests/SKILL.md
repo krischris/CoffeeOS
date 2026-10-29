@@ -23,10 +23,26 @@ Vite/preview/Safari-driver processes and isolated Firefox profiles, and runs the
 registered matrix sequentially. Do not replace it with a handpicked subset or
 parallelize browser suites: upgrade/offline fixtures and ports are shared.
 
-If the local environment is missing, follow root `AGENTS.md` bootstrap exactly;
-never recreate an existing `.venv`. Install the independent verifier into that
-same environment with `uv pip install -r tests/requirements.txt` if needed. Node
-must resolve inside the project's `.venv`. Installed Safari with Remote
+Run commands from the project root. Use the existing `.venv`; never recreate it.
+Always prefix direct `node`, `npm` and `npx` commands with `uv run`; do not install
+global tools or use a system Node version manager. If `.venv` is missing,
+bootstrap in this order:
+
+```sh
+uv venv
+uv pip install nodeenv
+uv run nodeenv -p --node=lts
+uv run npm ci
+```
+
+If an existing environment lacks Node or locked dependencies, run only the missing
+setup steps in that environment. `uv run node -p 'process.execPath'` must point
+inside the project's `.venv`. Keep the project-local caches configured in
+`uv.toml` and `.npmrc`. Use an existing Python interpreter; if none is available,
+set `UV_PYTHON_INSTALL_DIR` to an absolute path inside the project before installing
+Python with uv. Install the independent verifier into the same environment with
+`uv pip install -r tests/requirements.txt` if needed. Do not read
+`AGENTS_implementer.md` for test-runner setup. Installed Safari with Remote
 Automation enabled and Firefox are required for the complete browser matrix.
 `SAFARIDRIVER_BIN` and `FIREFOX_BIN` can select installed executables. The harness
 uses its own endpoints and profiles, never the user's normal browser profile.

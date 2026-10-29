@@ -16,7 +16,9 @@ free for legacy fixtures; other endpoints use dynamically allocated local ports.
 An occupied port is a blocker, not permission to stop somebody else's server.
 
 Existing `.venv` and locked npm dependencies are reused. Bootstrap a missing
-environment using `AGENTS.md`. For the independent Python checks, run
+environment using the
+[test-runner skill](../.agents/skills/coffeeos-tests/SKILL.md). For the independent
+Python checks, run
 `uv pip install -r tests/requirements.txt` in the existing environment. Install
 Safari/Firefox separately if absent; Safari Remote Automation must already be
 enabled. `SAFARIDRIVER_BIN`/`FIREFOX_BIN` override executable locations. The runner
@@ -31,13 +33,14 @@ does not change the normal browser profile or enable system automation settings.
 | Historical archive, ZIP/Parquet schemas, microseconds, binary64, nulls, photos, Python DEFLATE and malformed archives, candidate round trips | Python/PyArrow plus both browser backup suites |
 | Mocked Drive adapter, authorization, restore/revision races, content fingerprints, diagnostics, removed recovery UI | Both browsers/backends |
 | Production helper isolation/worker update, repository subpath startup/ownership; Safari navigation, writes and reload via built UI | Both browsers |
-| Populated build replacement, exact records, old CSV/Parquet imports, failed upgrades/rollback, locks, editing/deletion | Both browsers; legacy revision and previous committed `HEAD` |
+| Populated build replacement, exact records, old CSV/Parquet imports, failed upgrades/rollback, locks, editing/deletion | Both browsers; schema-v1, pre-WebP and previous committed `HEAD` |
 | Real offline worker, cold startup, failed/corrupt/quota update, disconnected writes/backups | Both browsers; pinned pre-offline baseline |
 | MVP IndexedDB fallback; reduced-motion swipe regressions | Firefox; reduced-motion recent upgrade uses a separate profile |
 | Unique-photo backup stress and coarse process RSS | Desktop Safari |
 
 `tests/suites.mjs` defines the runnable entry points and variants. Legacy upgrade
-revision `2ccf66cbf840e9455d54f8b31d57b4df944e3bf6`, recent `HEAD`, and pre-offline
+revision `2ccf66cbf840e9455d54f8b31d57b4df944e3bf6`, pre-WebP revision
+`3046c70175be042f50d15facda44a4c9191b95f9`, recent `HEAD`, and pre-offline
 revision `6ec3ef8` are deliberate baselines. Keep these Git objects in the checkout;
 missing history/dependency installations must fail visibly. If a change spans
 several commits, add the applicable released baseline before handoff. Previous

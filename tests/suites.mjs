@@ -26,8 +26,11 @@ for (const browser of browsers) {
   suites.push(node(`isolation-${browser}`, 'drive-isolation', {
     browser, resources: ['preview', browser], depends: ['build'], port: 5176,
   }));
-  // Preserve both the original schema migration and the immediately preceding build.
-  for (const [baseline, ref] of [['legacy', '2ccf66cbf840e9455d54f8b31d57b4df944e3bf6'], ['recent', 'HEAD']]) {
+  // Keep schema-v1, pre-WebP photo conversion, and the preceding build covered.
+  for (const [baseline, ref] of [
+    ['legacy', '2ccf66cbf840e9455d54f8b31d57b4df944e3bf6'],
+    ['jpeg', '3046c70175be042f50d15facda44a4c9191b95f9'], ['recent', 'HEAD'],
+  ]) {
     suites.push(node(`upgrade-${baseline}-${browser}`, 'bean-upgrade', {
       browser, resources: [browser], port: 5175, env: { TEST_PREVIOUS_REF: ref },
     }));

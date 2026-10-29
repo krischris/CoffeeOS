@@ -27,7 +27,7 @@ const server = createServer(async (req, res) => {
     // This matrix injects network HTML/worker startup faults. Use the isolation
     // template here so an intentional immutable shell cannot hide those probes.
     // offline-browser.mjs verifies actual production worker/build replacement.
-    if (build === 'candidate' && relative === 'coi-serviceworker.js') data = await readFile('public/coi-serviceworker.js');
+    if (relative === 'coi-serviceworker.js') data = await readFile('public/coi-serviceworker.js');
     if (relative.includes('.worker-') && requested.searchParams.has('startup-failure')) {
       data = Buffer.from(requested.searchParams.get('startup-failure') === 'error' ? "throw new Error('Injected database worker load failure');" : '');
     }
@@ -53,6 +53,12 @@ const base = 'http://127.0.0.1:5175/CoffeeOS/';
 const response = await fetch(base);
 assert.equal(response.headers.get('Cross-Origin-Opener-Policy'), 'same-origin');
 assert.equal(response.headers.get('Cross-Origin-Embedder-Policy'), 'require-corp');
+async function checkIsolationWorker() {
+  const worker = await fetch(new URL('coi-serviceworker.js', base));
+  assert.equal(worker.status, 200);
+  assert.match(await worker.text(), /^const offlineBuild = null;$/m, `${build} fault-injection fixture needs an isolation-only worker`);
+}
+await checkIsolationWorker();
 let session;
 const firefoxRequest = process.env.TEST_FIREFOX ? await firefoxAdapter() : null;
 async function request(path, body, method = body === undefined ? 'GET' : 'POST') {
@@ -132,24 +138,39 @@ try {
       const values = {dose_g: 15.123456789, water_g: 0, time_str:'', temp_c:null, grind_um:222.222222222,
         comment:'line one\\nline two ☕', yield_g:null, tds_pct:1.123456789, extraction_pct:null};
       for (const bean_id of [bean.id, bean.id, other.id]) await db.addBrewSession({...values, bean_id});
-      const backups = [];
-      for (const format of ['csv', 'parquet']) backups.push((await db.exportData(format, false)).map((f,i) => ({target:i ? 'brew_sessions' : 'beans', name:f.name, data:Array.from(f.data)})));
-      const original=await db.captureDriveSnapshot();
+      // The schema-v1 baseline predates archive/recovery APIs and photo columns.
+      // Exercise those features only on builds that actually shipped them.
+      const recoveries=[],recoveryHashes=[];
+      const original=typeof db.captureDriveSnapshot==='function'?await db.captureDriveSnapshot():null;
       const textCSV='id,name,roast_date,freeze_date,created_at\\n"\\t","\\n",\\\\N,\\\\N,2024-01-02T03:04:05.123456Z\\n';
-      await db.importData([{target:'beans',name:'beans.csv',data:new TextEncoder().encode(textCSV)}]);
+      await db.importData([{target:'beans',name:'beans.csv',data:new TextEncoder().encode(textCSV)}],{preserveLegacyText:true});
       await db.addBrewSession({...values,bean_id:'\\t'});
-      await db.updateBean(bean.id,{...bean,name:'Old immutable recovery copy'});
-      const recoveryFiles=['beans','brew_sessions'].map(target=>({target,name:target+'.parquet',data:original.snapshot.data[target]}));
-      await db.mergeBackupData(recoveryFiles,original.snapshot.counts,await db.previewBackupData(recoveryFiles,original.snapshot.counts));
-      const recoveries=await db.listImportRecoveries(),recoveryHashes=[];
-      for(const copy of recoveries)recoveryHashes.push(await db.hashBackupContents((await db.readImportRecovery(copy.key)).data));
-      const legacyPhoto=await db.addBean({name:'Previously accepted damaged photo',photo_jpeg:'data:image/jpeg;base64,/9j/'});
-      backups.length=0;
+      if(original) {
+        await db.updateBean(bean.id,{...bean,name:'Old immutable recovery copy'});
+        const recoveryFiles=['beans','brew_sessions'].map(target=>({target,name:target+'.parquet',data:original.snapshot.data[target]}));
+        await db.mergeBackupData(recoveryFiles,original.snapshot.counts,await db.previewBackupData(recoveryFiles,original.snapshot.counts));
+        recoveries.push(...await db.listImportRecoveries());
+        if(!recoveries.length)throw Error('Previous build did not retain the overwritten records');
+        for(const copy of recoveries)recoveryHashes.push(await db.hashBackupContents((await db.readImportRecovery(copy.key)).data));
+      }
+      let legacyPhoto=null;
+      if('photo_jpeg' in bean) {
+        // Current builds reject damaged new uploads; historical import has an
+        // explicit preservation path and older builds ignore the extra options.
+        const id=crypto.randomUUID();
+        const photoCSV='id,name,roast_date,freeze_date,created_at,photo_jpeg\\n'+id+',Previously accepted damaged photo,\\\\N,\\\\N,'+new Date().toISOString()+',"data:image/jpeg;base64,/9j/"\\n';
+        await db.importData([{target:'beans',name:'beans.csv',data:new TextEncoder().encode(photoCSV)}],{preserveLegacyPhotos:true});
+        legacyPhoto=(await db.getBeans()).find(value=>value.id===id);
+        if(legacyPhoto?.photo_jpeg!=='data:image/jpeg;base64,/9j/')throw Error('Previous build did not preserve the damaged historical photo');
+      }
+      const backups=[];
       for(const format of ['csv','parquet'])backups.push((await db.exportData(format,false)).map((f,i)=>({target:i?'brew_sessions':'beans',name:f.name,data:Array.from(f.data)})));
       return {bean, other, legacyPhoto, backups, recoveries, recoveryHashes, beans:await db.getBeans(), sessions:await db.getBrewSessions()};`);
+    console.log('Seeded previous build:',mode,seeded.beans.length,'beans,',seeded.sessions.length,'sessions,',seeded.recoveries.length,'recoveries');
     await evaluate(`await navigator.serviceWorker.register('./coi-serviceworker.js'); await navigator.serviceWorker.ready;`);
     await evaluate(`await (await getDB()).closeDB();`);
     build = 'candidate';
+    await checkIsolationWorker();
     // Establish the current isolation-only fixture policy before opening the
     // candidate. This suite's HTML/network faults intentionally bypass shell
     // caching; the offline suite separately exercises waiting production updates.
@@ -183,7 +204,9 @@ try {
     const migratedById = new Map(migrated.beans.map(bean=>[bean.id,bean]));
     const expected = {beans:seeded.beans.map(bean => ({photo_jpeg:null, photo_webp:null, ...bean,
       ...(migratedById.get(bean.id)?.photo_webp ? {photo_jpeg:null,photo_webp:migratedById.get(bean.id).photo_webp} : {})})), sessions:seeded.sessions};
-    assert.ok(expected.beans.find(bean=>bean.id===seeded.bean.id).photo_webp,'old readable JPEG was converted');
+    const convertsJPEG = Boolean(seeded.bean.photo_jpeg) && !('photo_webp' in seeded.bean);
+    if(convertsJPEG) assert.ok(expected.beans.find(bean=>bean.id===seeded.bean.id).photo_webp,'old readable JPEG was converted');
+    else assert.deepEqual(expected.beans.find(bean=>bean.id===seeded.bean.id),{photo_jpeg:null,photo_webp:null,...seeded.bean},'already migrated builds preserve photo fields');
     for(const bean of expected.beans)if(bean.photo_webp){
       assert.ok(bean.photo_webp.startsWith('data:image/webp;base64,'));
       assert.ok(Buffer.from(bean.photo_webp.split(',')[1],'base64').length<=100000);
@@ -198,12 +221,13 @@ try {
       assert.deepEqual(recoveryUpgrade.copies[found],copy,'original recovery metadata');
       assert.equal(recoveryUpgrade.hashes[found],seeded.recoveryHashes[index],'original recovery bytes');
     }
-    assert.ok(recoveryUpgrade.copies.length>seeded.recoveries.length,'downloadable pre-conversion recovery retained');
+    assert.equal(recoveryUpgrade.copies.length,seeded.recoveries.length+(convertsJPEG?1:0),'only a JPEG conversion adds a downloadable recovery');
     await api('/refresh', {}); await ready(); assert.deepEqual(await state(), expected);
     if(seeded.beans.every(bean=>'photo_jpeg' in bean)) {
       const hashes=await evaluate(`const db=await getDB();const files=${JSON.stringify(seeded.backups[1])};
         return [await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data),await db.hashBackupContents({beans:new Uint8Array(files[0].data),brew_sessions:new Uint8Array(files[1].data)})];`);
-      assert.notEqual(hashes[0],hashes[1],'explicit JPEG conversion changes only photo representation');
+      if(convertsJPEG) assert.notEqual(hashes[0],hashes[1],'explicit JPEG conversion changes only photo representation');
+      else assert.equal(hashes[0],hashes[1],'recent-build content fingerprint is unchanged');
     }
     for (const backup of seeded.backups) {
       await evaluate(`await (await getDB()).importData(${JSON.stringify(backup)}.map(f => ({...f, data:new Uint8Array(f.data)})),{preserveLegacyPhotos:true,preserveLegacyText:true});`);
@@ -213,10 +237,12 @@ try {
     const legacyExport=await evaluate(`const b=await getBackups();return (await b.prepareBackup((await b.saveBackup()).data)).manifest.format_version;`);
     assert.equal(legacyExport,4,'previous-build whitespace fields and damaged photos export readable format 4');
     await evaluate(`const b=await getBackups(),db=await getDB();const saved=await b.saveBackup(),hash=await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data);await b.replaceBackup(await b.prepareBackup(saved.data));if(await db.hashBackupContents((await db.captureDriveSnapshot()).snapshot.data)!==hash)throw Error('v3 upgrade roundtrip changed records');`);
-    await evaluate(`await (await getDB()).deleteBean('${seeded.legacyPhoto.id}');`);
-    expected.beans=expected.beans.filter(bean=>bean.id!==seeded.legacyPhoto.id);
-    seeded.beans=seeded.beans.filter(bean=>bean.id!==seeded.legacyPhoto.id);
-    console.log('PASS one-time JPEG conversion and damaged-photo preservation survive replacement/reload, old CSV/Parquet imports and format 4 export');
+    if(seeded.legacyPhoto) {
+      await evaluate(`await (await getDB()).deleteBean('${seeded.legacyPhoto.id}');`);
+      expected.beans=expected.beans.filter(bean=>bean.id!==seeded.legacyPhoto.id);
+      seeded.beans=seeded.beans.filter(bean=>bean.id!==seeded.legacyPhoto.id);
+    }
+    console.log('PASS previous-build photo fields survive replacement/reload, old CSV/Parquet imports and format 4 export; JPEG conversion:',convertsJPEG);
     // Storage loss on the candidate must reject opening the previous data.
     const blocked = await evaluate(`const db = await getDB(); await db.closeDB();
       const original = ${mode === 'opfs' ? 'navigator.storage.getDirectory' : 'IDBObjectStore.prototype.get'};

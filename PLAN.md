@@ -2956,3 +2956,124 @@ knowledge and hand actionable failures to an implementer through `TESTS.md`.
   for the independent test runner. Physical iPhone/iPad touch, keyboard/viewport,
   Home Screen/storage lifecycle, live Google and deployed-host headers remain
   unverified. No deployment or normal browser collection was used.
+
+## Stage 60: Separate Test Runner and Implementer Instructions
+
+- [x] **Status:** Complete; instruction preservation, links, skill validation,
+  build and test inventory passed.
+
+### Goal
+
+Keep the root agent instructions short so test runners stop after their role
+section and implementers load the remaining project guidance separately.
+
+### Tasks
+
+1. [x] Route test runners from `AGENTS.md` to the dedicated skill with an explicit
+   stop before the implementer section.
+2. [x] Move the implementer handoff and all remaining project instructions into
+   `AGENTS_implementer.md`, preserving their requirements.
+3. [x] Make test-runner setup self-contained in its skill and update the harness
+   guide's bootstrap reference.
+4. [x] Verify preserved instructions and links, validate the skill, run the build
+   and test inventory, and check whitespace.
+
+### Acceptance Criteria (Stage 60 Gate)
+
+- Test runners can complete setup and reporting from the root role section and
+  dedicated skill without reading `AGENTS_implementer.md`.
+- Implementers are explicitly required to read `AGENTS_implementer.md` before
+  changes; all prior handoff, planning, data-preservation, tooling, application
+  and verification requirements remain available there.
+- Documentation links resolve, skill validation, build and test inventory pass,
+  and application code, storage, formats and dependencies remain unchanged.
+
+### Verification — 2026-10-29
+
+- Root `TESTS.md` was empty before editing; no pending findings needed fixes.
+- Compared the new implementer file against the original root instructions:
+  the handoff and all subsequent sections are preserved, with the former
+  "skill above" reference replaced by a direct link. All local Markdown links
+  in the routing, implementer, test skill and harness guide files resolve.
+- The skill creator's `quick_validate.py` passed using the existing ignored
+  validator dependencies. `uv run npm run build`, `uv run npm run test:inventory`
+  and `git diff --check` passed. Node resolves inside the project `.venv`.
+- This update only reorganizes instructions/documentation; no application,
+  storage, format or dependency changes. Full regression, browser, physical
+  iOS, live Google, deployed-host and populated-upgrade checks are not run for
+  this documentation update.
+
+## Stage 61: Repair Historical and Recent Upgrade Fixtures
+
+- [x] **Status:** Complete; all seven focused upgrade variants, build, inventory
+  and harness checks passed. A short browser lifecycle follow-up passed after
+  one transient cleanup permission error.
+
+### Goal
+
+Resolve the five upgrade failures in `TESTS.md` while retaining original schema
+migration, JPEG conversion and recent-build data-preservation coverage.
+
+### Tasks
+
+1. [x] Seed only public features available in each historical build and use the
+   explicit historical import options for whitespace fields and damaged photos.
+2. [x] Preserve exact old recovery bytes and distinguish first JPEG conversion
+   from recent builds whose migration already completed.
+3. [x] Register a pinned pre-WebP baseline on both backends so the recent `HEAD`
+   baseline cannot silently retire JPEG conversion assertions.
+4. [x] Apply the isolation-only worker fixture policy to both served builds and
+   assert it, leaving real production-worker coverage in the offline suites.
+5. [x] Run the build, inventory, harness checks and the seven focused upgrade
+   variants; resolve verified findings in `TESTS.md` and retain any blockers.
+
+### Acceptance Criteria (Stage 61 Gate)
+
+- Schema-v1, pre-WebP and recent builds seed successfully through their existing
+  APIs; strict validation of ordinary new uploads/imports remains intact.
+- Isolated Safari/IndexedDB and Firefox/OPFS upgrades preserve records, IDs,
+  relationships, timestamps, nulls, comments, precision and old CSV/Parquet.
+- Pre-WebP upgrades convert JPEGs once with an immutable recovery; recent builds
+  preserve photo fields/fingerprints and historical recovery metadata/bytes.
+- Failed-startup, rollback, lock, editing/deletion and reduced-motion regressions
+  complete; build, harness checks, inventory and whitespace checks pass.
+- Resolved findings are removed only after focused verification, with evidence
+  recorded here. The full suite remains assigned to the test runner.
+
+### Verification — 2026-10-29
+
+- Read both pending findings before edits. Their failures originated in setup:
+  schema-v1 predates `captureDriveSnapshot`, and recent imports require explicit
+  preservation of legacy whitespace. Damaged new photo creation also conflicts
+  with the current upload contract; fixture setup now uses historical import.
+- Application code, runtime dependencies, storage identifiers/formats, startup,
+  service workers, deployment and origin are unchanged.
+- The first focused run passed both schema-v1 variants and exposed two further
+  fixture issues: the damaged-photo data URL needed CSV quoting, and newer
+  previous builds could not activate an offline worker whose response had the
+  fixture's extra bytes. Both served builds now use the intended isolation-only
+  template; executable assertions reject accidental production manifests here.
+  Real generated-worker coverage remains in the separate offline matrix.
+  Diagnostic evidence: `.cache/test-runs/2026-10-29T19-23-24.769Z-93960/`.
+- `uv run npm run build`, `uv run npm run test:inventory`, all 10 checks in
+  `uv run npm run test:harness`, and `git diff --check` passed.
+- All seven focused upgrade variants passed: `upgrade-legacy-safari`,
+  `upgrade-jpeg-safari`, `upgrade-recent-safari`, `upgrade-legacy-firefox`,
+  `upgrade-jpeg-firefox`, `upgrade-recent-firefox` and
+  `upgrade-reduced-motion-firefox`. These exercise same-profile/origin populated
+  IndexedDB and OPFS replacement/reload, original CSV/Parquet, exact collection
+  fields, immutable recoveries, conversion versus completed migrations, startup
+  failures, lock exclusion, swipes, editing/deletion and transactional rollback.
+  Evidence: `.cache/test-runs/2026-10-29T19-30-01.746Z-94854/summary.json`.
+- That selection exited nonzero solely because resource cleanup reported
+  `kill EPERM`, after every upgrade suite passed. Process inspection found no
+  surviving test-owned browser/driver process. A short managed
+  `--only diagnostics-safari,diagnostics-firefox` follow-up passed both suites,
+  inventory and cleanup with exit zero:
+  `.cache/test-runs/2026-10-29T19-44-26.170Z-96175/summary.json`.
+  No upgrade suites were repeated for this cleanup check.
+- Removed the five resolved upgrade findings from `TESTS.md` after verification;
+  it is now empty. The complete application suite remains assigned to the test
+  runner. Physical iPhone/iPad touch, keyboard/viewport, Home Screen/storage
+  lifecycle, live Google and deployed-host checks remain unverified. No deployment
+  or normal browser collection was used.

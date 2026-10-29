@@ -3167,3 +3167,73 @@ Firefox/non-Safari variant and coarse memory profiling explicitly opt-in.
   physical iPhone/iPad touch/keyboard/Home Screen/storage lifecycle, live Google
   and deployed-host headers remain unverified. No normal browser collection or
   deployment is used.
+
+## Stage 63: Filter Brew Sessions by Bean
+
+- [x] **Status:** Complete; build, inventory, focused Safari functional checks
+  and local production-subpath/header checks passed.
+
+### Goal
+
+Let users show only a selected bean's brew sessions through a compact filter
+beside the brew-history heading, and restore all sessions with a second tap.
+
+### Tasks
+
+1. [x] Add a right-aligned, accessible filter icon beside the heading and count;
+   reveal a full-width bean dropdown on the following line when opened.
+2. [x] Filter by bean ID, preserve session ordering, update the visible count and
+   explain an empty result. Closing clears the selection and hides the dropdown.
+3. [x] Retain filtering through tab changes and session editing, saving and
+   deletion; refresh bean choices and clear a selection whose bean was removed.
+4. [x] Add maintained browser regressions; run the build, test inventory and
+   focused Safari checks, and record remaining device/host verification gaps.
+
+### Acceptance Criteria (Stage 63 Gate)
+
+- The icon is aligned to the heading's right edge with a 44px target; its label,
+  expanded state and controlled dropdown are accessible. Phone widths do not
+  overflow, and the native dropdown uses 16px text with a 44px minimum height.
+- The dropdown starts hidden. Opening shows All beans and current beans,
+  including beans without sessions. Selection matches IDs rather than names.
+  The visible count and empty state reflect the chosen bean; ordering is intact.
+- A second icon activation immediately clears filtering, restores all sessions
+  and hides the dropdown. Reopening starts with All beans. Rapid toggles cannot
+  let an older refresh reapply stale data or choices.
+- Navigation and existing edit/save/delete operations work while filtered.
+  Choices reflect added/renamed/deleted beans; removing the selected bean clears
+  its filter. Filtering itself preserves exact stored records and backup bytes.
+- Build, inventory and focused Safari production-subpath regressions pass.
+  Physical iOS and deployment checks are reported separately. Database/storage,
+  formats, startup, dependencies, service workers and origin are unchanged.
+
+### Verification — 2026-10-29
+
+- Root `TESTS.md` was empty before implementation; no pending findings.
+- Added `tests/session-filter-checks.mjs` to the existing current-production
+  review suite, which registers it for Safari and the opt-in Firefox variant.
+  Safari passed native filter-button activation, initial/all bean choices,
+  duplicate-name ID matching, visible counts/order, empty results, clear/reopen,
+  rapid toggles and exact record/CSV preservation. Tab navigation, added/renamed
+  beans, edit/cancel, moving a session to another bean, creation, deletion and
+  clearing a removed bean's selection passed.
+- Desktop Safari frame geometry at 320×568, 393×852 and 1440×900 passed:
+  right-aligned 44px icon target, dropdown below the header, 16px dropdown text,
+  44px field height and no horizontal overflow. Inspected the captured phone
+  layout at `.cache/session-filter-safari.png`; frames are layout simulations.
+- `uv run npm test -- --only review-safari,server-contracts` passed all four
+  gates: inventory, application/configuration type-checking and production build,
+  local dev/preview header/assets checks, and the current production Safari
+  functional suite. The latter includes existing edit/delete/rollback, chart/
+  layout, backup, legacy text, history scale, startup and runtime failure checks.
+  Evidence: `.cache/test-runs/2026-10-29T20-59-40.249Z-2009/summary.json`.
+  Both isolation headers and relative `/CoffeeOS/` assets passed. A first
+  sandboxed attempt built successfully but could not bind localhost sockets;
+  the affected checks passed after obtaining local server/browser access.
+- `uv run npm run test:inventory`, new helper syntax and `git diff --check`
+  passed. `TESTS.md` remains empty. Filtering changes presentation only; database/
+  storage identities, schema, formats, startup, dependencies, service workers,
+  deployment and origin are unchanged, so populated build-replacement upgrades
+  were not rerun. The full suite, optional Firefox, physical iPhone/iPad touch/
+  native dropdown/Home Screen/storage lifecycle, live Google and deployed-host
+  verification were not run. No deployment or normal browser collection was used.

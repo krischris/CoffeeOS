@@ -60,7 +60,7 @@ history and worker helpers run only in the current-production owner:
 | Entry point | Responsibility |
 | --- | --- |
 | `upgrade-{legacy,jpeg,recent}-<browser>` | Same-profile/origin migration, exact fields/photos/recoveries and fingerprints, old CSV/Parquet and archive round trips, failed migration/open preservation, ownership lock and short edit/write/delete/reload |
-| `review-<browser>` | Current production `/CoffeeOS/` fixture: startup/worker failures and durable bytes, bean/session gestures/edit/delete/rollback, backup UI/recovery, legacy text, transaction faults, history scale and runtime-worker recovery |
+| `review-<browser>` | Current production `/CoffeeOS/` fixture: startup/worker failures and durable bytes, bean/session gestures/edit/delete/rollback, session bean filtering and refresh, backup UI/recovery, legacy text, transaction faults, history scale and runtime-worker recovery |
 | `photos-<browser>` | Current production fixture: WebP migration rollback/retry and once-only conversion, photo compression and full photo workflows |
 | `drive-<browser>` | Mocked Drive transfers, content/revision races, restore and recovery-view regressions, once per selected browser |
 | `motion-firefox` | Only swipe assertions with native reduced-motion preference; explicitly select Firefox |

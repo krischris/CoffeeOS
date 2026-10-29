@@ -111,7 +111,18 @@ export function createBrewController(container: HTMLElement, options: {
       <button class="primary-button new-session" type="button">+ New Session</button>
       <p class="save-message form-message" role="status"></p>
       <section class="session-collection" aria-labelledby="session-list-heading">
-        <h2 id="session-list-heading">Your brew sessions <span class="session-count-total"></span></h2>
+        <div class="session-list-header">
+          <h2 id="session-list-heading">Your brew sessions <span class="session-count-total"></span></h2>
+          <button class="session-filter-toggle" type="button" aria-label="Filter brew sessions by bean"
+            aria-expanded="false" aria-controls="session-bean-filter" title="Filter brew sessions by bean">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16l-6 7v7l-4 2v-9L4 4Z"/></svg>
+          </button>
+        </div>
+        <div id="session-bean-filter" class="session-filter" hidden>
+          <select class="session-filter-bean" aria-label="Filter brew sessions by bean">
+            <option value="">All beans</option>
+          </select>
+        </div>
         <div class="list-error" role="alert" hidden>
           <p>Your sessions could not be loaded. Please try again.</p>
           <button class="secondary-button" type="button">Try again</button>
@@ -214,6 +225,10 @@ export function createBrewController(container: HTMLElement, options: {
   const count = feed.querySelector<HTMLElement>('.session-count-total')!;
   const listStatus = feed.querySelector<HTMLElement>('.list-status')!;
   const listError = feed.querySelector<HTMLElement>('.list-error')!;
+  const filterToggle = feed.querySelector<HTMLButtonElement>('.session-filter-toggle')!;
+  const filter = feed.querySelector<HTMLElement>('.session-filter')!;
+  const filterBean = feed.querySelector<HTMLSelectElement>('.session-filter-bean')!;
+  let sessions: BrewSession[] = [];
   let refreshVersion = 0;
   let pickerVersion = 0;
   let saving = false;
@@ -247,34 +262,49 @@ export function createBrewController(container: HTMLElement, options: {
     chart.update(value, number('tds_pct'));
   }
 
+  function renderSessions(): void {
+    const visible = filterBean.value ? sessions.filter(session => session.bean_id === filterBean.value) : sessions;
+    list.replaceChildren(...visible.map(session => renderSession(session, () => openEditor(session), async () => {
+      try {
+        await deleteBrewSession(session.id);
+      } catch (failure) {
+        if (!(failure instanceof CommittedWriteError)) throw failure;
+        message.textContent = 'Deletion was applied, but storage could not be confirmed. Export a backup from IO before closing this tab.';
+        await Promise.all([refresh(), options.onSaved()]);
+        return;
+      }
+      message.textContent = 'Session deleted.';
+      await Promise.all([refresh(), options.onSaved()]);
+      newSession.focus();
+    })));
+    if (!visible.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.innerHTML = filterBean.value
+        ? '<h3>No brew sessions for this bean</h3><p>Choose another bean or clear the filter to see all sessions.</p>'
+        : '<h3>No brew sessions yet</h3><p>Start with + New Session to log your next cup.</p>';
+      list.append(empty);
+    }
+    count.textContent = `(${visible.length})`;
+  }
+
   async function refresh(): Promise<void> {
     const version = ++refreshVersion;
     list.setAttribute('aria-busy', 'true');
     listStatus.textContent = 'Loading sessions…';
     listError.hidden = true;
+    filterBean.disabled = true;
     try {
-      const sessions = await getBrewSessions();
+      const [loadedSessions, beans] = await Promise.all([getBrewSessions(), filter.hidden ? null : getBeans()]);
       if (version !== refreshVersion) return;
-      list.replaceChildren(...sessions.map(session => renderSession(session, () => openEditor(session), async () => {
-        try {
-          await deleteBrewSession(session.id);
-        } catch (failure) {
-          if (!(failure instanceof CommittedWriteError)) throw failure;
-          message.textContent = 'Deletion was applied, but storage could not be confirmed. Export a backup from IO before closing this tab.';
-          await Promise.all([refresh(), options.onSaved()]);
-          return;
-        }
-        message.textContent = 'Session deleted.';
-        await Promise.all([refresh(), options.onSaved()]);
-        newSession.focus();
-      })));
-      if (!sessions.length) {
-        const empty = document.createElement('div');
-        empty.className = 'empty-state';
-        empty.innerHTML = '<h3>No brew sessions yet</h3><p>Start with + New Session to log your next cup.</p>';
-        list.append(empty);
+      sessions = loadedSessions;
+      if (beans) {
+        const selected = filterBean.value;
+        filterBean.replaceChildren(new Option('All beans', ''));
+        filterBean.append(...beans.map(item => new Option(item.name, item.id)));
+        filterBean.value = beans.some(item => item.id === selected) ? selected : '';
       }
-      count.textContent = `(${sessions.length})`;
+      renderSessions();
     } catch (failure) {
       if (version === refreshVersion) listError.hidden = false;
       console.error('Could not load brew sessions.', failure);
@@ -282,6 +312,7 @@ export function createBrewController(container: HTMLElement, options: {
       if (version === refreshVersion) {
         list.setAttribute('aria-busy', 'false');
         listStatus.textContent = '';
+        filterBean.disabled = false;
       }
     }
     if (version === refreshVersion && !form.hidden && !saving) await loadBeans();
@@ -363,6 +394,17 @@ export function createBrewController(container: HTMLElement, options: {
   });
   pickerError.querySelector('button')!.addEventListener('click', () => void loadBeans());
   listError.querySelector('button')!.addEventListener('click', () => void refresh());
+  filterToggle.addEventListener('click', () => {
+    filter.hidden = !filter.hidden;
+    filterBean.value = '';
+    filterToggle.setAttribute('aria-expanded', String(!filter.hidden));
+    const label = filter.hidden ? 'Filter brew sessions by bean' : 'Hide and clear bean filter';
+    filterToggle.setAttribute('aria-label', label);
+    filterToggle.title = label;
+    renderSessions();
+    void refresh();
+  });
+  filterBean.addEventListener('change', renderSessions);
   for (const name of ['dose_g', 'yield_g', 'tds_pct']) input(name).addEventListener('input', updateExtraction);
   form.addEventListener('submit', (event) => {
     event.preventDefault();

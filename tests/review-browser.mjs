@@ -6,6 +6,7 @@ import {checkBeanDeletion} from './bean-delete-checks.mjs';
 import {checkSessionEditing} from './session-edit-checks.mjs';
 import {checkSessionDeletion} from './session-delete-checks.mjs';
 import {checkBeanEditing} from './bean-edit-checks.mjs';
+import {checkSessionFiltering} from './session-filter-checks.mjs';
 import {checkBackupUpgrade} from './backup-upgrade-checks.mjs';
 import {checkReviewRemediation, checkHistoryScale, checkRuntimeWorkerFailure} from './review-remediation-checks.mjs';
 
@@ -18,6 +19,7 @@ await withCurrentBuild(async context => {
   await checkSessionEditing(context);
   await checkSessionDeletion(context);
   await checkBeanEditing(context);
+  await checkSessionFiltering(context);
   await checkBackupUpgrade(context);
   await checkReviewRemediation(context);
   await checkHistoryScale(context);

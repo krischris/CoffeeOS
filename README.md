@@ -16,7 +16,8 @@ added to your Home Screen.
    results, and leave tasting notes. Measurements are optional; adding dose, yield,
    and TDS gives you a live extraction calculation and brewing control chart.
 3. **Look back and adjust.** Browse your sessions or a bean's brew history to find
-   what worked. You can edit past sessions as you refine your notes.
+   what worked. Tap the filter icon beside Your brew sessions to choose a bean;
+   tap it again to clear the filter. You can edit past sessions as you refine your notes.
 4. **Keep a backup** from the IO tab. Save or share a single `.coffeeos` file with
    your beans, sessions, and photos. Review a backup before importing; matching
    records are updated and unrelated records stay. Older CSV and Parquet backups

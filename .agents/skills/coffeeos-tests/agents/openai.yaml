@@ -1,0 +1,3 @@
+interface:
+  display_name: "CoffeeOS Tests"
+  short_description: "Run all regressions and report test findings"

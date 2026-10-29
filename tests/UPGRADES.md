@@ -1,5 +1,9 @@
 # Upgrade verification
 
+The full test runner uses `uv run npm test` and manages prerequisites and both
+backends automatically; see [the harness guide](README.md). The commands below
+remain available for focused runs and fixture maintenance.
+
 Start `safaridriver -p 4444`, then run `uv run npm run test:upgrade`.
 For OPFS, start Firefox with an isolated profile containing `firefox-user.js`
 and `--remote-debugging-port 9223`, then run
@@ -79,7 +83,9 @@ Focused archive checks: with Vite/Safari driver running,
 `uv run npm run test:backups`. For OPFS use
 `TEST_FIREFOX=1 uv run npm run test:backups` with the isolated Firefox endpoint.
 `uv run python tests/backup-interoperability.py` requires PyArrow in the local
-`.venv` and independently verifies the generated `docs/fixtures/example-v1.coffeeos`.
+`.venv` and independently verifies the tracked `docs/fixtures/example-v4.coffeeos`.
+Browser runs write candidate examples to `.cache/backups/example-v4.coffeeos`;
+pass that path as the Python command's argument to verify the generated example.
 It also creates a Python DEFLATE repack and malformed Parquet fixtures in
 `.cache/backups`; the next browser run verifies these optional generated fixtures.
 `uv run node tests/measure-backup-memory.mjs` runs a unique-photo Safari fixture

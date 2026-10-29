@@ -24,7 +24,7 @@ export async function checkBrewEditor({ sync, api, screenshotPath }) {
         return getComputedStyle(doc.querySelector('.session-measurements')).display === 'grid';`)) break;
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    for (const [width, height] of [[320, 568], [320, 852], [375, 667], [375, 812], [393, 680], [393, 852], [430, 932], [852, 393], [1024, 768], [1440, 900], [1920, 1080]]) {
+    for (const [width, height] of [[320, 568], [320, 852], [375, 667], [375, 812], [393, 680], [393, 852], [430, 932], [852, 393], [999, 900], [1000, 600], [1024, 768], [1440, 900], [1920, 1080]]) {
       for (const safeAreas of [false, true]) {
         const layout = await sync(`
           const frame = document.querySelector('#brew-editor-viewport');
@@ -58,6 +58,7 @@ export async function checkBrewEditor({ sync, api, screenshotPath }) {
             actions: bounds('.session-actions'),
             cancel: bounds('.cancel-session'), save: bounds('.save-session'),
             svg: bounds('.session-form .brewing-chart-svg'),
+            plot: bounds('.session-form .brewing-chart-plot'),
             caption: bounds('.session-form .brewing-chart-summary'),
             navigation: getComputedStyle(doc.querySelector('.tab-bar')).display,
             fields: [...doc.querySelectorAll('.session-form input, .session-form select')].filter(field => field.getBoundingClientRect().height > 0).map(field => ({
@@ -67,23 +68,34 @@ export async function checkBrewEditor({ sync, api, screenshotPath }) {
         `);
         assert.equal(layout.width, width);
         assert.equal(layout.height, height);
-        const expectedScale = Math.max(0.8, Math.min(1, width / 393, (height - (safeAreas ? 93 : 0)) / 759));
+        const desktop = width >= 1000;
+        const expectedScale = desktop ? 1 : Math.max(0.8, Math.min(1, width / 393, (height - (safeAreas ? 93 : 0)) / 759));
         assert.ok(Math.abs(layout.scale - expectedScale) < 0.00001, JSON.stringify(layout));
         assert.equal(layout.horizontal, false, JSON.stringify(layout));
         assert.equal(layout.pageHorizontal, false, JSON.stringify(layout));
         assert.equal(layout.outerOverflow, 'hidden');
         assert.equal(layout.innerOverflow, 'hidden');
         assert.ok(Math.abs((layout.editor.left + layout.editor.right) / 2 - width / 2) <= 1, JSON.stringify(layout));
-        assert.ok(Math.abs(layout.editor.right - layout.editor.left - Math.min(width, 712 * expectedScale)) <= 1, JSON.stringify(layout));
+        const expectedWidth = desktop ? Math.min(width - 48, 1200) : Math.min(width, 712 * expectedScale);
+        assert.ok(Math.abs(layout.editor.right - layout.editor.left - expectedWidth) <= 1, JSON.stringify(layout));
         assert.ok(Math.abs(layout.actions.left - layout.editor.left) <= 1 && Math.abs(layout.actions.right - layout.editor.right) <= 1, JSON.stringify(layout));
-        assert.ok(Math.abs(layout.measurements.left - layout.cancel.left) <= 1 && Math.abs(layout.measurements.right - layout.save.right) <= 1, JSON.stringify(layout));
+        assert.ok(Math.abs(layout.measurements.right - layout.save.right) <= 1, JSON.stringify(layout));
+        if (desktop) {
+          assert.ok(layout.chart.right < layout.bean.left, JSON.stringify(layout));
+          assert.ok(Math.abs(layout.chart.top - layout.bean.top) <= 1, JSON.stringify(layout));
+          assert.ok(layout.plot.right - layout.plot.left >= 350, JSON.stringify(layout));
+          assert.equal(layout.cancel.right - layout.cancel.left, 112);
+          assert.equal(layout.save.right - layout.save.left, 168);
+        } else {
+          assert.ok(Math.abs(layout.measurements.left - layout.cancel.left) <= 1, JSON.stringify(layout));
+          assert.ok(layout.chart.bottom <= layout.bean.top);
+        }
         assert.equal(layout.navigation, 'none');
         assert.equal(layout.cancel.top, layout.save.top);
         assert.equal(layout.cancel.bottom, layout.save.bottom);
         assert.ok(layout.cancel.right < layout.save.left);
         assert.ok(layout.svg.bottom - layout.svg.top >= 220 * expectedScale - 1);
         assert.ok(layout.caption.bottom - layout.caption.top <= 1);
-        assert.ok(layout.chart.bottom <= layout.bean.top);
         assert.ok(layout.input.right < layout.output.left);
         assert.ok(Math.abs(layout.grind.top - layout.comment.top) <= 1, JSON.stringify(layout));
         assert.ok(Math.abs(layout.grind.bottom - layout.comment.bottom) <= 1, JSON.stringify(layout));
@@ -100,6 +112,8 @@ export async function checkBrewEditor({ sync, api, screenshotPath }) {
         }
         if (height === 393 || (height === 568 && safeAreas)) {
           assert.equal(layout.vertical, true, JSON.stringify(layout));
+        }
+        if (layout.vertical) {
           const reached = await sync(`
             const doc = document.querySelector('#brew-editor-viewport').contentDocument;
             const body = doc.querySelector('.session-body');
@@ -139,7 +153,7 @@ export async function checkBrewEditor({ sync, api, screenshotPath }) {
       const png = await api('/element/' + id + '/screenshot');
       await writeFile(screenshotPath, Buffer.from(png, 'base64'));
     }
-    console.log('PASS centered desktop editor/actions, no page/body horizontal overflow, proportional phone/landscape layouts, safe areas, filled height, pinned actions, label focus, and vertical scroll fallback');
+    console.log('PASS desktop chart beside fields with compact actions, no page/body horizontal overflow, proportional phone/landscape layouts, safe areas, filled height, pinned actions, label focus, and vertical scroll fallback');
   } finally {
     await sync(`document.querySelector('#brew-editor-viewport')?.remove();`);
   }

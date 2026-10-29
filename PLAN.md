@@ -2799,3 +2799,160 @@ recovery-copy section and its prepare/download interaction.
   deployment implementations are unchanged. The previous-build populated OPFS/
   IndexedDB upgrade matrix was not rerun. Physical iPhone/iPad touch, keyboard,
   Home Screen/storage lifecycle and deployed-host headers remain unverified.
+
+## Stage 58: Desktop Brew Editor Proportions with an Unchanged Phone Layout
+
+- [ ] **Status:** Implementation complete; build and focused Safari visual checks
+  passed. Full regression execution is reserved for the user after handoff.
+
+### Goal
+
+Preserve the exact iPhone 15 Pro editor composition and similar phone layouts,
+while giving desktop windows a readable chart and appropriately sized controls.
+
+### Tasks
+
+1. [x] Review the existing phone and desktop editor proportions and identify the
+   chart's dependence on the height remaining above the measurement fields.
+2. [x] Add a desktop-only layout at 1000 CSS pixels: centered panel up to 1200px,
+   chart beside measurements, and compact right-aligned Cancel/Save actions.
+3. [x] Preserve all existing rules below the breakpoint, DOM order, accessible
+   labels, data handling and pinned actions. Update existing layout assertions
+   for the desktop composition, breakpoint boundary and short desktop scrolling.
+4. [x] Build, compare phone geometry/screenshots, visually inspect desktop output,
+   and check local isolation headers and production asset URLs.
+5. [ ] Run the full regression suite after implementation handoff (user-owned).
+
+### Acceptance Criteria (Stage 58 Gate)
+
+- The 393×852 editor with simulated safe areas is visually identical to the
+  previous stylesheet; other checked phone/compact dimensions retain geometry.
+- From 1000px wide, the chart sits beside the fields, its plotted square is at
+  least 350px across at the checked desktop sizes, and Cancel/Save are 112px/
+  168px wide. The centered editor is at most 1200px wide.
+- The editor and document have no horizontal overflow. Actions remain pinned;
+  scrolling keeps fields accessible in shorter windows. Existing labels,
+  validation, editing, saving and persistence pass the subsequent full suite.
+- Build, local COOP/COEP headers and relative `/CoffeeOS/` entry assets pass.
+  Storage, formats, startup, dependencies, service workers and origin remain
+  unchanged. Physical-device and other unverified paths are stated explicitly.
+
+### Verification — 2026-10-29
+
+- `uv run npm run build` passed using the existing project's Node environment.
+  Updated layout-check syntax and `git diff --check` passed.
+- Focused isolated desktop Safari visual review used the actual populated edit
+  form and exact-size frames at 320×568, 375×667, 393×680, 393×852, 430×932,
+  852×393, 999×900, 1000×600, 1024×768, 1440×900 and 1920×1080, each with
+  zero and simulated 59px top/34px bottom safe areas. All measured editor,
+  heading, chart, bean/measurement field and action rectangles below 1000px
+  matched the original stylesheet exactly. The before/after 393×852 safe-area
+  PNG files have identical SHA-256 hashes. No horizontal overflow was found.
+- Desktop plotted squares measured approximately 384–452px across. At 1440×900,
+  the plot grew from 330px to 452px; its size now follows its column width.
+  Focused checks confirmed side-by-side placement, compact actions and pinned
+  action bottoms. Inspected the actual desktop window and phone/desktop frame
+  screenshots. Artifacts: `.cache/stage58-layout.log`,
+  `.cache/stage58-393-before.png`, `.cache/stage58-393-after.png`,
+  `.cache/stage58-1440-before.png`, `.cache/stage58-1440-after.png`, and
+  `.cache/stage58-desktop-window.png`.
+- Local dev `/` and production preview `/CoffeeOS/` returned HTTP 200 with
+  COOP `same-origin` and COEP `require-corp`. Generated JavaScript, preload and
+  CSS entry assets resolved successfully beneath `/CoffeeOS/assets/`.
+- Per the user's instruction, the full suite and updated shared editor checks
+  were not executed. Full navigation/write/reload regressions, error states,
+  short-window scroll interactions and production browser startup remain for
+  that run. Phone checks used desktop Safari frames, not a physical iPhone;
+  touch, native keyboard/viewport, Home Screen behavior and deployed-host
+  headers remain unverified. No deployment was performed. Previous-build
+  populated OPFS/IndexedDB upgrades were not rerun for this CSS-only update.
+
+## Stage 59: Independent Test Runner Skill and Complete Regression Harness
+
+- [x] **Status:** Complete locally; skill validation, build and focused harness/
+  browser checks passed. The full application matrix awaits the test runner.
+
+### Goal
+
+Allow any model to run the maintained automated suite without implementation
+knowledge and hand actionable failures to an implementer through `TESTS.md`.
+
+### Tasks
+
+1. [x] Add a repository-local test skill and explicit implementer/test-runner roles.
+2. [x] Register existing regressions, discover new Node tests automatically, and
+   reject unregistered test files so future coverage cannot silently disappear.
+3. [x] Automate isolated browser/server setup, sequential execution, deadlines,
+   cleanup, logs and failure/blocker reporting without touching user data.
+4. [x] Keep generated backup artifacts outside tracked fixtures; document
+   automated coverage, prerequisites, handoff and remaining manual gates.
+5. [x] Run build and focused harness checks; leave full application regression
+   execution to the test-runner identity.
+
+### Acceptance Criteria (Stage 59 Gate)
+
+- `$coffeeos-tests` and `uv run npm test` select the same maintained full suite,
+  including Safari/IndexedDB, Firefox/OPFS, populated historical/recent upgrades,
+  offline, backups/PyArrow, photos, Drive mocks, layout and prior regressions.
+- New `*.test.mjs` files are discovered; orphan test scripts fail inventory.
+  Missing prerequisites, failures, timeouts and interrupted runs cannot pass.
+- Tests run sequentially with owned local servers, isolated profiles, bounded
+  execution and cleanup. Existing fixtures and normal browser data are preserved.
+- Full runs write concise actionable issues to `TESTS.md` and detailed ignored
+  logs/summary; clean runs leave it empty unless unresolved findings already exist.
+- Implementers consume findings first and run focused checks. Test runners only
+  test/report. Build and focused harness validation pass; unrun paths are recorded.
+
+### Verification — 2026-10-29
+
+- Added `.agents/skills/coffeeos-tests/SKILL.md`, root `TESTS.md` (zero bytes),
+  role/handoff instructions and `tests/README.md`. Test runners only execute/report;
+  implementers resolve findings first and maintain executable coverage. The skill
+  creator validator passed; its PyYAML dependency was installed only into ignored
+  `.cache/skill-validator`, without changing app dependencies or lockfiles.
+- `uv run npm test -- --list` lists 34 suites, plus the inventory gate. Existing
+  entry points/shared helpers are registered; new nested `*.test.mjs` files are
+  discovered automatically. `uv run npm run test:inventory` passed. The harness
+  rejects omitted source files and ignores inherited selection flags. Required
+  browser/Python prerequisites, unavailable checks and skipped/todo Node assertions
+  cannot silently count as passing.
+- `uv run npm run test:harness` passed all 10 checks, including miniature-project
+  coordinator runs for failures, continuation, dependency blockers, clean/dirty
+  handoff behavior, preservation of prior findings, skipped coverage, interruption
+  reporting, deadlines and exclusive lock cleanup. These synthetic full runs do
+  not execute the real application matrix. Validation caught Node's inherited
+  internal test context suppressing nested execution; the coordinator now clears
+  it and requires completion counters before accepting a Node-suite result.
+  Final `uv run npm test -- --only node-tests` passed automatic discovery and all
+  harness checks through the actual coordinator, with no findings or leftover
+  lock: `.cache/test-runs/2026-10-29T19-04-05.311Z-90582/summary.json`.
+- `uv run npm run build` passed in the existing project Node environment. Focused
+  managed dev/preview checks passed main/helper COOP/COEP and relative production
+  assets; isolated Safari production-helper checks and Firefox OPFS diagnostics
+  passed. Evidence: `.cache/test-runs/2026-10-29T18-56-25.407Z-89312/`.
+  The first sandboxed attempt explicitly blocked local sockets; its results remain
+  in `.cache/test-runs/2026-10-29T18-56-00.372Z-89111/`. Repeating the affected
+  focused checks with authorized local-socket access passed.
+- Adapted the dormant Firefox form-count assertion to the current four forms.
+  Safari's production variant now keeps dev-module fault injection in its dev
+  run while exercising the built UI. `--only production-safari,production-firefox`
+  passed: Safari startup/navigation, writes, charts/editor layouts, historical IO
+  imports and reload; Firefox production startup, ownership exclusion, same-origin
+  runtime assets and reload. Evidence:
+  `.cache/test-runs/2026-10-29T18-57-42.798Z-89584/`.
+- Generated backup examples no longer overwrite tracked fixtures. Focused Safari
+  backup/Python checks passed historical archives, DEFLATE/malformed Parquet inputs,
+  candidate output and exact restored fields, microseconds, nulls and binary64.
+  Final `--only python-roundtrip-safari` automatically selected Python fixture and
+  Safari backup prerequisites and passed all four gates including inventory.
+  Evidence: `.cache/test-runs/2026-10-29T19-01-20.305Z-90144/`. Tracked fixture
+  files are unchanged; focused runs leave `TESTS.md` unchanged. Whitespace checks
+  passed. Existing Stage 58 stylesheet/editor-test changes remain preserved.
+- This update changes test tooling/instructions only; storage/startup/schema,
+  formats, runtime dependencies, service worker, deployment and origin are
+  unchanged. The complete 34-suite matrix, populated legacy/recent OPFS/IndexedDB
+  upgrade replacements, offline matrix, MVP/reduced-motion variants and backup
+  memory stress were not executed in this implementer task. They are registered
+  for the independent test runner. Physical iPhone/iPad touch, keyboard/viewport,
+  Home Screen/storage lifecycle, live Google and deployed-host headers remain
+  unverified. No deployment or normal browser collection was used.

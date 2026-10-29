@@ -98,7 +98,7 @@ try {
   };`);
   assert.equal(initial.isolated, true);
   assert.equal(initial.tab, 'Brew Controller');
-  assert.equal(initial.forms, 3);
+  assert.equal(initial.forms, 4);
 
   if (process.env.TEST_PRODUCTION) {
     assert.ok(logs.some((entry) => entry.text?.includes(`database ready (${primaryStorage})`)));

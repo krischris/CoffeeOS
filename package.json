@@ -7,6 +7,9 @@
     "node": ">=24"
   },
   "scripts": {
+    "test": "node scripts/test-harness.mjs",
+    "test:inventory": "node scripts/test-harness.mjs --inventory",
+    "test:harness": "node --test tests/harness.test.mjs",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "test:review": "node tests/review-browser.mjs",

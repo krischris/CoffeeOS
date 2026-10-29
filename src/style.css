@@ -601,6 +601,49 @@ button:disabled { opacity: 0.65; cursor: wait; }
   .session-optional-hint { display: none; }
 }
 
+/* Keep the phone composition unchanged. Wide windows have room to give the
+   square chart its own column instead of only the height left by the fields. */
+@media (min-width: 1000px) {
+  .session-form.card {
+    --editor-scale: 1;
+    width: min(calc(100% - 48px), 1200px);
+  }
+  .session-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto 1fr auto;
+    column-gap: 32px;
+    align-content: start;
+    padding: max(24px, var(--editor-safe-top)) max(24px, var(--editor-safe-right)) 24px max(24px, var(--editor-safe-left));
+  }
+  .session-body > * { max-width: none; }
+  .session-heading { grid-column: 1 / -1; grid-row: 1; margin-bottom: 24px; }
+  .session-form .brewing-chart {
+    grid-column: 1;
+    grid-row: 2 / 7;
+    align-self: start;
+    max-width: 560px;
+    aspect-ratio: 520 / 524;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .session-body > .bean-picker-status { grid-column: 2; grid-row: 2; }
+  .session-body > .bean-picker-error { grid-column: 2; grid-row: 3; }
+  .session-body > .no-beans { grid-column: 2; grid-row: 4; }
+  .session-body > fieldset { grid-column: 2; grid-row: 5; align-self: start; }
+  .session-body > .form-error { grid-column: 2; grid-row: 6; }
+  .session-bean-field { margin-bottom: 20px; }
+  .session-form .spec-table caption { padding-bottom: 8px; }
+  .session-form .spec-table label { font-size: 13px; }
+  .session-actions {
+    grid-template-columns: 112px 168px;
+    justify-content: end;
+    padding: 16px max(24px, var(--editor-safe-right)) max(16px, var(--editor-safe-bottom)) max(24px, var(--editor-safe-left));
+  }
+  /* Keyboard scroll compensation belongs to the stacked phone layout. */
+  .session-form[data-typing] .session-body::after { content: none; }
+}
+
 .io-legacy { margin-top: 24px; min-width: 0; overflow-wrap: anywhere; }
 .io-legacy summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--accent); }
 .io-legacy fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }

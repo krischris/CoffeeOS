@@ -4,11 +4,14 @@ from io import BytesIO
 from pathlib import Path
 import hashlib
 import json
+import os
+import sys
 from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-path = Path('docs/fixtures/example-v4.coffeeos')
+path = Path(sys.argv[1] if len(sys.argv) > 1 else 'docs/fixtures/example-v4.coffeeos')
+output = Path(os.environ.get('TEST_BACKUP_DIR', '.cache/backups'))
 with ZipFile(path) as archive:
     assert sorted(archive.namelist()) == ['beans.parquet', 'brew_sessions.parquet', 'manifest.json']
     assert all(info.compress_type == ZIP_STORED for info in archive.infolist())
@@ -54,12 +57,12 @@ assert precise['extraction_pct'] == 19.999999999999996
 assert precise['water_g'] == 0 and precise['temp_c'] is None
 assert precise['time_str'] == '' and sessions['sparse']['time_str'] is None
 assert precise['comment'] == 'Line 1\n行 2 ☕' and sessions['sparse']['comment'] == ''
-Path('.cache/backups').mkdir(parents=True, exist_ok=True)
-with ZipFile('.cache/backups/python-deflate.zip', 'w', compression=ZIP_DEFLATED) as archive:
+output.mkdir(parents=True, exist_ok=True)
+with ZipFile(output / 'python-deflate.zip', 'w', compression=ZIP_DEFLATED) as archive:
     for name, raw in entries.items():
         archive.writestr(name, raw)
 print('PASS independent Python ZIP/PyArrow counts, SHA256, physical/logical schemas, microseconds, binary64, Unicode, nulls, and photos; wrote DEFLATE repack')
-roundtrip_path = Path('.cache/backups/roundtrip.coffeeos')
+roundtrip_path = output / 'roundtrip.coffeeos'
 if roundtrip_path.exists():
     import struct
     with ZipFile(roundtrip_path) as restored:
@@ -79,7 +82,7 @@ if roundtrip_path.exists():
 
 # Valid ZIP/checksums around invalid Parquet values exercise staging, not ZIP rejection.
 from copy import deepcopy
-invalid_dir = Path('.cache/backups/invalid')
+invalid_dir = output / 'invalid'
 invalid_dir.mkdir(parents=True, exist_ok=True)
 def invalid_archive(label, table_name, mutate):
     files = dict(entries)

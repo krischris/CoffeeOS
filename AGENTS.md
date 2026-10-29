@@ -1,5 +1,37 @@
 # CoffeeOS development instructions
 
+## Agent identities and test handoff
+
+Work as one of two identities for each task. Ordinary development uses the
+**implementer** identity. A request to run the full suite or use
+`$coffeeos-tests` uses the **test runner** identity. Do not switch from testing
+to fixing code within a test-runner task; hand findings to an implementer.
+
+**Implementer:** Before changing anything, read root `TESTS.md` if it exists.
+Missing or zero-byte means no pending findings. If nonempty, address its findings
+first, run focused checks for those fixes, and remove resolved findings. Delete
+or empty the file once every finding is addressed; retain unresolved issues and
+environment blockers with their evidence. Never clear findings just to proceed.
+Run the build and only specific tests relevant to the implementation. Leave the
+full suite to the test runner. Every new behavior/regression check must enter the
+maintained harness before handoff: add `tests/**/*.test.mjs` for automatic Node
+test discovery, extend an existing registered suite/helper, or register a new
+browser/other entry point and its prerequisites in `tests/suites.mjs`. Run
+`uv run npm run test:inventory` to catch omitted test files. Preserve prior
+regressions; do not leave necessary checks as one-off scripts or prose only.
+
+**Test runner:** Read `.agents/skills/coffeeos-tests/SKILL.md` and run
+`uv run npm test` from the project root. This identity only runs tests and reports
+findings; do not modify application code, tests, dependency manifests/locks,
+instructions or `PLAN.md`, fix failures, weaken assertions, or commit changes.
+Generated ignored artifacts and root `TESTS.md` are the permitted outputs. Report failures, blocked
+checks and interruptions concisely in `TESTS.md`, with reproduction command,
+environment, expected/actual behavior and log paths. Preserve existing unresolved
+findings. Keep `TESTS.md` empty on a clean automated run with no pending findings;
+successful-run details belong in `.cache/test-runs/`. Never count unavailable or
+unexecuted coverage as passing. Physical iOS, real Google and deployed-host checks
+remain separate manual gates unless explicitly performed.
+
 ## Plan maintenance
 
 Record every future project update as the next sequentially numbered stage in
@@ -121,8 +153,8 @@ cross-origin isolation in production.
 
 ## Verification
 
-Run `uv run npm run build` after changes; it type-checks both application code and
-`vite.config.ts`, then creates `dist/`. Use `uv run npm run dev` or
+Implementers run `uv run npm run build` after changes; it type-checks application
+code and `vite.config.ts`, then creates `dist/`. Use `uv run npm run dev` or
 `uv run npm run preview` for browser checks. Confirm the two isolation response
 headers and that generated asset paths still work under a repository subpath.
 Add targeted runtime checks when database behavior is introduced.
@@ -133,7 +165,9 @@ Safari is the primary browser for development and acceptance checks because
 CoffeeOS targets iOS Safari and Home Screen web apps. Run browser checks in the
 installed Safari using `safaridriver` when available. Verify startup, navigation,
 database writes and reload persistence, and the production repository subpath.
-With Vite and `safaridriver -p 4444` running, use `uv run npm run test:safari`.
+For a focused run with Vite and `safaridriver -p 4444` already running, use
+`uv run npm run test:safari`. The full harness manages its own servers and isolated
+browser sessions; see the test-runner skill above.
 
 Desktop Safari checks do not replace physical iPhone/iPad checks for touch,
 keyboard/viewport behavior, Home Screen installation, and storage lifecycle.

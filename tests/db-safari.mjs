@@ -494,9 +494,13 @@ try {
     reload: async () => { await api('/refresh', {}); await ready(); } });
   assert.deepEqual(await sync(`return window.__safariErrors;`), []);
   console.log('PASS Safari smoke checks');
-  await checkReviewRemediation({sync,evaluate,waitFor,api,ready});
-  await checkHistoryScale({sync,evaluate,waitFor});
-  await checkRuntimeWorkerFailure({evaluate});
+  // These inject faults through source-module imports, available in the dev run.
+  // The production variant above exercises the built UI and reload persistence.
+  if (!process.env.TEST_PRODUCTION) {
+    await checkReviewRemediation({sync,evaluate,waitFor,api,ready});
+    await checkHistoryScale({sync,evaluate,waitFor});
+    await checkRuntimeWorkerFailure({evaluate});
+  }
 } finally {
   if (session) await api('', undefined, 'DELETE');
 }

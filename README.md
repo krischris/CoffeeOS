@@ -64,3 +64,11 @@ a downloadable recovery under IO. Later launches keep the converted bytes.
 Historical damaged photo bytes remain preserved with an IO notice, and old
 JPEG backups remain importable. New backups require WebP-capable CoffeeOS
 (archive format 4); keep your original backups when updating.
+
+## Development testing
+
+Use the repository's `$coffeeos-tests` agent skill or `uv run npm test` for the
+full automated regression suite. It manages local test servers/browser profiles
+and reports issues in `TESTS.md`. Implementers address that file first and run
+focused checks; test runners run and report without fixing code. See the
+[test harness guide](tests/README.md) for setup, coverage and adding regressions.

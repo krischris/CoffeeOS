@@ -47,7 +47,7 @@ try{
  console.log('PASS production /CoffeeOS/ assets, previous isolation-worker update, one-time helper BroadcastChannel across isolated windows, helper-only header exception; no Google requested',helperState);
  // Native Vite preview must also apply only the helper exception.
  for(const [path,coop,coep]of [['','same-origin','require-corp'],['drive-auth.html','same-origin-allow-popups','unsafe-none']]){
-  const response=await fetch('http://127.0.0.1:4174/CoffeeOS/'+path);assert.equal(response.headers.get('Cross-Origin-Opener-Policy'),coop);assert.equal(response.headers.get('Cross-Origin-Embedder-Policy'),coep);
+  const response=await fetch((process.env.TEST_PREVIEW_URL??'http://127.0.0.1:4174/CoffeeOS/')+path);assert.equal(response.headers.get('Cross-Origin-Opener-Policy'),coop);assert.equal(response.headers.get('Cross-Origin-Embedder-Policy'),coep);
  }
  console.log('PASS production preview main/helper COOP/COEP headers');
 }finally{if(session)await api('',undefined,'DELETE');await new Promise(resolve=>server.close(resolve));}

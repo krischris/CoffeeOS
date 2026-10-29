@@ -154,7 +154,8 @@ Stage 52 adds `uv run npm run test:offline` and
 `TEST_FIREFOX=1 uv run npm run test:offline`. Run them sequentially: they rebuild
 the shared `.cache/bean-upgrade` fixtures and serve port 5177. Safari WebDriver
 and the isolated Firefox endpoint must already be running. The previous revision
-defaults to `HEAD` and can be pinned with `TEST_PREVIOUS_REF`.
+defaults to the pre-offline revision `6ec3ef8` and can be overridden with
+`TEST_PREVIOUS_REF`.
 
 These checks replace a populated previous production build at the same profile,
 origin and `/CoffeeOS/` path. The candidate host has no isolation headers; the

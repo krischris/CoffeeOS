@@ -1,5 +1,29 @@
 # Review remediation handover — 2026-10-28
 
+**Latest feature — Stage 52, completed 2026-10-29:** Production builds now support
+offline reopening after **IO → Offline use** reports readiness. The complete
+shell includes DuckDB workers, Wasm and Parquet support; downloads are verified
+against the build manifest. Failed updates preserve the previous complete shell,
+and successful updates wait for all app windows to close. Cache maintenance never
+touches database files, snapshots, backend metadata or ownership locks.
+
+Offline production/upgrade checks passed at the same isolated profile/origin on
+Safari 27.2/IndexedDB and Firefox/OPFS, including actual offline brew saves,
+backups, exact fingerprints, historical imports, retained recoveries and failed
+downloads/startup. Full Safari regression, both additional `35ab417` data-upgrade
+matrices, production subpath/main/helper isolation, build and whitespace checks
+passed. A hidden Safari automation window paused CSS transitions; the harness now
+activates it before synthetic animation checks without changing gesture behavior.
+The offline suite defaults to pre-offline revision `6ec3ef8` for reproducibility.
+
+See [Stage 52](../PLAN.md#stage-52-launch-and-brew-offline) and
+[upgrade instructions](../tests/UPGRADES.md) for evidence and commands. Physical
+iPhone/iPad airplane mode, Home Screen/storage lifecycle, native Files/Share,
+actual eviction/disk exhaustion, Safari OPFS, live Google and the deployed host
+remain unverified. No deployment or normal user collection was used. The older
+Stage 48/50 restore-fixture error remains unexplained; this feature does not claim
+to fix it. Earlier handover entries below retain their historical scope.
+
 **Latest follow-up — Stage 51, 2026-10-28:** Permanent restore-fixture diagnostics
 now identify each format/layout and lifecycle phase, mock storage calls and
 isolation state. Body and cleanup errors retain separate messages/stacks; failed

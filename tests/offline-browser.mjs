@@ -7,7 +7,7 @@ import { firefoxAdapter } from './firefox-upgrade-adapter.mjs';
 
 // Production build replacement at a stable origin/profile, followed by cold
 // launches with the entire origin unavailable. Never use a normal browser profile.
-process.env.TEST_PREVIOUS_REF ??= 'HEAD';
+process.env.TEST_PREVIOUS_REF ??= '6ec3ef8';
 await import('./prepare-bean-upgrade.mjs');
 const root = resolve('.cache/bean-upgrade');
 const source = resolve(root, 'candidate-source');

@@ -202,6 +202,14 @@ and recoverable failures that preserve the original collection.
 - R1 ordinary writes and imports now coordinate SQL/IndexedDB publication; see
   the Stage 44 failure matrix and populated upgrade evidence.
 
+### Follow-up Verification — 2026-10-29
+
+- Stage 52 adds a blob bootstrap for worker-controlled pages, importing the same
+  Vite-managed DuckDB script under the page's isolation policy. Headerless
+  production startup/offline reopen passed on Safari/IndexedDB and Firefox/OPFS.
+  Worker object URLs are revoked after initialization or construction failure;
+  existing ownership, saved-data guards and runtime quarantine remain intact.
+
 ## Stage 3: Bean Manager Tab (`src/views/beanManager.ts`)
 
 - [x] **Status:** Complete; desktop Safari passed, physical iOS date-control checks pending.
@@ -2305,7 +2313,8 @@ retaining original and cleanup errors separately, following Stage 50's findings.
 
 ## Stage 52: Launch and Brew Offline
 
-- [ ] **Status:** In progress.
+- [x] **Status:** Complete locally; offline launches and populated upgrades passed
+  on Safari/IndexedDB and Firefox/OPFS. Physical-device/deployed checks remain.
 
 ### Goal
 
@@ -2320,7 +2329,7 @@ connection and use the same saved collection to log brews and manage backups.
    in IO, and avoid automatic update reloads while editors or writes are open.
 3. [x] Verify offline cold launches, writes/reloads, backup use, failed/partial
    updates and populated previous-build upgrades on IndexedDB and OPFS.
-4. [ ] Run Safari regression, production subpath/header checks and build; record
+4. [x] Run Safari regression, production subpath/header checks and build; record
    results and physical-device/deployed-host limitations and update user guidance.
 
 ### Acceptance Criteria (Stage 52 Gate)
@@ -2347,5 +2356,84 @@ connection and use the same saved collection to log brews and manage backups.
 
 ### Verification — 2026-10-28
 
-- Implementation and verification in progress. Storage names, locks, database
-  formats, origin and dependencies remain unchanged.
+- Production builds generate a SHA-256 manifest of the final HTML, scripts,
+  styles, icons, privacy/helper content and both DuckDB runtime/Parquet bundles.
+  Sequential installation verifies each response before publishing a completion
+  marker. The production shell contains 23 files, approximately 85.5 MB before
+  transport compression; this is not a physical iPhone capacity measurement.
+- Cache-first reads use the active build's scoped static cache. Missing entries
+  can be repaired only with matching bytes; mismatched newer HTML is rejected.
+  Failed candidates remove only their own incomplete shell. Activation retains
+  the previous complete shell, prunes obsolete caches for this scope and leaves
+  unrelated caches and every database/snapshot untouched.
+- Updates wait for all controlled windows to close. IO reports preparation,
+  readiness, failure and waiting updates. First-install isolation reload precedes
+  storage opening/editing and uses the existing bounded reload marker. The
+  helper's isolation exception is retained; an older helper awaiting an update
+  tells the user to close/reopen and reconnect rather than waiting silently.
+- `test:offline` passed sequentially in isolated Safari 27.2/IndexedDB and
+  headless Firefox/OPFS against pre-offline build `6ec3ef8` at the same profile,
+  origin and `/CoffeeOS/` path. Candidate hosting supplied no isolation headers.
+  All origin requests were then disconnected for actual window close/reopen,
+  an actual brew-form save, reload, local backup preparation/validation, privacy
+  and helper navigation. Initial headerless installation on a separate confirmed
+  first-use localhost origin also passed, including backend selection.
+- Upgrade comparisons include exact records and logical Parquet fingerprints
+  covering full microseconds, binary64 values, null/empty distinctions, comments,
+  photos, IDs and relationships. Historical CSV/Parquet imports and immutable
+  recovery keys/dates/content hashes passed. Injected startup metadata failures
+  reported a recoverable error without an empty collection; retry retained every
+  original and newly written offline record.
+- Missing, corrupt and interrupted candidate downloads, injected quota failure,
+  mismatched-build repair, retained drafts, waiting activation and scoped cleanup
+  passed. Quota failure is injected in a real worker, not actual disk exhaustion.
+  Offline readiness was asserted after each offline cold reopen. Logs:
+  `.cache/stage52-offline-safari.log` and `.cache/stage52-offline-firefox.log`.
+- Full `test:safari` passed startup/navigation, mobile layouts, writes/reload,
+  gestures, legacy IO, commit matrices, stale drafts, recovery indexing,
+  1,000-session pagination and runtime-worker failure/reopen. Earlier failed
+  settling checks were traced to a hidden, unfocused automation document with
+  its CSS animation at time zero. The existing visible-window precondition now
+  precedes synthetic animation checks as well as trusted input; all original
+  assertions remain. No production gesture code changed. Diagnostic source/log
+  are retained in ignored `.cache/stage52-*diagnostic*` files; final regression
+  output is `.cache/stage52-safari.log`.
+- The additional `35ab417` populated Firefox/OPFS upgrade matrix passed all
+  startup/schema/storage/worker faults, historical compatibility, writes/deletes,
+  photo/archive/Drive recovery, commit and runtime-worker cases. Its network-fault
+  fixture uses the isolation-only worker template, updated before candidate
+  opening; actual generated-worker lifecycle is covered by `test:offline` above.
+  Log: `.cache/stage52-upgrade-firefox.log`.
+- `drive-isolation.mjs` passed production `/CoffeeOS/` assets/startup, previous
+  worker replacement, helper BroadcastChannel and preview main/helper policy.
+  Direct dev/preview main requests returned HTTP 200, COOP `same-origin`, COEP
+  `require-corp`; helper preview returned `same-origin-allow-popups`/`unsafe-none`.
+  Simulated helper authorization checks and VM execution of the actual client
+  reload guards passed one-attempt, denied-storage, unavailable-isolation and
+  marker-cleanup cases. Logs: `.cache/stage52-production.log` and
+  `.cache/stage52-reload-guards.log`; no real Google requests were made.
+- Storage names, ownership lock, snapshots, schemas, backup formats, dependencies
+  and deployment origin are unchanged. Physical iPhone/iPad airplane mode,
+  Home Screen installation/lifecycle, native Files/Share, actual storage eviction
+  or disk exhaustion, Safari OPFS, older Safari, live Google and deployed-host
+  behavior remain unverified. No deployment or normal browser collection was used.
+
+### Verification — 2026-10-29 (completion)
+
+- Rechecked the committed implementation and retained desktop test evidence.
+  Pinned the offline suite's default baseline to `6ec3ef8`; it no longer moves
+  when `HEAD` advances. Existing toolchain and dependency lock are unchanged.
+- `TEST_PREVIOUS_REF=35ab417 uv run npm run test:upgrade` passed in a fresh
+  isolated Safari 27.2/IndexedDB session, including worker load/decode/timeout,
+  schema/metadata/snapshot failures, all gesture/editor/photo/archive checks,
+  historical text/photo preservation, 32 commit fault cases, recovery-view
+  lifecycle and runtime-worker failure/reopen. Exact original records and durable
+  storage survive failure and reload. Log: `.cache/stage52-upgrade-safari.log`.
+  The earlier session-ended run is retained separately in
+  `.cache/stage52-upgrade-safari-interrupted.log`; it was not a pass.
+- Final `uv run npm run build`, syntax checks and `git diff --check` passed.
+  Updated the handover and user guidance. No local acceptance gate remains;
+  physical-device, live-service and deployed-host limits above remain explicit.
+- Stopped the completion run's Safari WebDriver; no local dev/preview/browser
+  automation endpoints remain listening. Completion notes and baseline pin remain
+  uncommitted; the existing offline WIP commit is preserved.

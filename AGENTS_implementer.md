@@ -144,6 +144,11 @@ Add targeted runtime checks when database behavior is introduced.
 
 ## Browser verification — Safari first for iOS
 
+Before launching browser-backed focused checks, follow the
+[browser execution permission guidance](.agents/skills/coffeeos-tests/SKILL.md#browser-execution-permissions)
+to avoid starting them under CoffeeOS's known localhost-blocking sandbox. This
+permission guidance applies to implementers without changing their identity.
+
 Safari is the primary browser for development and acceptance checks because
 CoffeeOS targets iOS Safari and Home Screen web apps. Run browser checks in the
 installed Safari using `safaridriver` when available. Verify startup, navigation,

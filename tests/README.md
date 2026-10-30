@@ -7,6 +7,10 @@ two identities: implementers run focused checks and resolve `TESTS.md`; test
 runners execute the full suite and report without fixing code.
 
 The harness starts its own dev/production preview servers and Safari WebDriver.
+For Codex execution, follow the test-runner skill's
+[browser execution permission guidance](../.agents/skills/coffeeos-tests/SKILL.md#browser-execution-permissions)
+before the first browser-backed run; it addresses the known `listen EPERM`
+localhost sandbox blocker and applies to focused implementer checks too.
 When explicitly selected, it starts headless Firefox with unique local profiles.
 Firefox and every non-Safari browser variant are strictly opt-in, including browser-specific Python
 round trips. Local Node/Python checks still run by default.

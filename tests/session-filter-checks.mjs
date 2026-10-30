@@ -17,8 +17,17 @@ export async function checkSessionFiltering({sync, evaluate, waitFor, api, state
     await idle();
   };
   const toggle = async () => {
+    if (!process.env.TEST_FIREFOX) {
+      // Scripted navigation/reloads can leave Safari's automation window
+      // inactive. Its native click then returns without delivering any input.
+      await api('/window',{handle:await api('/window')});
+      await waitFor('document.hasFocus() && document.visibilityState === "visible"');
+    }
+    const wasHidden=await sync(`return document.querySelector('.session-filter').hidden;`);
     const button=await api('/element',{using:'css selector',value:'.session-filter-toggle'});
     await api('/element/'+button['element-6066-11e4-a52e-4f735466cecf']+'/click',{});
+    // The list can still be idle before the browser delivers the native click.
+    await waitFor(`document.querySelector('.session-filter').hidden===${!wasHidden}`);
     await idle();
   };
   const select = id => sync(`const select=document.querySelector('.session-filter-bean');

@@ -3237,3 +3237,115 @@ beside the brew-history heading, and restore all sessions with a second tap.
   were not rerun. The full suite, optional Firefox, physical iPhone/iPad touch/
   native dropdown/Home Screen/storage lifecycle, live Google and deployed-host
   verification were not run. No deployment or normal browser collection was used.
+
+### Safari automation repair — 2026-10-29 (Stage 64)
+
+- Cause: after the preceding bean-edit navigation/reloads, Safari's automation
+  window could be visible but unfocused. WebDriver's element click returned
+  without delivering any pointer/mouse/click events, leaving the filter hidden.
+  Diagnostics confirmed `document.hasFocus() === false`, a correctly positioned
+  unobstructed button, and no events even after a diagnostic 500ms wait:
+  `.cache/test-runs/2026-10-29T21-10-29.627Z-4732/review-safari.log`.
+- Browser-check requirement: activate the existing isolated Safari window and
+  wait for visible focus before each native toggle. After one native click,
+  wait for the expected dropdown transition before waiting for list refresh;
+  initial list-idle state alone does not establish click delivery. Do not retry
+  clicks or substitute scripted activation for native coverage.
+- Regression gate: the existing production review sequence, including preceding
+  bean-edit reloads and all Stage 63 filtering/layout/exact-data assertions,
+  must pass with native opening and closing. Results are recorded in Stage 64.
+
+## Stage 64: Repair Safari Bean Filter Regression
+
+- [x] **Status:** Complete; build, inventory and focused Safari review passed.
+
+### Goal
+
+Resolve the Safari filter regression and retain reliable native-button coverage.
+Stage 63 owns the filter behavior and its regression acceptance requirements.
+
+### Tasks
+
+1. [x] Reproduce the reported failure and identify its cause.
+2. [x] Correct the affected implementation or browser check and maintain coverage.
+3. [x] Run the build, inventory and focused Safari regression; remove resolved
+   findings from `TESTS.md` and record evidence.
+
+### Acceptance Criteria (Stage 64 Gate)
+
+- Safari native filter activation reliably opens/closes the dropdown, with the
+  Stage 63 selection, clearing, layout and data-preservation checks intact.
+- Build, inventory and focused Safari review checks pass; unresolved findings
+  and unverified environments remain recorded.
+
+### Verification — 2026-10-29
+
+- Reproduced the reported hidden-dropdown assertion in the focused Safari run:
+  `.cache/test-runs/2026-10-29T21-09-28.550Z-4585/summary.json`.
+- Initial sandboxed attempt could not bind localhost; reran with local server
+  access. Original blocked and failing-run artifacts remain preserved.
+- `uv run npm run build`, `uv run npm run test:inventory`, helper syntax and
+  `git diff --check` passed after the repair. The maintained Safari filter
+  checks passed native toggles, duplicate-name ID selection, counts/order, empty
+  results, clear/reopen/races, phone/desktop geometry, exact records/CSV backups,
+  navigation and edit/save/delete refresh. The enclosing `review-safari` passed
+  in 102.7 seconds, including preceding bean-edit reloads and the remaining
+  backup, transaction/conflict, history-scale and runtime-worker regressions.
+  Evidence: `.cache/test-runs/2026-10-29T21-11-41.401Z-4925/summary.json`.
+- Only the browser-check helper and documentation changed. Application/storage,
+  startup, dependencies, service workers, formats, deployment and origin are
+  unchanged, so populated build-replacement upgrades were not rerun. Full-suite,
+  optional Firefox, physical iOS, live Google and deployed-host verification
+  remain assigned to their respective checks; this task uses isolated Safari.
+
+### Handoff — 2026-10-30
+
+- Confirmed the completed focused-run summary and removed the resolved finding
+  from `TESTS.md`; the file is now empty.
+
+## Stage 65: Request Browser Test Permissions Before Starting the Matrix
+
+- [x] **Status:** Complete; skill validation, build and inventory passed.
+
+### Goal
+
+Avoid repeated known sandbox setup failures when starting CoffeeOS browser tests.
+
+### Tasks
+
+1. [x] Document the required execution permissions for browser-backed runs in
+   the test-runner skill and link them from the harness/implementer instructions.
+2. [x] Specify a single setup blocker when permissions are unavailable, while
+   preserving failure evidence and application-test retry rules.
+3. [x] Validate the skill, build and inventory; record results and limitations.
+
+### Acceptance Criteria (Stage 65 Gate)
+
+- In the known restricted Codex sandbox, runners request local server/browser
+  execution permissions on the first browser-backed invocation.
+- Local-only checks keep their normal permissions. A denied/unavailable request
+  produces one actionable blocker instead of starting a known-blocked matrix.
+- Existing isolated-profile, no-settings-change, evidence-preservation and
+  genuine-failure rules remain intact; skill validation, build and inventory pass.
+
+### Verification — 2026-10-30
+
+- Prior runs repeatedly failed with `listen EPERM` on `127.0.0.1`; the focused
+  Safari run passed with `sandbox_permissions: "require_escalated"` from launch.
+  Stage 64 retains both failure and passing-run evidence.
+- Added the execution-permission decision to the test-runner skill and linked
+  it from `AGENTS_implementer.md` and `tests/README.md`. Known restricted browser
+  runs request permission first; local-only checks remain unprivileged. Denied
+  or unavailable permission is one setup blocker with unexecuted coverage.
+  Unexpected sandbox failures retain their evidence and allow one rerun after
+  correcting permissions; genuine application-failure rules remain intact.
+- Skill-creator `quick_validate.py` passed using `uv run --with PyYAML` after
+  resolving the validator's missing Python dependency in the project-local uv
+  cache; no dependency manifests or locks changed. `uv run npm run build`,
+  `uv run npm run test:inventory` and `git diff --check` passed.
+- This update changes instructions only. The earlier focused Safari run proves
+  the authorized execution path; no full suite, denial simulation, optional
+  browser, physical iOS, live Google or deployed-host checks were repeated.
+  Tool approval still determines whether requested permissions are available.
+  Runtime/storage/startup/formats/service workers/deployment remain unchanged;
+  populated build-replacement checks were not rerun. `TESTS.md` is empty.

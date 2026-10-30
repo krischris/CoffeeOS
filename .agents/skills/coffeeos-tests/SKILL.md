@@ -11,6 +11,30 @@ unresolved findings. Do not edit application/test code, instructions, dependency
 manifests/locks or `PLAN.md`, weaken checks, commit, deploy or contact real Google
 services. Ignored test artifacts and `TESTS.md` are the outputs of this task.
 
+## Browser execution permissions
+
+CoffeeOS's restricted Codex workspace sandbox has repeatedly denied localhost
+listeners with `listen EPERM` on `127.0.0.1`. For a browser-backed harness run in
+that environment, request the required permissions **on the first invocation**:
+set `sandbox_permissions: "require_escalated"` on the execution-tool call for
+`uv run npm test` (or a browser-backed `--only` selection). Explain that the run
+starts owned local HTTP servers and isolated Safari/WebDriver processes, plus
+Firefox only when explicitly selected. Follow the tool's approval review; do
+not launch a known-blocked matrix first or change persistent sandbox/browser
+settings. If execution already permits these capabilities, use normal execution.
+
+Local-only inventory/list, build and Node checks do not need browser permissions.
+This instruction changes execution permissions, never the selected test matrix.
+If the required permission request is denied or unavailable, stop before the
+known-blocked browser run and record **one setup blocker** in `TESTS.md`: the
+approval/tool reason and selected coverage left unexecuted. Do not manufacture
+individual application failures for checks that never ran. If an unexpected
+sandbox denial occurs, preserve its logs/summary and retry once only after
+correcting execution permissions. Keep genuine application failures and the
+retry/reporting rules below intact.
+
+## Run and report
+
 From the repository root:
 
 ```sh

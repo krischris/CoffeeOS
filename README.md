@@ -73,3 +73,13 @@ full automated regression suite. It manages local test servers/browser profiles
 and reports issues in `TESTS.md`. Implementers address that file first and run
 focused checks; test runners run and report without fixing code. See the
 [test harness guide](tests/README.md) for setup, coverage and adding regressions.
+
+For independent code reviews, use the reviewer role in [AGENTS.md](AGENTS.md).
+Ask to “review new changes” for the next uncovered range plus working changes,
+“audit the whole codebase” for current behavior across subsystems, or “recheck
+the review findings” for a focused follow-up. An explicit range overrides defaults.
+Reviewers run basic checks and small bug reproductions, then hand findings to
+implementers in [REVIEW.md](REVIEW.md). Asking to assess and apply fixes uses the
+implementer role; its self-check does not supply independent sign-off.
+[REVIEW_LEDGER.md](REVIEW_LEDGER.md) distinguishes inspected ranges, scoped
+audits and rechecks from independent sign-off and full-suite results.

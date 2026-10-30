@@ -3,8 +3,15 @@
 From the project root, use `uv run npm test` for the routine Safari suite, or
 ask an agent to use `$coffeeos-tests` ([skill](../.agents/skills/coffeeos-tests/SKILL.md)). The runner
 needs no implementation history. Follow root [AGENTS.md](../AGENTS.md) for the
-two identities: implementers run focused checks and resolve `TESTS.md`; test
-runners execute the full suite and report without fixing code.
+three identities: implementers run focused checks and resolve `TESTS.md`; test
+runners execute the full suite and report without fixing code; reviewers inspect
+code and substantiate bugs with basic checks/minimal reproductions, reporting in
+`REVIEW.md` and maintaining `REVIEW_LEDGER.md`.
+
+The reviewer role follows [AGENTS_reviewer.md](../AGENTS_reviewer.md). A review
+does not invoke `test:review`: that command runs a browser regression suite.
+Review checks depend on scope and explicit user constraints; a request for
+inspection without execution must remain inspection only.
 
 The harness starts its own dev/production preview servers and Safari WebDriver.
 For Codex execution, follow the test-runner skill's

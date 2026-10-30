@@ -15,6 +15,30 @@ browser/other entry point and its prerequisites in `tests/suites.mjs`. Run
 `uv run npm run test:inventory` to catch omitted test files. Preserve prior
 regressions; do not leave necessary checks as one-off scripts or prose only.
 
+## Review findings and handoff
+
+Before changing anything, also read root `REVIEW.md` and `REVIEW_LEDGER.md` if
+present, following links to unresolved findings in archived reports. After pending
+`TESTS.md` findings, address confirmed review findings in priority order within
+the user's authorized scope. Explicitly deferred risks and investigations are
+not automatic fix requirements. Surface urgent out-of-scope defects without
+silently expanding the task. Do not repeatedly reimplement a fix awaiting recheck.
+
+Preserve original findings, IDs, reproductions and decisions. Append an
+implementer handoff to `REVIEW.md` with each finding ID and source link, fix commit
+(or explicitly uncommitted files), maintained regression coverage, focused
+results and remaining gaps. Mark fixes **implemented; awaiting reviewer recheck**,
+not independently signed off. If you disagree with a finding, append concrete
+counterevidence for the reviewer rather than deleting it or forcing a speculative
+fix. Record remediation and its gates in `PLAN.md` as required below.
+
+Only an independent reviewer extends reviewed coverage or signs off a review.
+Your own verification is a self-check, including when the task asks you to assess
+and fix the work. Leave unresolved findings visible; do not empty `REVIEW.md`
+after fixes or rewrite archived reports. Full-suite verification,
+when requested, is a separate test-runner handoff through `TESTS.md`; passing tests
+and reviewer sign-off are separate evidence, neither implies deployment approval.
+
 ## Plan maintenance
 
 Record every future project update as the next sequentially numbered stage in

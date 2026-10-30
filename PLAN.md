@@ -2,19 +2,21 @@
 
 ## 0. Global Rules for All Agent Sessions (READ FIRST)
 
-1. **Scope:** Execute only the requested stage, verify its gate, update its
-   status and stop. Completed stages below describe the consolidated feature;
-   their dated notes distinguish original work, later fixes and remaining gaps.
+1. **Scope:** Execute only the requested work. Implementers verify the stage gate
+   and update its status; reviewers and test runners follow their output/handoff
+   rules in `AGENTS.md` without editing this plan. Completed stages below describe
+   the consolidated feature; dated notes distinguish fixes and remaining gaps.
 2. **Plan maintenance:** Put a bug's cause, corrected implementation requirements
    and regression acceptance criteria in the stage that introduced the feature.
    Add dated verification there. Record each future update with the next unused
-   stage number as required by `AGENTS.md`; a repair entry can refer to its owning
-   stage rather than repeat its specification. Never renumber or reuse stages.
+   stage number as required by `AGENTS_implementer.md`; a repair entry can refer
+   to its owning stage rather than repeat its specification. Never renumber or
+   reuse stages.
    Stages absorbed by this compaction remain in the history map below.
 3. **Toolchain:** Vanilla TypeScript + Vite, no application framework. Use the
    existing `.venv`, managed by `uv` + `nodeenv`; prefix every direct Node/npm/npx
    command with `uv run`. `process.execPath` must be inside this project's `.venv`.
-   Run `uv run npm run build` after changes; it checks application/config types.
+   Implementers run `uv run npm run build` after changes; it checks app/config types.
 4. **Runtime and hosting:** Pin local DuckDB-Wasm/assets together. Preserve Vite
    `base: './'`, dev/preview COOP `same-origin` and COEP `require-corp`.
    Check relative assets at `/CoffeeOS/`; dev headers do not prove host isolation.
@@ -3665,3 +3667,110 @@ collection data and the full-value replacement behavior.
   deployment and origin are unchanged; populated build-replacement upgrades
   were not rerun. Full suite, optional Firefox, physical iOS, live Google and
   deployed-host verification remain unexecuted for this task.
+
+## Stage 70: Add Independent Reviewer Role and Commit Coverage Ledger
+
+- [x] **Status:** Complete; workflow, historical boundary, documentation links,
+  build and test inventory verified.
+
+### Goal
+
+Make broad code reviews produce actionable evidence with limited check execution,
+preserve reviewed commit coverage, and distinguish fixes from independent sign-off.
+
+### Tasks
+
+1. [x] Add the reviewer identity and concise responsibilities/basic-check limits;
+   preserve implementer and full-suite test-runner responsibilities.
+2. [x] Add `REVIEW.md` and `REVIEW_LEDGER.md`, including stable finding IDs,
+   reproducible proof, scoped rechecks, archival and implementer handoffs.
+3. [x] Infer older inclusive coverage from report/handover contents and Git commit
+   timestamps; leave newer unreviewed ranges for the next reviewer to append.
+4. [x] Verify links, role boundaries, historical endpoint, build and test inventory;
+   record actual results and limitations.
+
+### Acceptance Criteria (Stage 70 Gate)
+
+- `AGENTS.md` selects three roles. Reviewers inspect code, run basic checks and
+  minimal bug reproductions, and report without fixing code or running full suites.
+- Findings retain original evidence, stable IDs and regression acceptance gates.
+  Implementer fix claims, independent reviewer rechecks and test-runner results
+  remain distinguishable; sign-off identifies an exact committed head and scope.
+- Reviewers start from the last contiguous covered ancestor, inspect every new
+  commit and its affected context, and only then append actual coverage. Partial
+  audits, dirty changes and scoped rechecks cannot silently cover skipped commits.
+- The historical seed includes the first commit through the last feature covered
+  by the updated handover, labels its inference and does not invent sign-offs.
+  Newer unreviewed commits are absent from the ledger.
+- Documentation links, build and maintained test inventory pass. No application
+  behavior, storage, dependency or deployment changes are needed.
+
+### Verification — 2026-10-30
+
+- `TESTS.md` was empty before changes. Added the reviewer workflow and report/ledger
+  structure; updated implementer handoff rules and development/testing guidance.
+- The handover's newest content explicitly covers Stage 52 offline completion on
+  October 29 despite its October 28 filename. Git history maps that update to
+  `deaa0d068a927db543707f394f1cea263f4102fe` at `2026-10-29T07:04:27+01:00`.
+  Its immediate successor introduces WebP/photo work absent from the handover.
+  Seeded root-through-that-commit coverage as inferred legacy; 11 later committed
+  changes remain outside the ledger. A live GitHub API read failed, so timestamp
+  evidence comes from the immutable local Git committer metadata.
+- `uv run npm run build` and `uv run npm run test:inventory` passed. All 20 local
+  documentation links/anchors passed, as did root/ancestry/timestamp checks and
+  confirmation that the ledger has one inferred row and excludes all 11 newer
+  commits. Workflow inspection confirmed separate fix, recheck and full-test
+  responsibilities. `git diff --check` passed; `TESTS.md` remains empty.
+- Documentation only; no application/test behavior, storage, format, dependency,
+  service worker, origin or deployment changes. No current code review, full suite,
+  browser or populated-upgrade run was performed as part of this workflow update.
+
+## Stage 71: Clarify Review Scope, Independence and Finding Continuity
+
+- [x] **Status:** Documentation revision complete; execution checks not run,
+  as explicitly requested by the user.
+
+### Goal
+
+Revise the Stage 70 reviewer workflow so agents select the intended scope,
+substantiate findings and preserve an honest record of inspection and sign-off.
+
+### Tasks
+
+1. [x] Rewrite the reviewer instructions around scope selection, behavioral
+   evidence, reporting, finding continuity and independent decisions.
+2. [x] Distinguish new-change reviews, whole-codebase audits, explicit targets
+   and fix rechecks; define handling of staged, dirty and changing targets.
+3. [x] Align role routing, implementer handoffs, the report template, ledger
+   guidance and development/testing documentation.
+4. [x] Preserve the existing inferred historical baseline and earlier evidence;
+   document current verification limits without adding review coverage.
+
+### Acceptance Criteria (Stage 71 Gate)
+
+- Assess-and-edit tasks use the implementer role. Their own checks cannot provide
+  independent sign-off; explicit user scope and execution limits take precedence.
+- Whole-codebase audits include unchanged subsystems. Scoped rechecks, dirty-tree
+  observations and self-checks cannot imply contiguous committed range coverage.
+- Findings require concrete impact and reproducible or static evidence, with no
+  quota. Investigations remain separate from confirmed defects.
+- Original finding IDs/evidence survive archival and remediation. Unresolved,
+  awaiting-recheck and deferred findings remain discoverable in the current handoff.
+- Sign-off states independence, exact committed target, scope and limitations.
+  Initial clean reviews can sign off; scoped fix approval covers only those fixes.
+- This task edits documentation only. Build, tests, inventory and executable
+  validation are omitted under the user's explicit instruction.
+
+### Verification — 2026-10-30
+
+- Read the proposed workflow, existing role instructions, report/ledger templates,
+  relevant plan rules and historical report evidence. `TESTS.md` was empty.
+- Rewrote `AGENTS_reviewer.md` and aligned `AGENTS.md`, `AGENTS_implementer.md`,
+  `REVIEW.md`, `REVIEW_LEDGER.md`, `README.md` and `tests/README.md`.
+- Preserved the legacy endpoint and its source links, clarifying that inherited
+  historical coverage is an inference rather than independent inspection of every
+  ancestral commit. No review event, finding resolution or sign-off was added.
+- This was an implementer documentation revision, not an independent application
+  review. No build, test suite, inventory, browser, probe or executable validation
+  was run. Prior Stage 70 verification notes remain historical and do not represent
+  checks performed for this revision.

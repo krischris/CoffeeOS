@@ -1,6 +1,7 @@
 import {checkDriveRecoveryView} from './drive-recovery-view-checks.mjs';
 import { checkDriveRestore } from './drive-restore-checks.mjs';
 import { checkDriveFingerprints } from './drive-content-checks.mjs';
+import { checkDriveRetention } from './drive-retention-checks.mjs';
 import assert from 'node:assert/strict';
 import { firefoxAdapter } from './firefox-upgrade-adapter.mjs';
 const endpoint = process.env.SAFARI_WEBDRIVER_URL ?? 'http://127.0.0.1:4444';
@@ -243,4 +244,5 @@ try {
   `);
   console.log('PASS legacy-photo/text Drive sync uploads readable format 4 over an equal-hash archive with missing legacy contracts, retains old files and skips repeated upload and restores exact records');
   await checkDriveRecoveryView({evaluate});
+  await checkDriveRetention({evaluate,api,ready:()=>wait(`document.querySelector('#app')?.getAttribute('aria-busy')==='false'`)});
 } finally { if(session) await api('',undefined,'DELETE'); }

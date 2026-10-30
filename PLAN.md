@@ -3492,3 +3492,176 @@ next typed value replaces it without manually moving the caret or deleting digit
   iPhone/iPad touch selection and keyboard/viewport behavior, Home Screen
   lifecycle, optional Firefox, live Google and deployed-host checks remain
   unverified. No normal browser collection or deployment was used.
+
+## Stage 68: Retain Two Google Drive Backups per Local Session and Account
+
+- [x] **Status:** Complete locally; focused Safari and populated IndexedDB/OPFS
+  upgrade checks passed. Live Google and physical iOS acceptance remain pending.
+
+### Goal
+
+Keep the latest and previous verified backups for this phone/browser session in
+each Google account, progressively removing older owned files without touching
+another device's backups or the local collection.
+
+### Tasks
+
+1. [x] Add an app-path/account-scoped localStorage ownership ledger containing
+   a stable random session ID, backup IDs, archive hashes and Drive file IDs.
+   Preserve tracking across reload, Disconnect, token expiry and account switching.
+2. [x] Persist upload intent before sending bytes and tag new snapshots with the
+   session ID; reconcile uncertain completion after reload without duplicate uploads.
+3. [x] After verified upload, retain the two newest owned files and move older
+   tracked files to Drive Trash after rechecking identity. Retry pending cleanup
+   on unchanged Sync and finish backlog cleanup before another changed upload.
+4. [x] Preserve unknown/foreign files; stop uploads on unusable tracking storage.
+   Disclose retention in IO, privacy and Drive documentation, and register focused
+   ownership, progressive rotation, reload/cancellation and failure regressions.
+5. [x] Run build, inventory, affected Safari checks, headers/subpath and populated
+   previous-build upgrades with IndexedDB and OPFS; record results and limitations.
+
+### Acceptance Criteria (Stage 68 Gate)
+
+- Repeated changed syncs retain at most two active tracked files per account and
+  local session after successful cleanup. The latest and immediate predecessor
+  survive; unchanged Sync uploads nothing and retries any pending cleanup.
+- Cleanup requires matching locally recorded IDs/hash, account and server session
+  metadata; copied/foreign/untracked files, including pre-update archives, survive.
+  Paginated/incomplete history and changed metadata never cause broad deletion.
+- New backups are verified before rotation. Failed uploads/verification never
+  reduce the two retained verified copies. Cleanup failure preserves a visible successful upload
+  outcome, retains extra copies and prevents unbounded further uploads.
+- Durable pending intent survives accepted-upload cancellation/reload, reconciles
+  without duplicate upload, and produces confirmed file IDs. Blocked/quota/corrupt
+  local tracking prevents new uploads and preserves its original contents.
+- Existing beans/sessions/photos/precision/IDs, historical CSV/Parquet/archive
+  backups and storage identities survive populated build replacement/reload on
+  IndexedDB and OPFS. Recoverable startup failures preserve the original data.
+- No new authorization scopes, dependencies, archive/database formats, collection
+  storage identifiers or deployment origin. Live Google and physical iOS remain
+  separately recorded acceptance checks.
+
+### Verification — 2026-10-30
+
+- `TESTS.md` was empty before changes.
+- Checked Google's official [trash/delete guide](https://developers.google.com/workspace/drive/api/guides/delete)
+  and [files.update API](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/update).
+  Cleanup uses `PATCH {trashed:true}` for recoverable removal from active Drive
+  history; Google normally removes trashed files after 30 days.
+- `uv run npm run build`, `uv run npm run test:inventory`, helper syntax and
+  `git diff --check` passed. The authorized focused harness selection
+  `drive-safari,authorization-safari,diagnostics-safari,server-contracts,upgrade-recent-safari,upgrade-recent-firefox`
+  passed all eight gates (including inventory/build). Evidence:
+  `.cache/test-runs/2026-10-30T16-19-24.537Z-17805/summary.json`.
+- The maintained Drive helper passed repeated rotation to exactly two tracked
+  files, latest/previous IDs and hashes, preservation of untracked/other-phone/
+  copied files, paginated history, stable reload/reconnect identity, account
+  isolation, cleanup denial and unchanged retry, backlog upload blocking, lost
+  successful trash responses, metadata rechecks, incomplete history, corrupt/
+  quota/blocked tracking, accepted-upload cancellation/reload reconciliation
+  without duplicates, and failed-final-verification preservation.
+- Added blocked-read and actual Drive-view cleanup notice/retry checks, then
+  reran `uv run npm test -- --only drive-safari`: both gates passed. The UI
+  preserved the successful upload plus pending-cleanup notice after history
+  refresh, then cleaned up on unchanged Sync without another POST. Evidence:
+  `.cache/test-runs/2026-10-30T16-21-52.842Z-18165/summary.json`.
+- Populated previous committed build `805d9f6` replacement passed on native
+  Safari/IndexedDB and isolated Firefox/OPFS at the same profile/origin/path.
+  Both retained four beans, four linked sessions, photos, exact precision/text/
+  nulls/dates/IDs and the immutable recovery; historical CSV/Parquet imports,
+  archive round trip, reload, failed-startup durable-data preservation, ownership
+  locks and focused edit/write/delete/reload passed. Existing Drive restore,
+  empty recovery, rollback/races, authorization and sanitized diagnostics passed.
+- Main/helper dev/preview isolation headers and production `/CoffeeOS/` relative
+  assets passed. Google authorization/Drive were simulated; no live Google calls,
+  deployment or normal browser collection was used. Physical iPhone/iPad/Home
+  Screen/storage lifecycle, deployed-host headers, full suite and older pinned
+  upgrade baselines were not run. `TESTS.md` remains empty.
+
+## Stage 69: Repair Safari Restore and Measurement Replacement Regressions
+
+- [x] **Status:** Complete; focused Safari database/review, production, build,
+  inventory and local header/subpath checks passed.
+
+### Goal
+
+Restore the failing Safari backup and brew-edit checks while preserving exact
+collection data and the full-value replacement behavior.
+
+### Tasks
+
+1. [x] Diagnose and repair the empty isolated backup-restore fixture without
+   weakening saved-storage startup guards or touching the original dataset.
+2. [x] Diagnose Safari repeat-click replacement and retain native keyboard,
+   continued-typing, numeric precision and save/reload coverage.
+3. [x] Run build, inventory, affected Safari suites and local header/subpath
+   checks; remove only verified resolved findings from `TESTS.md`.
+
+### Acceptance Criteria (Stage 69 Gate)
+
+- All CSV/Parquet layouts restore into empty isolated storage, including empty
+  backups, and the original durable collection is recovered unchanged.
+- Native Safari typing after focus, Tab and repeated field clicks replaces the
+  entire measurement. Subsequent typing appends; exact edits survive reload.
+- Existing rollback, failure recovery and stored-data protection assertions pass;
+  build, inventory and focused Safari/header checks pass.
+- Preserve other in-progress work. Record remaining manual/full-suite coverage
+  and any upgrade verification needed by the final implementation.
+
+### Verification — 2026-10-30
+
+- Read the two existing Safari findings and original full-run evidence at
+  `.cache/test-runs/2026-10-30T16-23-57.295Z-18603/summary.json`.
+- An unchanged focused reproduction passed both affected suites, confirming
+  intermittency rather than a consistently failing application path. Evidence:
+  `.cache/test-runs/2026-10-30T16-30-34.520Z-19921/summary.json`.
+- Hardened the restore fixture by waiting for the initial session-list read,
+  redirecting the native IndexedDB factory's `open` method (including retained
+  factory references), tracing actual opened names and awaiting isolated-store
+  deletion. Every override still restores independently and original records
+  must match exactly after reopening. Application startup guards are unchanged.
+- Selected the owned Safari context before native input and added a trusted-click
+  delivery barrier before typing, with no click retries. Extended every numeric/
+  time field to replace with zero and then the final exact decimal/time value;
+  continued typing, clearing, comment caret, rollback and reload checks remain.
+- The first verification passed inventory, build, local headers/assets and the
+  database suite, then stopped at an existing swipe helper's OS-focus gate before
+  reaching measurement typing. Evidence:
+  `.cache/test-runs/2026-10-30T16-34-34.306Z-20098/summary.json`.
+- Replaced `document.hasFocus()` preconditions in swipe/measurement helpers with
+  visible-window checks. The actual trusted contact/drag/click/value assertions
+  remain mandatory. [WebDriver's focus rules](https://w3c.github.io/webdriver/#switch-to-window)
+  separate selected context from OS focus, and [WebKit's focus issue](https://bugs.webkit.org/show_bug.cgi?id=275326)
+  documents successful input delivery with `hasFocus()` false.
+- A production-then-review check passed production but exposed an actually hidden
+  automation window at the visibility gate. Evidence:
+  `.cache/test-runs/2026-10-30T16-37-52.357Z-20344/summary.json`.
+  Added shared `showWindow()` setup: select the owned context, restore it via
+  [Set Window Rect](https://w3c.github.io/webdriver/#set-window-rect) using its
+  existing dimensions, then require visibility before gestures or measurements.
+- A further visibility check remained blocked even after restoring the owned
+  window. Evidence:
+  `.cache/test-runs/2026-10-30T16-39-33.707Z-20535/summary.json`.
+  A local diagnostic confirmed window focus, restore, maximize and activation
+  all left visibility hidden; `ioreg -n Root -d1` reported
+  `CGSSessionScreenIsLocked=Yes`. Final native-input verification requires the
+  user to unlock macOS. No screen-lock or browser preferences were changed.
+- After desktop unlock, the user closed Safari during the first resumed run;
+  its invalid-session cleanup error is retained at
+  `.cache/test-runs/2026-10-30T17-16-05.619Z-21099/summary.json`.
+  The requested fresh `uv run npm test -- --only review-safari` passed both
+  gates (inventory and the entire review suite), with no failed/blocked checks.
+  Evidence: `.cache/test-runs/2026-10-30T17-17-08.979Z-21331/summary.json`.
+- Native Safari passed trusted swipe contacts/drags and all seven measurement
+  fields: focus/Tab replacement, repeated clicks replacing with zero then exact
+  values, continued typing, optional clearing, extraction and comment caret.
+  Exact unchanged/edit/cancel/save/reload fidelity, rollback/retry, bean/session
+  deletion, filtering/animation, backup compatibility, commit failure recovery,
+  1,000-session history and runtime-worker failure checks also passed.
+- Build, inventory, helper syntax and diff checks passed. Both original findings
+  are verified resolved and `TESTS.md` is empty.
+- This update changes maintained test setup/helpers only. Application behavior,
+  storage identifiers/schema, formats, startup, dependencies, service workers,
+  deployment and origin are unchanged; populated build-replacement upgrades
+  were not rerun. Full suite, optional Firefox, physical iOS, live Google and
+  deployed-host verification remain unexecuted for this task.

@@ -60,7 +60,14 @@ export async function fixtureBrowser() {
     await sync(`document.querySelector('#tab-bean-manager').click();`);
     await waitFor(`document.querySelector('.bean-list')?.getAttribute('aria-busy') === 'false'`);
   }
-  return {request, api, sync, evaluate, ready, waitFor, openBeans,
+  async function showWindow() {
+    await api('/window', {handle:await api('/window')});
+    // Switching contexts does not restore a hidden/minimized OS window.
+    // Set Window Rect restores it while preserving the test's current geometry.
+    await api('/window/rect', await api('/window/rect'));
+    await waitFor('document.visibilityState === "visible"');
+  }
+  return {request, api, sync, evaluate, ready, waitFor, openBeans, showWindow,
     async open(base) {
       session = (await request('/session', {capabilities:{alwaysMatch:{browserName:'safari'}}})).sessionId;
       await api('/timeouts', {script:120_000, pageLoad:45_000});

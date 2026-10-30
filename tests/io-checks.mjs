@@ -143,12 +143,14 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
     assert.equal(result.error, false, result.detail);
     stored = await state();
     await reload();
+    await waitFor(`document.querySelector('.session-list').getAttribute('aria-busy') === 'false'`);
     assert.deepEqual(await state(), stored);
     console.log('PASS exact CSV/Parquet round trips (null/empty/literal \\N, dates, zeroes, full precision), strict invalid-file rejection, atomic failed snapshots, successful retry, and reload persistence');
     // Restore each backup into a genuinely empty engine, isolated from durable browser data.
     const isolated = await evaluate(`
       const db = await getDB();
-      const originalIndexedDB = Object.getOwnPropertyDescriptor(window, 'indexedDB');
+      const originalOpen = Object.getOwnPropertyDescriptor(indexedDB, 'open');
+      const realOpen = indexedDB.open.bind(indexedDB);
       const originalDirectory = Object.getOwnPropertyDescriptor(navigator.storage, 'getDirectory');
       const originalIsolation = Object.getOwnPropertyDescriptor(window, 'crossOriginIsolated');
       const realIDB = indexedDB;
@@ -160,7 +162,7 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
       let phase = 'setup';
       const enter = next => {
         phase = next;
-        trace.push({ phase, isolated: window.crossOriginIsolated, mockedIndexedDB: window.indexedDB !== realIDB });
+        trace.push({ phase, isolated: window.crossOriginIsolated, isolatedSnapshots: Object.hasOwn(realIDB, 'open') });
       };
       const failed = error => failures.push({ phase, error: String(error), stack: error?.stack });
       const cleanup = async (next, action) => {
@@ -178,10 +180,16 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
           const testName = 'coffeeos-import-test-' + crypto.randomUUID();
           testStores.push(testName);
           enter(label + '/override');
-          Object.defineProperty(window, 'indexedDB', { configurable: true, value: {open: () => {
+          // Patch the native factory method so every reference to that factory
+          // uses the fixture, including code that already accessed indexedDB.
+          Object.defineProperty(realIDB, 'open', { configurable: true, value: () => {
             trace.push({ phase, indexedDB: testName });
-            return realIDB.open(testName, 1);
-          }} });
+            const request = realOpen(testName, 1);
+            request.addEventListener('success', () => {
+              trace.push({ phase, openedIndexedDB: request.result.name });
+            });
+            return request;
+          } });
           Object.defineProperty(window, 'crossOriginIsolated', {configurable:true, value:false});
           Object.defineProperty(navigator.storage, 'getDirectory', { configurable: true, value: async () => {
             trace.push({ phase, directory: 'mock' });
@@ -212,8 +220,8 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
         // cleanup error separately so a failed reopen cannot hide the first fault.
         const closed = await cleanup('cleanup/close', () => db.closeDB());
         const restoredIndexedDB = await cleanup('cleanup/indexedDB', () => {
-          if (originalIndexedDB) Object.defineProperty(window, 'indexedDB', originalIndexedDB);
-          else delete window.indexedDB;
+          if (originalOpen) Object.defineProperty(realIDB, 'open', originalOpen);
+          else delete realIDB.open;
         });
         const restoredDirectory = await cleanup('cleanup/directory', () => {
           if (originalDirectory) Object.defineProperty(navigator.storage, 'getDirectory', originalDirectory);
@@ -225,7 +233,12 @@ export async function checkIO({ sync, evaluate, waitFor, reload, production }) {
         });
         if (closed && restoredIndexedDB && restoredDirectory && restoredIsolation) {
           for (const name of testStores) {
-            await cleanup('cleanup/delete-test/' + name, () => { realIDB.deleteDatabase(name); });
+            await cleanup('cleanup/delete-test/' + name, () => new Promise((resolve, reject) => {
+              const request = realIDB.deleteDatabase(name);
+              request.onsuccess = resolve;
+              request.onerror = () => reject(request.error);
+              request.onblocked = () => reject(new Error('Isolated fixture database is still open: ' + name));
+            }));
           }
           await cleanup('cleanup/reopen', () => db.initDB());
         } else {

@@ -59,8 +59,9 @@ One sync runs after authorization:
 
 - A collection with any beans or sessions is compared with the most recently
   uploaded snapshot. Identical contents show “Already backed up” without an
-  upload. Changed contents upload a new immutable `.coffeeos` snapshot; older
-  files stay in Drive.
+  upload. Changed contents upload a new immutable `.coffeeos` snapshot. Stage 68
+  keeps the latest two tracked snapshots from this device for each Google account;
+  older tracked files move to Drive Trash after the new upload is verified.
 - A successfully opened, unchanged empty collection downloads and validates the
   most recently uploaded completed snapshot and imports it transactionally.
 - Empty local and empty cloud collections show “No Drive backup yet.” There is no
@@ -109,7 +110,37 @@ and fingerprinted before comparison; their files remain untouched. Failed
 listing, validation or comparison stops sync and preserves local data. The
 comparison uses the newest snapshot only: reverting to an older collection
 uploads a new snapshot so empty-collection recovery still finds that state.
-No local hash cache, storage identity or archive format changes.
+The comparison does not depend on a local content-hash cache. Collection storage
+identities and archive formats are unchanged.
+
+### Two-backup retention (Stage 68)
+
+An app-path/account-scoped localStorage ledger (`coffeeos-drive-backups:/CoffeeOS/:<account-id>`
+on production) retains a versioned random phone/browser session ID, backup IDs,
+archive SHA-256 hashes and confirmed Drive file IDs. New uploads also carry the
+private `backupSessionId` property. This identity survives reload, token expiry,
+Disconnect and switching away and back to the same account. It contains no token
+or coffee records. Clearing this browser storage starts a new tracking session.
+
+Cleanup requires a locally recorded backup ID/hash and matching server session
+marker, file ID (once confirmed) and checksum. It uses completed paginated history,
+keeps the latest and previous owned backups by server upload order, rechecks each
+older file's identity, then [moves it to Drive Trash](https://developers.google.com/workspace/drive/api/guides/delete#move_a_file_to_the_trash).
+This removes it from the backup folder/history while allowing recovery from Trash
+until Google deletes it. Other phones' snapshots, copied files with different IDs
+and older untracked archives are retained; matching collection contents or file
+names alone never proves ownership. Existing pre-Stage-68 archives cannot be
+attributed safely to this phone and are not automatically adopted or removed.
+
+Intent is saved before uploading so an accepted file with a lost response can be
+recognized after reload. New uploads stop if local tracking cannot be read or
+saved; malformed tracking is preserved for recovery. A verified upload remains a
+success if cleanup fails, with a visible pending-cleanup message. Unchanged Sync
+retries cleanup without uploading, and changed Sync must finish pending cleanup
+before adding another snapshot. Temporary extra files can remain after network,
+permission or cancellation failures. No cleanup runs during empty-collection
+recovery, restore, reopening, history refresh or Disconnect. A per-account Web
+Lock serializes sync/tracking changes across windows.
 
 Progress reports transferred bytes. Cancel stops pending requests, but a request
 already accepted by Google may finish. Refresh history before starting another
@@ -188,7 +219,10 @@ normal browser profile.
 - Connect on your iPhone in Safari. Confirm the selected account, isolated
   database page and successful small upload. Inspect the new `.coffeeos` file
   in Drive. Note any visible error if authorization or transfer fails.
-- Sync again and confirm a separate snapshot exists and earlier files remain.
+- Sync unchanged records again and confirm no additional file appears. Edit and
+  sync several times; confirm only the latest two files from this tracking session
+  remain in the folder and older ones appear in Trash. Other devices' and old
+  untracked archives must remain untouched.
 - Use a genuinely fresh browser profile or another device on the **same origin**
   to recover the uploaded fixture into its empty collection. Compare beans,
   photos, linked sessions, comments, nulls, dates and numeric precision. Reload
@@ -207,7 +241,8 @@ The main database page keeps COOP `same-origin` and COEP `require-corp`.
 so Google's popup can return its callback. Google's script loads only inside this
 optional helper. The isolated database page receives the result over a random,
 one-time same-origin BroadcastChannel with a three-minute lifetime. Tokens are
-never sent in URLs, logs, exports or persistent storage. The URL fragment carries
+never sent in URLs, logs or exports; only the verified credential cache described
+above persists the access token. The URL fragment carries
 only the random channel name and is immediately removed by the helper.
 
 Vite dev/preview and the existing isolation service worker apply the helper-only
@@ -309,7 +344,8 @@ format 4/schema 2 with WebP support and independent legacy text/photo contracts.
 JPEG-to-WebP conversion changes the photo representation once after retaining an
 internal copy of the original data. WebP content hashes use the additive
 `contentSha256V2` property; collections without non-null WebP retain the unchanged
-v1 algorithm and property. Existing cloud files are never rewritten or removed.
+v1 algorithm and property. Existing cloud files are never rewritten; Stage 68
+removes older locally tracked files under the two-backup policy described above.
 Local/Drive previews disclose compatibility requirements. Sync retains an old
 unreadable file and uploads a new preserving snapshot even if its content hash
 matches. Format 3 supports normal merge, replacement, empty-collection recovery

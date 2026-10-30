@@ -1,6 +1,8 @@
 import { driveStep, driveResponse, driveFailure } from './driveDiagnostics';
 import { backupLimits, packageBackup, prepareBackup, preservesLegacyPhotos, preservesLegacyText, sha256, unpackBackup } from './backups';
 import { captureDriveSnapshot, hashBackupContents, recoverEmptyBackup } from './db';
+import { driveBackupTrackingKey, readDriveBackupTracking, saveDriveBackupTracking } from './driveBackupTracking';
+import type { TrackedDriveBackup } from './driveBackupTracking';
 
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 export class DriveError extends Error {}
@@ -46,7 +48,8 @@ export class DriveClient {
     const phase = resumable ? (init.body ? 'Upload backup chunk' : 'Check upload progress')
       : url.pathname.startsWith('/upload/') ? 'Start backup upload'
         : url.pathname === '/drive/v3/files' ? (init.method === 'POST' ? 'Create backup folder' : 'Read backup history')
-          : url.searchParams.get('alt') === 'media' ? 'Download selected backup' : 'Verify uploaded backup';
+          : init.method === 'PATCH' ? 'Remove older backup'
+            : url.searchParams.get('alt') === 'media' ? 'Download selected backup' : 'Verify uploaded backup';
     let renewed = false;
     for (let attempt = 0; ; attempt++) {
       this.signal.throwIfAborted();
@@ -140,17 +143,19 @@ export class DriveClient {
     return files;
   }
   async latest(_folder?: string): Promise<RemoteFile | null> { return (await this.history())[0] ?? null; }
-  private verify(file: RemoteFile, id: string, hash: string, size: number, contentHash?: string, contentVersion: 1 | 2 = 1): void {
+  private verify(file: RemoteFile, id: string, hash: string, size: number, contentHash?: string, contentVersion: 1 | 2 = 1, sessionId?: string): void {
     if (file.size !== String(size) || file.sha256Checksum?.toLowerCase() !== hash || file.appProperties?.backupId !== id ||
       file.appProperties?.archiveSha256 !== hash || file.appProperties?.coffeeosKind !== 'snapshot-v1' ||
-      (contentHash !== undefined && file.appProperties?.[`contentSha256V${contentVersion}`] !== contentHash)) {
+      (contentHash !== undefined && file.appProperties?.[`contentSha256V${contentVersion}`] !== contentHash) ||
+      (sessionId !== undefined && file.appProperties?.backupSessionId !== sessionId)) {
       throw new DriveError('Drive backup completion could not be verified. Keep your local backup; no second upload was attempted.');
     }
   }
-  async upload(folder: string, data: Uint8Array, backupId: string, name: string, contentHash?: string, contentVersion: 1 | 2 = 1): Promise<RemoteFile> {
+  async upload(folder: string, data: Uint8Array, backupId: string, name: string, contentHash?: string, contentVersion: 1 | 2 = 1, sessionId?: string): Promise<RemoteFile> {
     const hash = await sha256(data);
     const metadata = { name: name.replace('.coffeeos', `-${backupId}.coffeeos`), parents: [folder], mimeType: 'application/zip',
       appProperties: { coffeeosKind: 'snapshot-v1', backupId, archiveSha256: hash,
+        ...(sessionId ? { backupSessionId: sessionId } : {}),
         ...(contentHash ? { [`contentSha256V${contentVersion}`]: contentHash } : {}) } };
     if (data.length > backupLimits.archive) throw new DriveError('This backup exceeds the supported archive size.');
     try {
@@ -179,7 +184,7 @@ export class DriveClient {
           const result = await response.json();
           if (typeof result.id !== 'string' || !/^[\w-]+$/.test(result.id)) throw new DriveError('Invalid completed file identity.');
           const remote = await (await this.request(`drive/v3/files/${result.id}?fields=${fields}`)).json();
-          this.verify(remote, backupId, hash, data.length, contentHash, contentVersion);
+          this.verify(remote, backupId, hash, data.length, contentHash, contentVersion, sessionId);
           return remote;
         }
         const range = response.headers.get('Range');
@@ -195,11 +200,63 @@ export class DriveClient {
       // Reconcile the SAME immutable backup ID. Never POST a second archive on an uncertain result.
       try {
         const matches = await this.list(`${marker('snapshot-v1')} and appProperties has { key='backupId' and value='${escapeQuery(backupId)}' }`);
-        if (matches.length === 1) { this.verify(matches[0], backupId, hash, data.length, contentHash, contentVersion); return matches[0]; }
+        if (matches.length === 1) { this.verify(matches[0], backupId, hash, data.length, contentHash, contentVersion, sessionId); return matches[0]; }
       } catch { /* Preserve the unconfirmed outcome, including auth failures during lookup. */ }
       const message = 'Upload result is unconfirmed. No second upload was attempted. Keep a local backup and inspect CoffeeOS Backups in Drive before another Sync now.';
       if (error instanceof DriveAuthError) throw new DriveAuthError(`${message} Reconnect to authorize again.`);
       throw new DriveError(error instanceof DriveError ? `${message} ${error.message}` : message);
+    }
+  }
+  async withBackupLock<T>(task: () => Promise<T>): Promise<T> {
+    return navigator.locks.request(driveBackupTrackingKey(this.account.sub), { signal: this.signal }, task);
+  }
+  async uploadTracked(folder: string, data: Uint8Array, backupId: string, name: string, contentHash: string, contentVersion: 1 | 2): Promise<RemoteFile> {
+    const tracking = readDriveBackupTracking(this.account.sub) ?? { version: 1, sessionId: crypto.randomUUID(), backups: [] };
+    const entry = { backupId, archiveSha256: await sha256(data) };
+    tracking.backups.push(entry);
+    // Persist intent before sending bytes so lost responses/cancellation can be
+    // reconciled after reload without adopting another phone's backups.
+    saveDriveBackupTracking(this.account.sub, tracking);
+    const remote = await this.upload(folder, data, backupId, name, contentHash, contentVersion, tracking.sessionId);
+    // The pending identity already proves ownership if this save fails.
+    tracking.backups[tracking.backups.length - 1] = { ...entry, fileId: remote.id };
+    try { saveDriveBackupTracking(this.account.sub, tracking); }
+    catch { /* Cleanup reconciles the durable pending identity before removing anything. */ }
+    return remote;
+  }
+  async cleanupBackups(history: RemoteFile[]): Promise<void> {
+    const tracking = readDriveBackupTracking(this.account.sub);
+    if (!tracking) return;
+    const matches = (file: RemoteFile, entry: TrackedDriveBackup) =>
+      (!entry.fileId || file.id === entry.fileId) && file.appProperties?.coffeeosKind === 'snapshot-v1' &&
+      file.appProperties.backupSessionId === tracking.sessionId && file.appProperties.backupId === entry.backupId &&
+      file.appProperties.archiveSha256 === entry.archiveSha256 && file.sha256Checksum?.toLowerCase() === entry.archiveSha256 &&
+      Boolean(file.size && /^\d+$/.test(file.size) && Number(file.size) > 0);
+    const owned: RemoteFile[] = [];
+    const before = JSON.stringify(tracking);
+    tracking.backups = tracking.backups.filter(entry => {
+      const found = history.filter(file => matches(file, entry));
+      if (found.length === 1) { entry.fileId = found[0].id; owned.push(found[0]); }
+      // Keep unresolved intents, but forget confirmed files no longer in history
+      // (including a trash request whose successful response was lost).
+      return !entry.fileId || history.some(file => file.id === entry.fileId);
+    });
+    if (JSON.stringify(tracking) !== before) saveDriveBackupTracking(this.account.sub, tracking);
+    // Only complete, locally tracked files count toward the two retained copies.
+    // Recheck each candidate's identity immediately before moving it to Trash.
+    for (const file of this.order(owned).slice(2).reverse()) {
+      this.signal.throwIfAborted();
+      const entry = tracking.backups.find(entry => entry.fileId === file.id)!;
+      const current = await (await this.request(`drive/v3/files/${file.id}?fields=${fields},trashed`)).json();
+      if (current.id !== file.id || current.trashed || !matches(current, entry)) {
+        throw new DriveError('An older backup changed during cleanup. Refresh history and sync again.');
+      }
+      const removed = await (await this.request(`drive/v3/files/${file.id}?fields=id,trashed`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }),
+      })).json();
+      if (removed.id !== file.id || removed.trashed !== true) throw new DriveError('Older backup removal could not be confirmed. Sync again to retry cleanup.');
+      tracking.backups = tracking.backups.filter(entry => entry.fileId !== file.id);
+      saveDriveBackupTracking(this.account.sub, tracking);
     }
   }
   async download(file: RemoteFile): Promise<Uint8Array> {
@@ -244,11 +301,21 @@ function formatBackupSize(bytes: number): string {
 }
 
 export async function syncDrive(client: DriveClient, signal: AbortSignal, onRecoveryCommit?: () => void): Promise<{ message: string; imported: boolean }> {
+  return client.withBackupLock(() => syncDriveLocked(client, signal, onRecoveryCommit));
+}
+
+async function cleanupAfterSync(client: DriveClient, history: RemoteFile[]): Promise<string> {
+  try { await driveStep('Clean up older backups', () => client.cleanupBackups(history)); return ''; }
+  catch { return ' Backup cleanup is pending. Sync now again to retry; the latest backups are kept.'; }
+}
+
+async function syncDriveLocked(client: DriveClient, signal: AbortSignal, onRecoveryCommit?: () => void): Promise<{ message: string; imported: boolean }> {
   const { snapshot, revision } = await driveStep('Capture local snapshot', captureDriveSnapshot);
   signal.throwIfAborted();
   if (snapshot.counts.beans + snapshot.counts.brew_sessions > 0) {
     const hash = await driveStep('Fingerprint local snapshot', () => hashBackupContents(snapshot.data));
-    const latest = await driveStep('Read cloud history', () => client.latest());
+    const history = await driveStep('Read cloud history', () => client.history());
+    const latest = history[0] ?? null;
     const contentVersion = snapshot.webpPhotos ? 2 : 1;
     let cloudHash = latest?.appProperties?.[`contentSha256V${contentVersion}`];
     let needsPreservingBackup = false;
@@ -279,13 +346,16 @@ export async function syncDrive(client: DriveClient, signal: AbortSignal, onReco
     }
     signal.throwIfAborted();
     if (!needsPreservingBackup && hash === cloudHash) return { imported: false,
-      message: `Already backed up. Your collection captured ${snapshot.exported_at} matches the most recently uploaded Drive backup (${latest!.createdTime}). No upload needed. Later edits wait for Sync now.` };
+      message: `Already backed up. Your collection captured ${snapshot.exported_at} matches the most recently uploaded Drive backup (${latest!.createdTime}). No upload needed. Later edits wait for Sync now.${await cleanupAfterSync(client, history)}` };
+    // Resolve any previous cleanup failure before allowing another new archive.
+    await driveStep('Clean up older backups', () => client.cleanupBackups(history));
     const file = await driveStep('Package local snapshot', () => packageBackup(snapshot));
     const { manifest } = await driveStep('Validate packaged snapshot', () => unpackBackup(file.data));
     const folder = await driveStep('Discover backup folder', () => client.folder(true));
     signal.throwIfAborted();
-    await driveStep('Upload snapshot', () => client.upload(folder!, file.data, manifest.backup_id, file.name, hash, contentVersion));
-    return { imported: false, message: `Uploaded backup captured ${snapshot.exported_at}: ${snapshot.counts.beans} beans and ${snapshot.counts.brew_sessions} brew sessions (${formatBackupSize(file.data.length)}). Later edits wait for Sync now.` };
+    const uploaded = await driveStep('Upload snapshot', () => client.uploadTracked(folder!, file.data, manifest.backup_id, file.name, hash, contentVersion));
+    const cleanup = await cleanupAfterSync(client, [...history.filter(file => file.id !== uploaded.id), uploaded]);
+    return { imported: false, message: `Uploaded backup captured ${snapshot.exported_at}: ${snapshot.counts.beans} beans and ${snapshot.counts.brew_sessions} brew sessions (${formatBackupSize(file.data.length)}). Later edits wait for Sync now.${cleanup}` };
   }
   const latest = await driveStep('Read cloud history', () => client.latest());
   if (!latest) return { imported: false, message: 'No Drive backup yet. No empty backup was uploaded.' };

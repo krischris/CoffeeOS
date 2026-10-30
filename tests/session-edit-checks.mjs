@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-export async function checkSessionEditing({sync, evaluate, waitFor, api, ready}) {
+export async function checkSessionEditing({sync, evaluate, waitFor, api, ready, showWindow}) {
   const initial = await evaluate(`const db = await getDB();
     const beans = await db.getBeans();
     return await db.addBrewSession({bean_id:beans[0].id, dose_g:15.123456789, water_g:0,
@@ -35,8 +35,22 @@ export async function checkSessionEditing({sync, evaluate, waitFor, api, ready})
   // Use native Safari keystrokes: number inputs do not expose selectionStart,
   // and assigning .value would bypass the replacement behavior being tested.
   if (!process.env.TEST_FIREFOX) {
+    await showWindow();
+    await sync(`window.__measurementClicks = 0;
+      window.__measurementClickController = new AbortController();
+      document.querySelector('.session-form').addEventListener('click', event => {
+        if (event.isTrusted && event.target.matches('input[type="number"], input[name="time_str"]')) window.__measurementClicks++;
+      }, {signal:window.__measurementClickController.signal});`);
     const type = text => api('/actions', {actions:[{type:'key',id:'measurement-typing',
       actions:[...text].flatMap(value => [{type:'keyDown',value},{type:'keyUp',value}])}]});
+    const click = async selector => {
+      const previous = await sync('return window.__measurementClicks;');
+      const element = await sync(`return document.querySelector('${selector}');`);
+      await api('/element/'+element['element-6066-11e4-a52e-4f735466cecf']+'/click',{});
+      // Wait for delivery of this one native click before submitting keystrokes.
+      // Safari can acknowledge WebDriver input before DOM dispatch completes.
+      await waitFor(`window.__measurementClicks === ${previous + 1}`);
+    };
     try {
       for (const name of ['dose_g','water_g','time_str','temp_c','grind_um','yield_g','tds_pct']) {
         const selector = `.session-form input[name="${name}"]`;
@@ -47,14 +61,14 @@ export async function checkSessionEditing({sync, evaluate, waitFor, api, ready})
         assert.equal(await sync(`return document.querySelector('${selector}').value;`), '7.5', `${name}: focus replaces the whole value`);
         await type('9');
         assert.equal(await sync(`return document.querySelector('${selector}').value;`), '7.59', `${name}: continued typing keeps the caret`);
-        const element = await sync(`return document.querySelector('${selector}');`);
-        await api('/element/'+element['element-6066-11e4-a52e-4f735466cecf']+'/click',{});
-        await type(values[name]);
-        assert.equal(await sync(`return document.querySelector('${selector}').value;`), values[name], `${name}: repeat click replaces the whole value`);
+        for (const replacement of ['0', values[name]]) {
+          await click(selector);
+          await type(replacement);
+          assert.equal(await sync(`return document.querySelector('${selector}').value;`), replacement, `${name}: repeat click replaces the whole value`);
+        }
       }
       // Select the populated TDS again, then clear it with native Backspace.
-      const tds = await sync(`return document.querySelector('#session-tds');`);
-      await api('/element/'+tds['element-6066-11e4-a52e-4f735466cecf']+'/click',{});
+      await click('#session-tds');
       await type('\uE003');
       assert.equal(await sync(`return document.querySelector('#session-tds').value;`), '', 'Optional measurements can be cleared');
       assert.equal(await sync(`return document.querySelector('#session-extraction').value;`), '—');
@@ -66,7 +80,11 @@ export async function checkSessionEditing({sync, evaluate, waitFor, api, ready})
       await type('!');
       assert.equal(await sync(`return document.querySelector('#session-comment').value;`), comment.slice(0,2)+'!'+comment.slice(2), 'Comment focus keeps ordinary caret editing');
     } finally {
-      await api('/actions',undefined,'DELETE');
+      try { await api('/actions',undefined,'DELETE'); }
+      finally {
+        await sync(`window.__measurementClickController.abort();
+          delete window.__measurementClickController; delete window.__measurementClicks;`);
+      }
     }
     console.log('PASS native Safari measurement replacement: focus, Tab, repeat clicks, continued typing, zero/empty/precise values, clearing, extraction and ordinary comment editing');
   }

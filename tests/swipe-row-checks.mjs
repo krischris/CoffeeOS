@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 
-export async function checkSwipeRows({sync, evaluate, waitFor, api}) {
+export async function checkSwipeRows({sync, evaluate, waitFor, api, showWindow}) {
   if (api && !process.env.TEST_FIREFOX) {
-    // Safari pauses CSS transitions in hidden automation windows. Synthetic
-    // settling assertions need the same visible-window precondition as drags.
-    await api('/window', {handle:await api('/window')});
-    await waitFor('document.hasFocus() && document.visibilityState === "visible"');
+    // Hidden Safari windows pause CSS transitions. OS focus is independent of
+    // WebDriver's selected context; actual trusted-event delivery is checked below.
+    await showWindow();
   }
   if(process.env.TEST_REDUCED_MOTION) assert.equal(await sync(`return matchMedia('(prefers-reduced-motion: reduce)').matches;`),true,'isolated browser honors reduced-motion preference');
   const before=await evaluate(`const db=await getDB();return {beans:await db.getBeans(),sessions:await db.getBrewSessions(),csv:(await db.exportData('csv',false)).map(f=>Array.from(f.data))};`);
@@ -128,10 +127,9 @@ export async function checkSwipeRows({sync, evaluate, waitFor, api}) {
 
     if(!process.env.TEST_FIREFOX) {
       await api('/actions',undefined,'DELETE');
-      // Safari may leave automation's window inactive after scripted navigation.
-      // Activate the existing test window before sending native input.
-      await api('/window',{handle:await api('/window')});
-      await waitFor('document.hasFocus()');
+      // Select the owned context before input; contact() checks actual delivery
+      // rather than requiring the OS to give Safari foreground focus.
+      await showWindow();
       const point=await sync(`window.__swipeTrace=[];window.__swipeContacts=[];window.__swipeTraceController=new AbortController();for(const type of ['pointerdown','pointerup','pointercancel','pointermove','mousedown','mouseup'])document.addEventListener(type,event=>{if(event.isTrusted&&window.__swipeTrace.length<100)window.__swipeTrace.push({type:event.type,target:event.target.className,primary:event.isPrimary,button:event.button,buttons:event.buttons,x:event.clientX,y:event.clientY,selection:getSelection()?.toString()});},{capture:true,signal:window.__swipeTraceController.signal});document.addEventListener('pointerdown',event=>{if(event.isTrusted)window.__swipeContacts.push({pressed:document.querySelector('${surface}').classList.contains('is-pressed'),target:event.target.className});},{signal:window.__swipeTraceController.signal});const row=document.querySelector('${summary}');row.scrollIntoView({block:'center'});const r=row.getBoundingClientRect(),edge=document.querySelector('${surface}').getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),edgeY:Math.floor(edge.bottom-1),outsideY:Math.ceil(edge.bottom+3)};`);
       const actions=steps=>api('/actions',{actions:[{type:'pointer',id:'row-drag',parameters:{pointerType:'mouse'},actions:steps}]});
       // Wait only for native event delivery, then inspect the state sampled

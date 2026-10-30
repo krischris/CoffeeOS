@@ -5,7 +5,7 @@ export type DriveStep = 'Authorize Google' | 'Read cloud history' | 'Capture loc
   | 'Validate packaged snapshot' | 'Discover backup folder' | 'Upload snapshot' | 'Download snapshot'
   | 'Validate downloaded snapshot' | 'Recover empty collection' | 'Refresh app views' | 'Merge snapshot' | 'Replace snapshot'
   | 'Check exact local round trip' | 'Fingerprint local snapshot' | 'Fingerprint cloud snapshot'
-  | 'Download snapshot for comparison' | 'Validate comparison snapshot';
+  | 'Download snapshot for comparison' | 'Validate comparison snapshot' | 'Clean up older backups';
 interface Entry {
   sequence: number; elapsedMs: number; step: string; outcome: 'started' | 'passed' | 'failed' | 'response';
   status?: number; errorType?: string; category?: string; frames?: string[];

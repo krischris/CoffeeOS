@@ -7,11 +7,13 @@ import { CommittedWriteError, ImportDataError, DatabaseRuntimeError } from '../d
 import { confirmBackup, prepareBackup, replaceBackup } from '../backups';
 import type { PreparedBackup } from '../backups';
 import { googleDriveClientId } from '../driveConfig';
+import { DriveBackupTrackingError } from '../driveBackupTracking';
 
 export function createDriveView(container: HTMLElement, onImported: () => Promise<void>): void {
   container.innerHTML = `<section class="card io-drive" aria-labelledby="drive-heading">
     <h2 id="drive-heading">Google Drive backup</h2>
     <p>Connect to save your collection to Drive, or recover the most recently uploaded backup into an empty collection. Unchanged collections skip the upload. Sync now repeats this once.</p>
+    <p class="field-hint">Keeps the latest two backups from this device for each Google account. Older tracked backups move to Drive Trash after a verified upload.</p>
     <p class="drive-account">Not connected</p>
     <div class="io-actions">
       <button class="secondary-button drive-connect" type="button">Connect Google Drive</button>
@@ -24,7 +26,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
     <p class="drive-error form-error" role="alert" hidden></p>
     <div class="drive-history" hidden>
       <h3>Restore from Drive</h3>
-      <p class="field-hint">Most recently uploaded does not necessarily mean latest edits. Earlier backups are kept. After an upload, the previous cloud backup stays selected.</p>
+      <p class="field-hint">Most recently uploaded does not necessarily mean latest edits. After an upload, the previous cloud backup stays selected when available.</p>
       <label for="drive-snapshot">Backup snapshot</label>
       <select id="drive-snapshot"></select>
       <div class="io-actions">
@@ -143,7 +145,7 @@ export function createDriveView(container: HTMLElement, onImported: () => Promis
       if (current !== generation) return;
       if (failure instanceof DriveAuthError) { forgetDriveAuthorization(account?.token); account = null; verified = false; }
       status.textContent = '';
-      error.textContent = failure instanceof DatabaseRuntimeError || failure instanceof DriveError || failure instanceof ImportDataError || failure instanceof CommittedWriteError
+      error.textContent = failure instanceof DatabaseRuntimeError || failure instanceof DriveError || failure instanceof DriveBackupTrackingError || failure instanceof ImportDataError || failure instanceof CommittedWriteError
         ? failure.message : 'Drive operation could not finish. Your collection and earlier backups are kept. Check your connection and storage, then retry.';
       error.hidden = false;
       if (failure instanceof CommittedWriteError) { clearPreview(); await onImported().catch(() => undefined); }

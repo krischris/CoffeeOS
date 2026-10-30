@@ -118,10 +118,12 @@ export function createBrewController(container: HTMLElement, options: {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16l-6 7v7l-4 2v-9L4 4Z"/></svg>
           </button>
         </div>
-        <div id="session-bean-filter" class="session-filter" hidden>
-          <select class="session-filter-bean" aria-label="Filter brew sessions by bean">
-            <option value="">All beans</option>
-          </select>
+        <div id="session-bean-filter" class="session-filter" aria-hidden="true" inert>
+          <div class="session-filter-content">
+            <select class="session-filter-bean" aria-label="Filter brew sessions by bean">
+              <option value="">All beans</option>
+            </select>
+          </div>
         </div>
         <div class="list-error" role="alert" hidden>
           <p>Your sessions could not be loaded. Please try again.</p>
@@ -288,14 +290,14 @@ export function createBrewController(container: HTMLElement, options: {
     count.textContent = `(${visible.length})`;
   }
 
-  async function refresh(): Promise<void> {
+  async function refresh(showLoading = true): Promise<void> {
     const version = ++refreshVersion;
     list.setAttribute('aria-busy', 'true');
-    listStatus.textContent = 'Loading sessions…';
+    listStatus.textContent = showLoading ? 'Loading sessions…' : '';
     listError.hidden = true;
     filterBean.disabled = true;
     try {
-      const [loadedSessions, beans] = await Promise.all([getBrewSessions(), filter.hidden ? null : getBeans()]);
+      const [loadedSessions, beans] = await Promise.all([getBrewSessions(), filter.inert ? null : getBeans()]);
       if (version !== refreshVersion) return;
       sessions = loadedSessions;
       if (beans) {
@@ -395,14 +397,16 @@ export function createBrewController(container: HTMLElement, options: {
   pickerError.querySelector('button')!.addEventListener('click', () => void loadBeans());
   listError.querySelector('button')!.addEventListener('click', () => void refresh());
   filterToggle.addEventListener('click', () => {
-    filter.hidden = !filter.hidden;
+    const open = filter.inert;
+    filter.inert = !open;
+    filter.setAttribute('aria-hidden', String(!open));
     filterBean.value = '';
-    filterToggle.setAttribute('aria-expanded', String(!filter.hidden));
-    const label = filter.hidden ? 'Filter brew sessions by bean' : 'Hide and clear bean filter';
+    filterToggle.setAttribute('aria-expanded', String(open));
+    const label = open ? 'Hide and clear bean filter' : 'Filter brew sessions by bean';
     filterToggle.setAttribute('aria-label', label);
     filterToggle.title = label;
     renderSessions();
-    void refresh();
+    void refresh(false);
   });
   filterBean.addEventListener('change', renderSessions);
   for (const name of ['dose_g', 'yield_g', 'tds_pct']) input(name).addEventListener('input', updateExtraction);

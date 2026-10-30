@@ -3255,6 +3255,23 @@ beside the brew-history heading, and restore all sessions with a second tap.
   bean-edit reloads and all Stage 63 filtering/layout/exact-data assertions,
   must pass with native opening and closing. Results are recorded in Stage 64.
 
+### Highlight and dropdown motion repair — 2026-10-30 (Stage 66)
+
+- Cause: the shared hover/expanded selector painted a closed button as active
+  while mouse hover or mobile Safari's sticky hover remained on the icon.
+  The dropdown also switched `display` immediately, and toggle-triggered reads
+  briefly inserted a loading paragraph that shifted the list.
+- Corrected requirements: only expanded state controls the highlight. Use a
+  short 200ms eased height/fade transition with no intentional input delay or
+  loading-row flash. Closing immediately clears filtering and makes the
+  collapsing dropdown inert and hidden from assistive technology. Reverse
+  motion on repeated taps; respect Reduce Motion without delayed cleanup.
+- Regression gate: native closing leaves the pointer over a neutral icon;
+  opening/closing traverse intermediate heights, interrupted transitions settle
+  to the latest state, the collapsed dropdown cannot receive focus, and actual
+  reduced-motion CSS removes animation. Preserve all original filter/data gates.
+  Verification is recorded in Stage 66.
+
 ## Stage 64: Repair Safari Bean Filter Regression
 
 - [x] **Status:** Complete; build, inventory and focused Safari review passed.
@@ -3349,3 +3366,72 @@ Avoid repeated known sandbox setup failures when starting CoffeeOS browser tests
   Tool approval still determines whether requested permissions are available.
   Runtime/storage/startup/formats/service workers/deployment remain unchanged;
   populated build-replacement checks were not rerun. `TESTS.md` is empty.
+
+## Stage 66: Clear Filter Highlight and Smooth Dropdown Transitions
+
+- [x] **Status:** Complete; build, inventory, focused Safari functional/motion
+  checks and local header/assets checks passed.
+
+### Goal
+
+Repair Stage 63's persistent filter highlight and make opening/closing feel smooth
+with a short, reversible animation for the user to evaluate.
+
+### Tasks
+
+1. [x] Tie highlight solely to expanded state, preserving keyboard focus feedback.
+2. [x] Animate expansion/collapse and opacity over 200ms without input delay,
+   loading-row flashes or animation timers. Make closed controls inert and
+   inaccessible, and honor Reduce Motion.
+3. [x] Extend maintained Safari filter regressions for neutral closing, animated
+   intermediate heights, reversals, accessibility and reduced-motion styles.
+4. [x] Run build, inventory and affected Safari/header checks; record evidence
+   and unverified physical-device behavior.
+
+### Acceptance Criteria (Stage 66 Gate)
+
+- Closing clears the icon's active color/background while the pointer remains
+  over it; keyboard focus remains usable. Original filtering and clearing pass.
+- Opening/closing animate smoothly in about 200ms with no intentional delay or
+  loading paragraph shifting the list. Rapid taps reverse from the current
+  position and finish at the requested state without stale completion callbacks.
+- Closed dropdowns occupy zero height, cannot receive focus and are hidden from
+  assistive technology. Reduce Motion removes animation without timer delays.
+- Existing counts/order/choices, edits/saves/deletions and exact record/backup
+  preservation pass. Build, inventory and focused Safari/header checks pass.
+- Storage/startup/formats/dependencies/service workers/origin are unchanged;
+  physical iOS/Android feel and deployment remain separate verification gates.
+
+### Verification — 2026-10-30
+
+- `TESTS.md` was empty before changes and remains empty.
+- Chose a 200ms transition as an initial tuning point: Apple's motion guidance
+  favors brief, precise feedback; Material's short transitions use roughly
+  150–200ms. This is a UI tuning choice rather than a mandated platform value.
+  References: [Apple motion](https://developer.apple.com/design/human-interface-guidelines/motion),
+  [Material duration and easing](https://m1.material.io/motion/duration-easing.html).
+- Extended the registered `session-filter-checks.mjs` helper. Native Safari
+  closing passed neutral icon color/background with the pointer left over it.
+  Collapsed controls rejected focus while the toggle retained keyboard focus.
+  Animation checks passed immediate state/clearing with no loading paragraph,
+  short zero-delay height/opacity transitions, intermediate opening/closing
+  heights and reversals during motion. Rapid toggles settled at zero height;
+  original choices/count/order/edit/save/delete and exact record/CSV checks passed.
+- Simulated Reduce Motion in an isolated Safari layout frame by activating the
+  real stylesheet media rules. Closed/open geometry updated immediately, with
+  zero transition duration and no active animations; no OS setting changed.
+  Existing 320px/393px phone and desktop geometry passed without overflow, and
+  the captured phone layout was inspected. The cloned dropdown now preserves
+  its actual selected option for that visual artifact.
+- `uv run npm run build`, `uv run npm run test:inventory`, helper syntax and
+  `git diff --check` passed. The authorized focused
+  `uv run npm test -- --only review-safari,server-contracts` passed all four
+  gates: inventory, build/type checks, local dev/preview headers and relative
+  `/CoffeeOS/` assets, and current-production Safari functional regressions.
+  Evidence: `.cache/test-runs/2026-10-30T07-22-16.769Z-10974/summary.json`.
+- This changes filter presentation only. Database/storage identities, schema,
+  backup formats, startup, dependencies, service workers, deployment and origin
+  are unchanged; populated build-replacement upgrades were not repeated. Full
+  suite, optional Firefox and physical iOS/Android touch/animation feel, actual
+  device Reduce Motion, Home Screen lifecycle, live Google and deployed-host
+  checks remain unverified. No deployment or normal browser collection was used.

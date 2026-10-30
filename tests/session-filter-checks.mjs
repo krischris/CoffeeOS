@@ -23,17 +23,18 @@ export async function checkSessionFiltering({sync, evaluate, waitFor, api, state
       await api('/window',{handle:await api('/window')});
       await waitFor('document.hasFocus() && document.visibilityState === "visible"');
     }
-    const wasHidden=await sync(`return document.querySelector('.session-filter').hidden;`);
+    const wasHidden=await sync(`return document.querySelector('.session-filter').inert;`);
     const button=await api('/element',{using:'css selector',value:'.session-filter-toggle'});
     await api('/element/'+button['element-6066-11e4-a52e-4f735466cecf']+'/click',{});
     // The list can still be idle before the browser delivers the native click.
-    await waitFor(`document.querySelector('.session-filter').hidden===${!wasHidden}`);
+    await waitFor(`document.querySelector('.session-filter').inert===${!wasHidden}`);
     await idle();
+    await evaluate(`await Promise.all(document.querySelector('.session-filter').getAnimations().map(animation=>animation.finished.catch(()=>{})));`);
   };
   const select = id => sync(`const select=document.querySelector('.session-filter-bean');
     select.value=${JSON.stringify(id)};select.dispatchEvent(new Event('change',{bubbles:true}));`);
   const view = () => sync(`return {
-    hidden:document.querySelector('.session-filter').hidden,
+    hidden:document.querySelector('.session-filter').inert,
     expanded:document.querySelector('.session-filter-toggle').getAttribute('aria-expanded'),
     value:document.querySelector('.session-filter-bean').value,
     count:document.querySelector('.session-count-total').textContent,
@@ -51,6 +52,7 @@ export async function checkSessionFiltering({sync, evaluate, waitFor, api, state
 
   await openBrews();
   const original=await state(), originalCSV=await csv();
+  const neutralButton=await sync(`const style=getComputedStyle(document.querySelector('.session-filter-toggle'));return {background:style.backgroundColor,color:style.color};`);
   assert.equal((await view()).hidden,true);
   assert.equal((await view()).expanded,'false');
   await toggle();
@@ -72,7 +74,8 @@ export async function checkSessionFiltering({sync, evaluate, waitFor, api, state
       frame.style.cssText='position:fixed;inset:0;width:393px;height:852px;border:0;z-index:1000;background:#0e1222';
       document.body.append(frame);const doc=frame.contentDocument;
       for(const style of document.querySelectorAll('style,link[rel="stylesheet"]'))doc.head.append(style.cloneNode(true));
-      doc.body.append(document.querySelector('#app').cloneNode(true));`);
+      doc.body.append(document.querySelector('#app').cloneNode(true));
+      doc.querySelector('.session-filter-bean').value=document.querySelector('.session-filter-bean').value;`);
     try {
       await waitFor(`getComputedStyle(document.querySelector('#session-filter-viewport').contentDocument.querySelector('.session-list-header')).display==='flex'`);
       for(const [width,height] of [[320,568],[1440,900],[393,852]]) {
@@ -92,6 +95,24 @@ export async function checkSessionFiltering({sync, evaluate, waitFor, api, state
       const frame=await sync(`return document.querySelector('#session-filter-viewport');`);
       const png=await api('/element/'+frame['element-6066-11e4-a52e-4f735466cecf']+'/screenshot');
       await writeFile('.cache/session-filter-safari.png',Buffer.from(png,'base64'));
+      const reduced=await sync(`const doc=document.querySelector('#session-filter-viewport').contentDocument;
+        let rules=0;
+        for(const sheet of doc.styleSheets)for(const rule of sheet.cssRules) {
+          if(rule.type===CSSRule.MEDIA_RULE && rule.conditionText.includes('prefers-reduced-motion: reduce')) {
+            rule.media.mediaText='all';rules++;
+          }
+        }
+        const filter=doc.querySelector('.session-filter');
+        filter.setAttribute('aria-hidden','true');filter.inert=true;
+        const closed={height:filter.getBoundingClientRect().height,opacity:getComputedStyle(filter).opacity};
+        filter.setAttribute('aria-hidden','false');filter.inert=false;
+        return {rules,closed,openHeight:filter.getBoundingClientRect().height,
+          duration:getComputedStyle(filter).transitionDuration,animations:filter.getAnimations().length};`);
+      assert.ok(reduced.rules>0,'Apply the actual reduced-motion media rules in the isolated layout frame');
+      assert.deepEqual(reduced.closed,{height:0,opacity:'0'});
+      assert.ok(reduced.openHeight>=44);
+      assert.equal(reduced.duration,'0s');
+      assert.equal(reduced.animations,0,'Reduced motion removes expansion and fading without waiting for a timer');
     } finally { await sync(`document.querySelector('#session-filter-viewport')?.remove();`); }
   }
 
@@ -100,9 +121,56 @@ export async function checkSessionFiltering({sync, evaluate, waitFor, api, state
   assert.equal((await view()).hidden,true);
   assert.equal((await view()).expanded,'false');
   await assertMatches('');
+  assert.deepEqual(await sync(`const style=getComputedStyle(document.querySelector('.session-filter-toggle'));return {background:style.backgroundColor,color:style.color};`),
+    neutralButton,'Closing clears the highlight even with the native pointer left over the icon');
+  assert.equal(await sync(`const button=document.querySelector('.session-filter-toggle');button.focus();
+    document.querySelector('.session-filter-bean').focus();return document.activeElement===button;`),true,
+  'The collapsed dropdown is inert while the toggle remains keyboard-focusable');
+
+  for(const open of [true,false]) {
+    const motion=await evaluate(`const filter=document.querySelector('.session-filter');
+      const read=()=>({height:filter.getBoundingClientRect().height,opacity:Number(getComputedStyle(filter).opacity)});
+      const before=read();document.querySelector('.session-filter-toggle').click();const start=read();
+      const animations=filter.getAnimations();
+      const timings=animations.map(animation=>({property:animation.transitionProperty,...animation.effect.getTiming()}));
+      const immediate={inert:filter.inert,hidden:filter.getAttribute('aria-hidden'),
+        expanded:document.querySelector('.session-filter-toggle').getAttribute('aria-expanded'),
+        loading:document.querySelector('.list-status').textContent};
+      const samples=[start];
+      for(let frame=0;frame<60 && filter.getAnimations().length;frame++) {
+        await new Promise(requestAnimationFrame);samples.push(read());
+      }
+      await Promise.all(animations.map(animation=>animation.finished.catch(()=>{})));
+      return {before,after:read(),samples,timings,immediate,reduced:matchMedia('(prefers-reduced-motion: reduce)').matches};`);
+    assert.deepEqual(motion.immediate,{inert:!open,hidden:String(!open),expanded:String(open),loading:''},
+      'Taps update state immediately and never insert a loading row during the transition');
+    if(!motion.reduced) {
+      for(const property of ['grid-template-rows','opacity']) {
+        const timing=motion.timings.find(timing=>timing.property===property);
+        assert.ok(timing && timing.duration>0 && timing.duration<=250,JSON.stringify(motion));
+        assert.equal(timing.delay,0,'Animate immediately instead of delaying the action');
+      }
+      const low=Math.min(motion.before.height,motion.after.height),high=Math.max(motion.before.height,motion.after.height);
+      assert.ok(motion.samples.some(sample=>sample.height>low+1 && sample.height<high-1),
+        'The dropdown passes through intermediate heights on both opening and closing: '+JSON.stringify(motion));
+    }
+    assert.equal(motion.after.opacity,open?1:0);
+    assert.ok(open?motion.after.height>=44:motion.after.height===0,JSON.stringify(motion));
+    await idle();
+  }
+  await evaluate(`const filter=document.querySelector('.session-filter');
+    for(let i=0;i<4;i++) {
+      document.querySelector('.session-filter-toggle').click();
+      await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
+    }
+    await Promise.all(filter.getAnimations().map(animation=>animation.finished.catch(()=>{})));`);
+  await idle();
+  assert.equal((await view()).hidden,true,'Taps during motion reverse smoothly and finish closed');
+  assert.equal(await sync(`return document.querySelector('.session-filter').getBoundingClientRect().height;`),0);
   await toggle(); await assertMatches('');
   await sync(`for(let i=0;i<9;i++)document.querySelector('.session-filter-toggle').click();`);
   await idle();
+  await evaluate(`await Promise.all(document.querySelector('.session-filter').getAnimations().map(animation=>animation.finished.catch(()=>{})));`);
   assert.equal((await view()).hidden,true);
   await assertMatches('');
   assert.deepEqual(await state(),original,'Filtering and rapid toggles never modify stored records');
@@ -147,5 +215,5 @@ export async function checkSessionFiltering({sync, evaluate, waitFor, api, state
   assert.equal((await view()).hidden,false);
   assert.ok(!(await view()).options.some(option=>option.id===seeded.first.id));
   await toggle();
-  console.log('PASS session bean filter: native toggle, choices/duplicate names, counts/order/empty results, clear/reopen/races, phone/desktop layout, exact records/backups, navigation and edit/save/delete refresh');
+  console.log('PASS session bean filter: native toggle and cleared hover highlight, animated expansion/collapse/reversal and reduced-motion styles, choices/duplicate names, counts/order/empty results, clear/reopen/races, phone/desktop layout, exact records/backups, navigation and edit/save/delete refresh');
 }

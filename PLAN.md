@@ -3435,3 +3435,60 @@ with a short, reversible animation for the user to evaluate.
   suite, optional Firefox and physical iOS/Android touch/animation feel, actual
   device Reduce Motion, Home Screen lifecycle, live Google and deployed-host
   checks remain unverified. No deployment or normal browser collection was used.
+
+## Stage 67: Select Brew Measurements for Quick Replacement
+
+- [x] **Status:** Complete; build, inventory and focused Safari measurement
+  replacement and edit/reload checks passed.
+
+### Goal
+
+Select the full existing measurement when entering a brew editor field so the
+next typed value replaces it without manually moving the caret or deleting digits.
+
+### Tasks
+
+1. [x] Select numeric measurements and brew time on focus and click, including
+   clicking an already focused field; preserve normal typing between activations.
+2. [x] Extend maintained Safari editing checks for replacement, keyboard focus,
+   repeat clicks, empty/zero/decimal values and save/reload fidelity.
+3. [x] Run the build, inventory and focused Safari/header checks; record results
+   and physical iOS limitations.
+
+### Acceptance Criteria (Stage 67 Gate)
+
+- Dose, water, time, temperature, grind, yield and TDS select their entire value
+  when focused or clicked. Repeated clicks select again, and subsequent typing
+  continues normally until another activation.
+- Decimal values, zero and empty optional measurements remain editable. Native
+  typing replaces existing values, extraction updates, and saving/reloading keeps
+  the intended values and existing record identity, dates and relationships.
+- Comments retain ordinary text editing. Cancelling preserves stored records;
+  unchanged saves retain full numeric/timestamp precision and null/text fidelity.
+- Build, inventory and relevant Safari checks pass. Physical iPhone/iPad touch
+  selection and keyboard behavior are recorded separately from desktop Safari.
+
+### Verification — 2026-10-30
+
+- `TESTS.md` was empty before changes. Added focus/click selection to the six
+  numeric measurements and text-formatted brew time in the shared new/edit form.
+  Selection runs on activation only, allowing subsequent keystrokes to append.
+- Extended the registered `session-edit-checks.mjs` helper. Native desktop Safari
+  keystrokes passed full-value replacement for all seven measurements, Tab focus,
+  repeated clicks, continued typing, zero, blank optional values, long decimal
+  precision, Backspace clearing and live extraction recalculation. Comment focus
+  retained normal caret editing. The existing unchanged-save/CSV precision,
+  cancel/reopen, rollback/retry, record identity, relationship/date, duplicate
+  submission and exact save/reload checks passed with natively entered values.
+- Build, inventory, helper syntax, diff checks and local dev/preview isolation
+  headers and `/CoffeeOS/` assets passed. Relevant native Safari input and
+  edit/reload checks passed. Broader review attempts encountered intermittent
+  WebDriver timeout/focus failures; no application cause was confirmed. Logs
+  remain under `.cache/test-runs/`. Diagnostic additions were removed and
+  `TESTS.md` cleared at the user's request.
+- Only editor activation behavior changed; storage/schema/identities, backups,
+  startup, dependencies, service workers, deployment and origin are unchanged.
+  Populated build-replacement upgrades and the full suite were not run. Physical
+  iPhone/iPad touch selection and keyboard/viewport behavior, Home Screen
+  lifecycle, optional Firefox, live Google and deployed-host checks remain
+  unverified. No normal browser collection or deployment was used.

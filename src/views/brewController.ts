@@ -202,6 +202,12 @@ export function createBrewController(container: HTMLElement, options: {
   const bean = form.querySelector<HTMLSelectElement>('select')!;
   const output = form.querySelector('output')!;
   const input = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
+  for (const field of form.querySelectorAll<HTMLInputElement>('input[type="number"], input[name="time_str"]')) {
+    // A click can move the caret after focus, including on an already focused field.
+    const selectValue = () => field.select();
+    field.addEventListener('focus', selectValue);
+    field.addEventListener('click', selectValue);
+  }
   const chart = createBrewingChart();
   const dateToggle = form.querySelector<HTMLLabelElement>('.session-date-toggle')!;
   const dateLabel = dateToggle.querySelector<HTMLElement>('.session-date-label')!;

@@ -31,8 +31,48 @@ export async function checkSessionEditing({sync, evaluate, waitFor, api, ready})
   assert.deepEqual(await read(), original, 'Cancel leaves stored record untouched');
   await open();
   assert.equal(await sync(`return document.querySelector('#session-dose').value;`), String(initial.dose_g));
+  const values = {dose_g:'20.123456789',water_g:'320.123456789',time_str:'03:15',temp_c:'93.123456789',grind_um:'650.123456789',comment:'Changed',yield_g:'280.123456789',tds_pct:'1.23456789',brewed_at:'2024-05-06T12:34:56.789'};
+  // Use native Safari keystrokes: number inputs do not expose selectionStart,
+  // and assigning .value would bypass the replacement behavior being tested.
+  if (!process.env.TEST_FIREFOX) {
+    const type = text => api('/actions', {actions:[{type:'key',id:'measurement-typing',
+      actions:[...text].flatMap(value => [{type:'keyDown',value},{type:'keyUp',value}])}]});
+    try {
+      for (const name of ['dose_g','water_g','time_str','temp_c','grind_um','yield_g','tds_pct']) {
+        const selector = `.session-form input[name="${name}"]`;
+        if (name === 'water_g') await type('\uE004'); // Tab forward from dose.
+        else await sync(`document.querySelector('${selector}').focus();`);
+        assert.equal(await sync(`return document.activeElement.name;`), name, `${name}: focus`);
+        await type('7.5');
+        assert.equal(await sync(`return document.querySelector('${selector}').value;`), '7.5', `${name}: focus replaces the whole value`);
+        await type('9');
+        assert.equal(await sync(`return document.querySelector('${selector}').value;`), '7.59', `${name}: continued typing keeps the caret`);
+        const element = await sync(`return document.querySelector('${selector}');`);
+        await api('/element/'+element['element-6066-11e4-a52e-4f735466cecf']+'/click',{});
+        await type(values[name]);
+        assert.equal(await sync(`return document.querySelector('${selector}').value;`), values[name], `${name}: repeat click replaces the whole value`);
+      }
+      // Select the populated TDS again, then clear it with native Backspace.
+      const tds = await sync(`return document.querySelector('#session-tds');`);
+      await api('/element/'+tds['element-6066-11e4-a52e-4f735466cecf']+'/click',{});
+      await type('\uE003');
+      assert.equal(await sync(`return document.querySelector('#session-tds').value;`), '', 'Optional measurements can be cleared');
+      assert.equal(await sync(`return document.querySelector('#session-extraction').value;`), '—');
+      await type(values.tds_pct);
+      assert.equal(await sync(`return document.querySelector('#session-extraction').value;`), `${(Number(values.yield_g)*Number(values.tds_pct)/Number(values.dose_g)).toFixed(2)}%`);
+      const comment = await sync(`const field=document.querySelector('#session-comment');
+        field.focus();field.setSelectionRange(2,2);document.querySelector('#new-session-heading').focus();field.focus();
+        return field.value;`);
+      await type('!');
+      assert.equal(await sync(`return document.querySelector('#session-comment').value;`), comment.slice(0,2)+'!'+comment.slice(2), 'Comment focus keeps ordinary caret editing');
+    } finally {
+      await api('/actions',undefined,'DELETE');
+    }
+    console.log('PASS native Safari measurement replacement: focus, Tab, repeat clicks, continued typing, zero/empty/precise values, clearing, extraction and ordinary comment editing');
+  }
+  const scriptedValues = process.env.TEST_FIREFOX ? values : {comment:values.comment,brewed_at:values.brewed_at};
   await sync(`const form = document.querySelector('.session-form');
-    for (const [name,value] of Object.entries({dose_g:'20.123456789',water_g:'320.123456789',time_str:'03:15',temp_c:'93.123456789',grind_um:'650.123456789',comment:'Changed',yield_g:'280.123456789',tds_pct:'1.23456789',brewed_at:'2024-05-06T12:34:56.789'})) {
+    for (const [name,value] of Object.entries(${JSON.stringify(scriptedValues)})) {
       form.elements[name].value=value;form.elements[name].dispatchEvent(new Event('input',{bubbles:true}));
     }
     const select=form.elements.bean_id; if(select.options.length > 2) select.value=select.options[select.value===select.options[1].value ? 2 : 1].value;
